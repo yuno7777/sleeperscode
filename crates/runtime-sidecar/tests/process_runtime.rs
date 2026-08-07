@@ -86,6 +86,22 @@ impl Drop for TestDirectory {
     }
 }
 
+#[cfg(windows)]
+fn localhost_admin_share(path: &Path) -> Option<PathBuf> {
+    let absolute = path.canonicalize().ok()?;
+    let text = absolute.to_str()?;
+    let text = text.strip_prefix(r"\\?\").unwrap_or(text);
+    let (drive, suffix) = text.split_once(":\\")?;
+    if drive.len() != 1 {
+        return None;
+    }
+    Some(PathBuf::from(format!(
+        r"\\localhost\{}$\{}",
+        drive.to_ascii_uppercase(),
+        suffix
+    )))
+}
+
 async fn run(
     args: &[&str],
     stdin: Option<&str>,
@@ -476,6 +492,110 @@ async fn accepts_a_relative_working_directory() {
         event,
         RuntimeEvent::ProcessCompleted { stdout, .. } if stdout.contains(&format!("cwd={}", root.display()))
     )));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn supports_a_simulated_non_ascii_windows_user_profile() {
+    let root = TestDirectory::create("sleepers-runtime-profile");
+    let profile = root
+        .path()
+        .join("Users")
+        .join("J\u{00f6}rg-\u{9879}\u{76ee}");
+    let repository = profile.join("sleepers code");
+    std::fs::create_dir_all(&repository).expect("create simulated profile repository");
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    run_process(
+        RunInput {
+            request_id: "unicode-profile".into(),
+            command: fixture(),
+            args: vec![
+                "--print-cwd".into(),
+                "--print-env".into(),
+                "USERPROFILE".into(),
+            ],
+            cwd: Some(repository.to_string_lossy().into_owned()),
+            env: Some(BTreeMap::from([(
+                "USERPROFILE".into(),
+                profile.to_string_lossy().into_owned(),
+            )])),
+            stdin: None,
+            timeout: Duration::from_secs(5),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect("simulated unicode profile process succeeds");
+
+    let completed = drain_events(&mut events_rx)
+        .into_iter()
+        .find_map(|event| match event {
+            RuntimeEvent::ProcessCompleted { stdout, .. } => Some(stdout),
+            _ => None,
+        })
+        .expect("completion event");
+    assert!(completed.contains(&format!("cwd={}", repository.display())));
+    assert!(completed.contains(&format!("env={}", profile.display())));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn runs_from_a_local_unc_working_directory() {
+    let local_cwd = std::env::current_dir().expect("read current directory");
+    let Some(unc_cwd) = localhost_admin_share(&local_cwd) else {
+        eprintln!("local drive cannot be represented as an administrative UNC share");
+        return;
+    };
+    let Some(unc_fixture) = localhost_admin_share(Path::new(&fixture())) else {
+        eprintln!("fixture cannot be represented as an administrative UNC share");
+        return;
+    };
+    if !unc_cwd.exists() || !unc_fixture.exists() {
+        eprintln!("localhost administrative shares are unavailable on this host");
+        return;
+    }
+
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    run_process(
+        RunInput {
+            request_id: "local-unc".into(),
+            command: unc_fixture.to_string_lossy().into_owned(),
+            args: vec!["--print-cwd".into()],
+            cwd: Some(unc_cwd.to_string_lossy().into_owned()),
+            env: None,
+            stdin: None,
+            timeout: Duration::from_secs(5),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect("local UNC process succeeds");
+
+    let reported_cwd = drain_events(&mut events_rx)
+        .into_iter()
+        .find_map(|event| match event {
+            RuntimeEvent::ProcessCompleted { stdout, .. } => stdout
+                .lines()
+                .find_map(|line| line.strip_prefix("cwd=").map(PathBuf::from)),
+            _ => None,
+        })
+        .expect("fixture reports cwd");
+    assert_eq!(
+        reported_cwd
+            .canonicalize()
+            .expect("canonicalize reported cwd"),
+        unc_cwd.canonicalize().expect("canonicalize UNC cwd")
+    );
 }
 
 #[tokio::test]
