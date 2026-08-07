@@ -12,7 +12,7 @@ import { ProcessRunner, layer } from "./processRunner.ts";
 
 const NativeEnvironment = Layer.succeed(HostProcessEnvironment, {
   ...process.env,
-  T3CODE_RUST_RUNTIME: "1",
+  T3CODE_RUNTIME_BACKEND: "rust",
 });
 const TestLayer = layer.pipe(Layer.provide(NodeServices.layer), Layer.provide(NativeEnvironment));
 

@@ -15,7 +15,9 @@ import {
   collectUint8StreamText,
   type CollectedUint8StreamText,
 } from "./stream/collectUint8StreamText.ts";
+import * as ServerConfig from "./config.ts";
 import * as NativeRuntimeClient from "./nativeRuntime/NativeRuntimeClient.ts";
+import { selectRuntimeBackend } from "./nativeRuntime/RuntimeBackend.ts";
 
 export interface ProcessRunInput {
   readonly command: string;
@@ -402,6 +404,11 @@ export const make = Effect.fn("ProcessRunner.make")(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const nativeRuntime = yield* NativeRuntimeClient.NativeRuntimeClient;
   const environment = yield* HostProcessEnvironment;
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  const backend = selectRuntimeBackend({
+    configured: Option.isSome(config) ? config.value.runtimeBackend : undefined,
+    environment,
+  });
 
   const runWithNode = (input: ProcessRunInput) =>
     finalizeRunProcess(runProcessCore(spawner, input), input);
@@ -512,7 +519,7 @@ export const make = Effect.fn("ProcessRunner.make")(function* () {
   });
 
   const run: ProcessRunner["Service"]["run"] = (input) =>
-    environment.T3CODE_RUST_RUNTIME === "1" ? runWithNative(input) : runWithNode(input);
+    backend.active === "rust" ? runWithNative(input) : runWithNode(input);
 
   return ProcessRunner.of({
     run,
