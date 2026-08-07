@@ -1,4 +1,6 @@
+use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
@@ -10,6 +12,32 @@ fn value_after(args: &[String], flag: &str) -> Option<String> {
 
 fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if let Some(depth) =
+        value_after(&args, "--tree-depth").and_then(|value| value.parse::<u32>().ok())
+    {
+        let pid_file =
+            value_after(&args, "--pid-file").expect("--pid-file is required for tree mode");
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&pid_file)
+            .expect("open pid file");
+        writeln!(file, "{}", std::process::id()).expect("write pid");
+        file.flush().expect("flush pid");
+        if depth > 0 {
+            Command::new(std::env::current_exe().expect("resolve current fixture"))
+                .args([
+                    "--tree-depth",
+                    &(depth - 1).to_string(),
+                    "--pid-file",
+                    &pid_file,
+                ])
+                .spawn()
+                .expect("spawn fixture descendant");
+        }
+        thread::sleep(Duration::from_secs(30));
+        return;
+    }
     if let Some(value) = value_after(&args, "--stdout") {
         print!("{value}");
     }
