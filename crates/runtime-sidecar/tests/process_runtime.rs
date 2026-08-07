@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use t3_runtime_protocol::{OutputMode, RuntimeEvent};
@@ -7,6 +8,42 @@ use tokio::sync::{mpsc, oneshot};
 
 fn fixture() -> String {
     env!("CARGO_BIN_EXE_runtime-fixture").into()
+}
+
+fn drain_events(receiver: &mut mpsc::Receiver<RuntimeEvent>) -> Vec<RuntimeEvent> {
+    let mut events = Vec::new();
+    while let Ok(event) = receiver.try_recv() {
+        events.push(event);
+    }
+    events
+}
+
+struct TestDirectory(PathBuf);
+
+impl TestDirectory {
+    fn create(label: &str) -> Self {
+        let unique = format!(
+            "{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&path).expect("create test directory");
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 async fn run(
@@ -305,4 +342,124 @@ async fn runs_multiple_processes_concurrently() {
     assert!(matches!(second_event, RuntimeEvent::ProcessStarted { .. }));
     first.await.expect("join first").expect("first succeeds");
     second.await.expect("join second").expect("second succeeds");
+}
+
+#[tokio::test]
+async fn runs_an_executable_from_a_unicode_path_with_spaces_and_deep_cwd() {
+    let root = TestDirectory::create("sleepers code 项目");
+    let deep_cwd = root
+        .path()
+        .join("repository with spaces")
+        .join("深いディレクトリ")
+        .join("segment-012345678901234567890123456789")
+        .join("nested-012345678901234567890123456789");
+    std::fs::create_dir_all(&deep_cwd).expect("create deep cwd");
+    let source = PathBuf::from(fixture());
+    let extension = source
+        .extension()
+        .map(|value| format!(".{}", value.to_string_lossy()))
+        .unwrap_or_default();
+    let copied_fixture = root.path().join(format!("fixture 睡眠{extension}"));
+    std::fs::copy(&source, &copied_fixture).expect("copy fixture into unicode path");
+
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    run_process(
+        RunInput {
+            request_id: "unicode-path".into(),
+            command: copied_fixture.to_string_lossy().into_owned(),
+            args: vec![
+                "--print-cwd".into(),
+                "--print-env".into(),
+                "SLEEPERS_RUNTIME_TEST".into(),
+            ],
+            cwd: Some(deep_cwd.to_string_lossy().into_owned()),
+            env: Some(BTreeMap::from([(
+                "SLEEPERS_RUNTIME_TEST".into(),
+                "välue-值".into(),
+            )])),
+            stdin: None,
+            timeout: Duration::from_secs(5),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect("unicode path process succeeds");
+
+    let completed = drain_events(&mut events_rx)
+        .into_iter()
+        .find_map(|event| match event {
+            RuntimeEvent::ProcessCompleted { stdout, .. } => Some(stdout),
+            _ => None,
+        })
+        .expect("completion event");
+    assert!(completed.contains(&format!("cwd={}", deep_cwd.display())));
+    assert!(completed.contains("env=välue-值"));
+}
+
+#[tokio::test]
+async fn accepts_a_relative_working_directory() {
+    let current = std::env::current_dir().expect("current directory");
+    let root = current
+        .join("target")
+        .join(format!("relative-runtime-test-{}", std::process::id()));
+    let _cleanup = TestDirectory(root.clone());
+    std::fs::create_dir_all(&root).expect("create relative cwd");
+    let relative = root
+        .strip_prefix(&current)
+        .expect("path is relative to cwd");
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    run_process(
+        RunInput {
+            request_id: "relative-cwd".into(),
+            command: fixture(),
+            args: vec!["--print-cwd".into()],
+            cwd: Some(relative.to_string_lossy().into_owned()),
+            env: None,
+            stdin: None,
+            timeout: Duration::from_secs(5),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect("relative cwd process succeeds");
+    assert!(drain_events(&mut events_rx).into_iter().any(|event| matches!(
+        event,
+        RuntimeEvent::ProcessCompleted { stdout, .. } if stdout.contains(&format!("cwd={}", root.display()))
+    )));
+}
+
+#[tokio::test]
+async fn rejects_a_directory_as_an_executable() {
+    let root = TestDirectory::create("sleepers-runtime-not-executable");
+    let (events_tx, _events_rx) = mpsc::channel(4);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    let error = run_process(
+        RunInput {
+            request_id: "not-executable".into(),
+            command: root.path().to_string_lossy().into_owned(),
+            args: vec![],
+            cwd: None,
+            env: None,
+            stdin: None,
+            timeout: Duration::from_secs(1),
+            max_output_bytes: 1024,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect_err("directory execution fails");
+    assert!(matches!(error, RunError::Spawn(_)));
 }
