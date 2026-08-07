@@ -9,6 +9,8 @@ use tokio::sync::{mpsc, oneshot};
 #[cfg(windows)]
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
 #[cfg(windows)]
+use std::process::Command;
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::{HANDLE, STILL_ACTIVE};
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
@@ -100,6 +102,23 @@ fn localhost_admin_share(path: &Path) -> Option<PathBuf> {
         drive.to_ascii_uppercase(),
         suffix
     )))
+}
+
+#[cfg(windows)]
+struct DeniedExecuteFile(PathBuf);
+
+#[cfg(windows)]
+impl Drop for DeniedExecuteFile {
+    fn drop(&mut self) {
+        let _ = Command::new("icacls.exe")
+            .args([
+                self.0.as_os_str(),
+                "/remove:d".as_ref(),
+                "*S-1-1-0".as_ref(),
+                "/inheritance:e".as_ref(),
+            ])
+            .output();
+    }
 }
 
 async fn run(
@@ -622,6 +641,54 @@ async fn rejects_a_directory_as_an_executable() {
     .await
     .expect_err("directory execution fails");
     assert!(matches!(error, RunError::Spawn(_)));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn reports_permission_denied_for_an_acl_blocked_executable() {
+    let root = TestDirectory::create("sleepers-runtime-access-denied");
+    let blocked_fixture = root.path().join("blocked-runtime-fixture.exe");
+    std::fs::copy(fixture(), &blocked_fixture).expect("copy fixture for ACL test");
+    let acl = Command::new("icacls.exe")
+        .args([
+            blocked_fixture.as_os_str(),
+            "/inheritance:r".as_ref(),
+            "/deny".as_ref(),
+            "*S-1-1-0:(RX)".as_ref(),
+        ])
+        .output()
+        .expect("run icacls");
+    assert!(
+        acl.status.success(),
+        "icacls failed: {}",
+        String::from_utf8_lossy(&acl.stderr)
+    );
+    let _restore_acl = DeniedExecuteFile(blocked_fixture.clone());
+
+    let (events_tx, _events_rx) = mpsc::channel(4);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    let error = run_process(
+        RunInput {
+            request_id: "permission-denied".into(),
+            command: blocked_fixture.to_string_lossy().into_owned(),
+            args: vec![],
+            cwd: None,
+            env: None,
+            stdin: None,
+            timeout: Duration::from_secs(1),
+            max_output_bytes: 1024,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect_err("ACL-blocked executable fails");
+    assert!(matches!(
+        error,
+        RunError::Spawn(source) if source.kind() == std::io::ErrorKind::PermissionDenied
+    ));
 }
 
 #[cfg(windows)]
