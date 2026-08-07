@@ -619,3 +619,58 @@ async fn timeout_terminates_the_entire_windows_process_tree() {
         })
     ));
 }
+
+#[cfg(windows)]
+#[tokio::test]
+async fn parent_crash_terminates_remaining_windows_descendants() {
+    let root = TestDirectory::create("sleepers-runtime-crash-tree");
+    let pid_file = root.path().join("tree-pids.txt");
+    let ready_file = root.path().join("tree-ready.txt");
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    run_process(
+        RunInput {
+            request_id: "tree-parent-crash".into(),
+            command: fixture(),
+            args: vec![
+                "--tree-depth".into(),
+                "2".into(),
+                "--pid-file".into(),
+                pid_file.to_string_lossy().into_owned(),
+                "--ready-file".into(),
+                ready_file.to_string_lossy().into_owned(),
+                "--tree-root-exit-code".into(),
+                "7".into(),
+            ],
+            cwd: None,
+            env: None,
+            stdin: None,
+            timeout: Duration::from_secs(5),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    )
+    .await
+    .expect("parent crash remains a process result");
+
+    let process_ids = wait_for_tree_pids(&pid_file, 3).await;
+    assert!(
+        process_ids
+            .iter()
+            .all(|process_id| !process_is_alive(*process_id))
+    );
+    assert!(
+        drain_events(&mut events_rx)
+            .into_iter()
+            .any(|event| matches!(
+                event,
+                RuntimeEvent::ProcessCompleted {
+                    exit_code: Some(7),
+                    ..
+                }
+            ))
+    );
+}
