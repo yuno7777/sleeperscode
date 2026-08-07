@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
+
+import { RuntimeEvent, RuntimeRequest } from "./runtime.ts";
+
+describe("native runtime protocol", () => {
+  it("decodes a Rust run request fixture", () => {
+    const decoded = Schema.decodeUnknownSync(RuntimeRequest)({
+      version: 1,
+      type: "run",
+      requestId: "request-1",
+      command: "program.exe",
+      args: ["--flag"],
+      cwd: "C:\\workspace with spaces",
+      env: { T3_TEST: "yes" },
+      stdin: "hello",
+      timeoutMs: 1000,
+      maxOutputBytes: 4096,
+      outputMode: "truncate",
+      truncatedMarker: "...",
+    });
+
+    expect(decoded.type).toBe("run");
+    if (decoded.type !== "run") throw new Error("expected run request");
+    expect(decoded.cwd).toBe("C:\\workspace with spaces");
+  });
+
+  it("decodes structured completion and error events", () => {
+    expect(
+      Schema.decodeUnknownSync(RuntimeEvent)({
+        version: 1,
+        type: "processCompleted",
+        requestId: "request-1",
+        exitCode: 0,
+        timedOut: false,
+        cancelled: false,
+        stdout: "ok",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      }).type,
+    ).toBe("processCompleted");
+    expect(
+      Schema.decodeUnknownSync(RuntimeEvent)({
+        version: 1,
+        type: "error",
+        requestId: "request-1",
+        code: "PROCESS_SPAWN_FAILED",
+        message: "The process could not be started.",
+        recoverable: true,
+        debugDetail: null,
+        stream: null,
+        maxOutputBytes: null,
+        observedOutputBytes: null,
+      }).type,
+    ).toBe("error");
+  });
+});
