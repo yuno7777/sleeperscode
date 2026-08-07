@@ -14,6 +14,7 @@ import {
   isModelSelectionProviderEnabled,
   normalizePersistedServerSettingString,
   parsePersistedServerObservabilitySettings,
+  parsePersistedServerRuntimeBackend,
   resolveSourceControlWriterModelSelection,
 } from "./serverSettings.ts";
 
@@ -61,6 +62,19 @@ describe("serverSettings helpers", () => {
       otlpTracesUrl: undefined,
       otlpMetricsUrl: undefined,
     });
+  });
+
+  it("parses the persisted runtime backend with a Node-safe fallback", () => {
+    expect(parsePersistedServerRuntimeBackend(JSON.stringify({ runtimeBackend: "rust" }))).toBe(
+      "rust",
+    );
+    expect(parsePersistedServerRuntimeBackend("{")).toBe("node");
+  });
+
+  it("applies runtime backend patches", () => {
+    expect(
+      applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, { runtimeBackend: "auto" }).runtimeBackend,
+    ).toBe("auto");
   });
 
   it("replaces text generation selection when provider/model are provided", () => {

@@ -1,6 +1,7 @@
 import {
   isProviderDriverKind,
   isProviderAvailable,
+  type RuntimeBackend,
   type ModelSelection,
   type ProviderDriverKind,
   type ServerProvider,
@@ -95,6 +96,11 @@ export function parsePersistedServerObservabilitySettings(
     return extractPersistedServerObservabilitySettings(decoded.value);
   }
   return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined };
+}
+
+export function parsePersistedServerRuntimeBackend(raw: string): RuntimeBackend {
+  const decoded = decodeServerSettingsJson(raw);
+  return Option.isSome(decoded) ? decoded.value.runtimeBackend : "node";
 }
 
 function shouldReplaceTextGenerationModelSelection(
