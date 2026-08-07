@@ -21,12 +21,13 @@
 
 - [x] Validate stdout, stderr, stdin, non-zero exit, failed executable, invalid cwd, and timeout.
 - [x] Validate cancellation and multiple concurrent finite processes.
-- [-] Validate Windows executable resolution, Unicode, and spaces in paths (real `.exe` discovery
-  from this workspace path with spaces passes; an explicit Unicode fixture is still required).
+- [-] Validate Windows executable resolution, Unicode, and spaces in paths (`.exe`, PowerShell,
+  `.cmd`, `.bat`, Unicode/deep/relative paths, environment, and PATH overrides pass; UNC and a real
+  non-ASCII Windows profile remain unverified).
 - [ ] Extend to streaming provider processes with bounded queues.
 - [ ] Run every provider adapter lifecycle contract against Rust supervision.
-- [-] Prove shutdown leaves no child process behind (bounded cancellation is tested; process-tree
-  verification is still required).
+- [x] Prove cancellation, timeout, parent crash, graceful shutdown, and abrupt sidecar exit leave no
+      tested parent-child-grandchild process behind on Windows.
 
 ## Later phases
 
