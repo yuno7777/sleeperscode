@@ -9,6 +9,9 @@ use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time;
 
+mod process_tree;
+use process_tree::ProcessTree;
+
 const OUTPUT_READ_CHUNK_BYTES: usize = 16 * 1024;
 
 #[derive(Debug)]
@@ -41,6 +44,8 @@ pub enum RunError {
     },
     #[error("failed to write stdin: {0}")]
     Stdin(#[source] std::io::Error),
+    #[error("failed to establish process-tree ownership: {0}")]
+    ProcessTree(#[source] std::io::Error),
     #[error("{stream} exceeded the {max_bytes} byte limit after {observed_bytes} bytes")]
     OutputLimit {
         stream: &'static str,
@@ -57,6 +62,7 @@ impl RunError {
             Self::Wait(_) => "PROCESS_WAIT_FAILED",
             Self::Read { .. } => "PROCESS_OUTPUT_READ_FAILED",
             Self::Stdin(_) => "PROCESS_STDIN_FAILED",
+            Self::ProcessTree(_) => "PROCESS_TREE_SETUP_FAILED",
             Self::OutputLimit { .. } => "PROCESS_OUTPUT_LIMIT_EXCEEDED",
         }
     }
@@ -68,6 +74,7 @@ impl RunError {
             Self::Wait(_) => "The process exit status could not be read.",
             Self::Read { .. } => "The process output could not be read.",
             Self::Stdin(_) => "Input could not be sent to the process.",
+            Self::ProcessTree(_) => "The process tree could not be safely contained.",
             Self::OutputLimit { .. } => "The process produced more output than allowed.",
         }
     }
@@ -137,13 +144,6 @@ async fn capture_stream(
     })
 }
 
-async fn terminate(child: &mut tokio::process::Child) {
-    if let Err(error) = child.kill().await {
-        tracing::debug!(?error, pid = child.id(), "process kill returned an error");
-    }
-    let _ = child.wait().await;
-}
-
 pub async fn run_process(
     input: RunInput,
     events: mpsc::Sender<RuntimeEvent>,
@@ -175,7 +175,12 @@ pub async fn run_process(
         command.envs(env);
     }
 
+    let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
     let mut child = command.spawn().map_err(RunError::Spawn)?;
+    if let Err(error) = process_tree.attach_and_start(&child) {
+        process_tree.terminate(&mut child).await;
+        return Err(RunError::ProcessTree(error));
+    }
     let pid = child.id().unwrap_or_default();
     events
         .send(RuntimeEvent::ProcessStarted {
@@ -228,8 +233,10 @@ pub async fn run_process(
         }
     };
 
-    if !matches!(finish, Finish::Exited(_)) {
-        terminate(&mut child).await;
+    if matches!(finish, Finish::Exited(_)) {
+        process_tree.terminate_remaining();
+    } else {
+        process_tree.terminate(&mut child).await;
     }
     if let Some(stdin_task) = stdin_task {
         let stdin_result = stdin_task
