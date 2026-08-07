@@ -17,6 +17,7 @@ fn main() {
     {
         let pid_file =
             value_after(&args, "--pid-file").expect("--pid-file is required for tree mode");
+        let ready_file = value_after(&args, "--ready-file");
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -25,15 +26,29 @@ fn main() {
         writeln!(file, "{}", std::process::id()).expect("write pid");
         file.flush().expect("flush pid");
         if depth > 0 {
-            Command::new(std::env::current_exe().expect("resolve current fixture"))
-                .args([
-                    "--tree-depth",
-                    &(depth - 1).to_string(),
-                    "--pid-file",
-                    &pid_file,
-                ])
-                .spawn()
-                .expect("spawn fixture descendant");
+            let mut child = Command::new(std::env::current_exe().expect("resolve current fixture"));
+            child.args([
+                "--tree-depth",
+                &(depth - 1).to_string(),
+                "--pid-file",
+                &pid_file,
+            ]);
+            if let Some(ready_file) = &ready_file {
+                child.args(["--ready-file", ready_file]);
+            }
+            child.spawn().expect("spawn fixture descendant");
+        } else if let Some(ready_file) = &ready_file {
+            std::fs::write(ready_file, b"ready").expect("write tree ready file");
+        }
+        if let Some(exit_code) =
+            value_after(&args, "--tree-root-exit-code").and_then(|value| value.parse::<i32>().ok())
+        {
+            if let Some(ready_file) = &ready_file {
+                while !std::path::Path::new(ready_file).exists() {
+                    thread::sleep(Duration::from_millis(5));
+                }
+            }
+            std::process::exit(exit_code);
         }
         thread::sleep(Duration::from_secs(30));
         return;
