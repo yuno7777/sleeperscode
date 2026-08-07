@@ -86,6 +86,21 @@ describe("ProcessRunner native adapter", () => {
     ).pipe(Effect.provide(TestLayer));
   });
 
+  it.live("runs an npm-installed Windows command wrapper through the Node fallback", () =>
+    Effect.gen(function* () {
+      if (process.platform !== "win32") return;
+      const runner = yield* ProcessRunner;
+      const wrapper = NodePath.join(process.cwd(), "node_modules", ".bin", "vp.CMD");
+      const result = yield* runner.run({
+        command: wrapper,
+        args: ["--version"],
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toMatch(/^vp v\d/m);
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.live("runs PowerShell as a native executable without shell concatenation", () =>
     Effect.gen(function* () {
       if (process.platform !== "win32") return;
