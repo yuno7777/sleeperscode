@@ -438,6 +438,7 @@ const buildAppUnderTest = (options?: {
       otlpExportIntervalMs: 10_000,
       otlpServiceName: "t3-server",
       mode: "desktop",
+      runtimeBackend: "node",
       port: 0,
       host: "127.0.0.1",
       cwd: process.cwd(),

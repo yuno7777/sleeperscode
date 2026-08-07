@@ -77,6 +77,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       otlpExportIntervalMs: 10_000,
       otlpServiceName: "t3-server",
       mode: "web",
+      runtimeBackend: "node",
       port: 0,
       host: "127.0.0.1",
       cwd: process.cwd(),

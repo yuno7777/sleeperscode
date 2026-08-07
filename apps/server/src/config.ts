@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 import * as LogLevel from "effect/LogLevel";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import type { RuntimeBackend } from "@t3tools/contracts";
 
 export const DEFAULT_PORT = 3773;
 
@@ -66,6 +67,7 @@ export class ServerConfig extends Context.Service<
     readonly otlpExportIntervalMs: number;
     readonly otlpServiceName: string;
     readonly mode: RuntimeMode;
+    readonly runtimeBackend: RuntimeBackend;
     readonly port: number;
     readonly host: string | undefined;
     readonly cwd: string;
@@ -182,6 +184,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     baseDir,
     ...derivedPaths,
     mode: "web",
+    runtimeBackend: "node",
     autoBootstrapProjectFromCwd: false,
     logWebSocketEvents: false,
     tailscaleServeEnabled: false,

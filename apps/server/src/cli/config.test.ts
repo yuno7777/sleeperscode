@@ -41,6 +41,7 @@ const makeDesktopBootstrap = (
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {
   const defaultObservabilityConfig = {
+    runtimeBackend: "node",
     traceMinLevel: "Info",
     traceTimingEnabled: true,
     traceBatchWindowMs: 1_000,
@@ -499,6 +500,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         derivedPaths.settingsPath,
         // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
+          runtimeBackend: "rust",
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",
             otlpMetricsUrl: "http://localhost:4318/v1/metrics",
@@ -533,9 +535,11 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
 
       expect(resolved.otlpTracesUrl).toBe("http://localhost:4318/v1/traces");
       expect(resolved.otlpMetricsUrl).toBe("http://localhost:4318/v1/metrics");
+      expect(resolved.runtimeBackend).toBe("rust");
       expect(resolved).toEqual({
         logLevel: "Info",
         ...defaultObservabilityConfig,
+        runtimeBackend: "rust",
         otlpTracesUrl: "http://localhost:4318/v1/traces",
         otlpMetricsUrl: "http://localhost:4318/v1/metrics",
         mode: "desktop",

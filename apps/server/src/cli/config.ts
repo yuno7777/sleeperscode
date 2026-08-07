@@ -1,5 +1,8 @@
 import * as NetService from "@t3tools/shared/Net";
-import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
+import {
+  parsePersistedServerObservabilitySettings,
+  parsePersistedServerRuntimeBackend,
+} from "@t3tools/shared/serverSettings";
 import { DesktopBackendBootstrap, PortSchema } from "@t3tools/contracts";
 import * as Config from "effect/Config";
 import * as Duration from "effect/Duration";
@@ -207,6 +210,15 @@ const loadPersistedObservabilitySettings = Effect.fn(function* (settingsPath: st
   return parsePersistedServerObservabilitySettings(raw);
 });
 
+const loadPersistedRuntimeBackend = Effect.fn(function* (settingsPath: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const exists = yield* fs.exists(settingsPath).pipe(Effect.orElseSucceed(() => false));
+  if (!exists) return "node" as const;
+
+  const raw = yield* fs.readFileString(settingsPath).pipe(Effect.orElseSucceed(() => ""));
+  return parsePersistedServerRuntimeBackend(raw);
+});
+
 export const resolveServerConfig = (
   flags: CliServerFlags,
   cliLogLevel: Option.Option<LogLevel.LogLevel>,
@@ -289,6 +301,7 @@ export const resolveServerConfig = (
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
       derivedPaths.settingsPath,
     );
+    const runtimeBackend = yield* loadPersistedRuntimeBackend(derivedPaths.settingsPath);
     const serverTracePath = env.traceFile ?? derivedPaths.serverTracePath;
     yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
     const startupPresentation = options?.startupPresentation ?? "browser";
@@ -367,6 +380,7 @@ export const resolveServerConfig = (
       otlpExportIntervalMs: env.otlpExportIntervalMs,
       otlpServiceName: env.otlpServiceName,
       mode,
+      runtimeBackend,
       port,
       cwd,
       baseDir,
