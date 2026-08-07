@@ -22,8 +22,9 @@
 - [x] Validate stdout, stderr, stdin, non-zero exit, failed executable, invalid cwd, and timeout.
 - [x] Validate cancellation and multiple concurrent finite processes.
 - [-] Validate Windows executable resolution, Unicode, and spaces in paths (`.exe`, PowerShell,
-  `.cmd`, `.bat`, Unicode/deep/relative paths, environment, and PATH overrides pass; UNC and a real
-  non-ASCII Windows profile remain unverified).
+  `.cmd`, `.bat`, an installed npm wrapper, Unicode/deep/relative paths, a local administrative UNC
+  path, environment, PATH overrides, and ACL-denied execution pass; a real non-ASCII Windows profile
+  and an external network share remain unverified).
 - [ ] Extend to streaming provider processes with bounded queues.
 - [ ] Run every provider adapter lifecycle contract against Rust supervision.
 - [x] Prove cancellation, timeout, parent crash, graceful shutdown, and abrupt sidecar exit leave no
