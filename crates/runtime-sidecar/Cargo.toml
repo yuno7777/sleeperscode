@@ -1,0 +1,23 @@
+[package]
+name = "t3-runtime-sidecar"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+t3-runtime-protocol = { path = "../runtime-protocol" }
+
+[[bin]]
+name = "t3-runtime-sidecar"
+path = "src/main.rs"
+
+[[bin]]
+name = "runtime-fixture"
+path = "src/bin/runtime-fixture.rs"
+
