@@ -25,7 +25,10 @@ Fallback is deliberately limited to failures before the requested process starts
 `processStarted`, the adapter maps any error back into the existing `ProcessRunner` error contract
 without rerunning the command, avoiding duplicate side effects.
 
-Set `T3CODE_RUST_RUNTIME=1` to opt into the adapter. Development builds discover
+Set persisted server setting `runtimeBackend` to `node`, `rust`, or `auto`. Node remains the default,
+and `auto` currently resolves to Node until packaged-sidecar and whole-application differential tests
+qualify Rust for automatic selection. `T3CODE_RUNTIME_BACKEND` overrides the persisted setting for
+debugging; the legacy `T3CODE_RUST_RUNTIME=1` flag remains compatible. Development builds discover
 `target/debug/t3-runtime-sidecar`; packaged builds can set `T3CODE_RUNTIME_SIDECAR_PATH` to an
 explicit artifact until desktop packaging is wired. Run `pnpm test:runtime-sidecar` for the Rust
 suite and `pnpm bench:runtime-sidecar -- <sidecar-path> <iterations>` for the paired benchmark.
