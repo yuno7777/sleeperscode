@@ -4,6 +4,10 @@ import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchema
 
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
 
+export const RuntimeBackend = Schema.Literals(["node", "rust", "auto"]);
+export type RuntimeBackend = typeof RuntimeBackend.Type;
+export const DEFAULT_RUNTIME_BACKEND: RuntimeBackend = "node";
+
 export const RuntimeOutputMode = Schema.Literals(["error", "truncate"]);
 export type RuntimeOutputMode = typeof RuntimeOutputMode.Type;
 

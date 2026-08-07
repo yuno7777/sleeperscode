@@ -10,6 +10,7 @@ import {
 } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
+import { DEFAULT_RUNTIME_BACKEND, RuntimeBackend } from "./runtime.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -540,6 +541,9 @@ export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  runtimeBackend: RuntimeBackend.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_BACKEND)),
+  ),
   backgroundActivity: BackgroundActivitySettings,
   // Legacy flat fields retained for old settings files and old clients. New
   // consumers should resolve `backgroundActivity` instead.
@@ -703,6 +707,7 @@ export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
+  runtimeBackend: Schema.optionalKey(RuntimeBackend),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

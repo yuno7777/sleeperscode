@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { RuntimeEvent, RuntimeRequest } from "./runtime.ts";
+import {
+  DEFAULT_RUNTIME_BACKEND,
+  RuntimeBackend,
+  RuntimeEvent,
+  RuntimeRequest,
+} from "./runtime.ts";
 
 describe("native runtime protocol", () => {
+  it("defines stable runtime backend values", () => {
+    expect(DEFAULT_RUNTIME_BACKEND).toBe("node");
+    expect(Schema.decodeUnknownSync(RuntimeBackend)("auto")).toBe("auto");
+    expect(() => Schema.decodeUnknownSync(RuntimeBackend)("experimental")).toThrow();
+  });
+
   it("decodes a Rust run request fixture", () => {
     const decoded = Schema.decodeUnknownSync(RuntimeRequest)({
       version: 1,
