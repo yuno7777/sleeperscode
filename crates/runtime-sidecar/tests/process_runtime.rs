@@ -567,3 +567,55 @@ async fn cancellation_terminates_the_entire_windows_process_tree() {
         })
     ));
 }
+
+#[cfg(windows)]
+#[tokio::test]
+async fn timeout_terminates_the_entire_windows_process_tree() {
+    let root = TestDirectory::create("sleepers-runtime-timeout-tree");
+    let pid_file = root.path().join("tree-pids.txt");
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    let task = tokio::spawn(run_process(
+        RunInput {
+            request_id: "tree-timeout".into(),
+            command: fixture(),
+            args: vec![
+                "--tree-depth".into(),
+                "2".into(),
+                "--pid-file".into(),
+                pid_file.to_string_lossy().into_owned(),
+            ],
+            cwd: None,
+            env: None,
+            stdin: None,
+            timeout: Duration::from_millis(750),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    ));
+
+    assert!(matches!(
+        events_rx.recv().await,
+        Some(RuntimeEvent::ProcessStarted { .. })
+    ));
+    let process_ids = wait_for_tree_pids(&pid_file, 3).await;
+    task.await
+        .expect("join timed out tree task")
+        .expect("tree timeout is a result");
+
+    assert!(
+        process_ids
+            .iter()
+            .all(|process_id| !process_is_alive(*process_id))
+    );
+    assert!(matches!(
+        events_rx.recv().await,
+        Some(RuntimeEvent::ProcessCompleted {
+            timed_out: true,
+            ..
+        })
+    ));
+}
