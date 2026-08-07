@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as NodePath from "node:path";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 
 import { ProcessRunner, layer } from "./processRunner.ts";
@@ -32,6 +33,24 @@ describe("ProcessRunner native adapter", () => {
         stdout: "",
         stderr: "",
       });
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.live("resolves a Windows executable from the supplied PATH and extends its environment", () =>
+    Effect.gen(function* () {
+      if (process.platform !== "win32") return;
+      const runner = yield* ProcessRunner;
+      const result = yield* runner.run({
+        command: NodePath.basename(process.execPath),
+        args: ["-e", "process.stdout.write(process.env.SLEEPERS_RUNTIME_TEST ?? '')"],
+        env: {
+          PATH: NodePath.dirname(process.execPath),
+          SLEEPERS_RUNTIME_TEST: "välue-值",
+        },
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe("välue-值");
     }).pipe(Effect.provide(TestLayer)),
   );
 });
