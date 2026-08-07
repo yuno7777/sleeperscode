@@ -22,13 +22,16 @@ Node server ProcessRunner
 ## Process ownership
 
 - The sidecar owns every process it starts and tracks it by request/process ID.
+- On Windows, the runtime creates each direct child suspended, assigns it to a private kill-on-close
+  Job Object, and resumes it only after assignment. Descendants inherit the job by default.
 - Each run owns its `tokio::process::Child`, stdout/stderr readers, timeout, and cancellation token.
 - Concurrent runs are independent Tokio tasks; shared state is only an ID-to-control-handle map.
 - Sidecar stdin is decoded one line at a time, and a fixed semaphore rejects work beyond 32 active
   processes. Events use a bounded writer channel, which propagates backpressure instead of growing
   without limit.
-- Shutdown cancels active work, attempts graceful termination, waits for a bounded grace period,
-  and then force-kills remaining children.
+- Shutdown cancels active work and waits for a bounded grace period. Windows cancellation, timeout,
+  parent exit, and runtime exit terminate the complete owned Job Object; other platforms currently
+  force-kill the direct child.
 
 ## Protocol shape
 
