@@ -16,6 +16,18 @@ fn main() {
     if let Some(value) = value_after(&args, "--stderr") {
         eprint!("{value}");
     }
+    if args.iter().any(|arg| arg == "--print-cwd") {
+        println!(
+            "cwd={}",
+            std::env::current_dir().expect("read cwd").display()
+        );
+    }
+    if let Some(name) = value_after(&args, "--print-env") {
+        println!(
+            "env={}",
+            std::env::var(name).unwrap_or_else(|_| "<missing>".into())
+        );
+    }
     if let Some(bytes) =
         value_after(&args, "--spam-bytes").and_then(|value| value.parse::<usize>().ok())
     {
