@@ -6,6 +6,15 @@ use t3_runtime_protocol::{OutputMode, RuntimeEvent};
 use t3_runtime_sidecar::{RunError, RunInput, run_process};
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{HANDLE, STILL_ACTIVE};
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::{
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+};
+
 fn fixture() -> String {
     env!("CARGO_BIN_EXE_runtime-fixture").into()
 }
@@ -16,6 +25,37 @@ fn drain_events(receiver: &mut mpsc::Receiver<RuntimeEvent>) -> Vec<RuntimeEvent
         events.push(event);
     }
     events
+}
+
+#[cfg(windows)]
+fn process_is_alive(process_id: u32) -> bool {
+    let raw_process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
+    if raw_process.is_null() {
+        return false;
+    }
+    let process = unsafe { OwnedHandle::from_raw_handle(raw_process as RawHandle) };
+    let mut exit_code = 0_u32;
+    (unsafe { GetExitCodeProcess(process.as_raw_handle() as HANDLE, &mut exit_code) }) != 0
+        && exit_code == STILL_ACTIVE as u32
+}
+
+#[cfg(windows)]
+async fn wait_for_tree_pids(pid_file: &Path, expected: usize) -> Vec<u32> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let process_ids = std::fs::read_to_string(pid_file)
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| line.parse().ok())
+                .collect::<Vec<_>>();
+            if process_ids.len() >= expected {
+                return process_ids;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("fixture process tree becomes ready")
 }
 
 struct TestDirectory(PathBuf);
@@ -462,4 +502,68 @@ async fn rejects_a_directory_as_an_executable() {
     .await
     .expect_err("directory execution fails");
     assert!(matches!(error, RunError::Spawn(_)));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn cancellation_terminates_the_entire_windows_process_tree() {
+    let root = TestDirectory::create("sleepers-runtime-tree");
+    let pid_file = root.path().join("tree-pids.txt");
+    let (events_tx, mut events_rx) = mpsc::channel(16);
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    let task = tokio::spawn(run_process(
+        RunInput {
+            request_id: "tree-cancellation".into(),
+            command: fixture(),
+            args: vec![
+                "--tree-depth".into(),
+                "2".into(),
+                "--pid-file".into(),
+                pid_file.to_string_lossy().into_owned(),
+            ],
+            cwd: None,
+            env: None,
+            stdin: None,
+            timeout: Duration::from_secs(10),
+            max_output_bytes: 4096,
+            output_mode: OutputMode::Error,
+            truncated_marker: String::new(),
+        },
+        events_tx,
+        cancel_rx,
+    ));
+
+    assert!(matches!(
+        events_rx.recv().await,
+        Some(RuntimeEvent::ProcessStarted { .. })
+    ));
+    let process_ids = wait_for_tree_pids(&pid_file, 3).await;
+    assert!(
+        process_ids
+            .iter()
+            .all(|process_id| process_is_alive(*process_id))
+    );
+    let cancellation_started = std::time::Instant::now();
+    cancel_tx.send(()).expect("send tree cancellation");
+    task.await
+        .expect("join tree task")
+        .expect("tree cancellation is a result");
+    let cancellation_latency = cancellation_started.elapsed();
+
+    assert!(
+        cancellation_latency < Duration::from_secs(2),
+        "tree cancellation took {cancellation_latency:?}"
+    );
+    assert!(
+        process_ids
+            .iter()
+            .all(|process_id| !process_is_alive(*process_id))
+    );
+    assert!(matches!(
+        events_rx.recv().await,
+        Some(RuntimeEvent::ProcessCompleted {
+            cancelled: true,
+            ..
+        })
+    ));
 }
