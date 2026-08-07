@@ -9,12 +9,13 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import {
   collectUint8StreamText,
   type CollectedUint8StreamText,
 } from "./stream/collectUint8StreamText.ts";
+import * as NativeRuntimeClient from "./nativeRuntime/NativeRuntimeClient.ts";
 
 export interface ProcessRunInput {
   readonly command: string;
@@ -399,13 +400,125 @@ const runProcessCore = Effect.fn("processRunner.runProcessCore")(function* (
 
 export const make = Effect.fn("ProcessRunner.make")(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const nativeRuntime = yield* NativeRuntimeClient.NativeRuntimeClient;
+  const environment = yield* HostProcessEnvironment;
+
+  const runWithNode = (input: ProcessRunInput) =>
+    finalizeRunProcess(runProcessCore(spawner, input), input);
+
+  const mapStartedNativeFailure = (
+    input: ProcessRunInput,
+    error: NativeRuntimeClient.NativeRuntimeRequestFailed,
+  ): ProcessRunError => {
+    if (
+      error.code === "PROCESS_OUTPUT_LIMIT_EXCEEDED" &&
+      error.stream !== undefined &&
+      error.maxOutputBytes !== undefined &&
+      error.observedOutputBytes !== undefined
+    ) {
+      return new ProcessOutputLimitError({
+        command: input.command,
+        argumentCount: input.args.length,
+        cwd: input.cwd,
+        spawnCwd: input.spawnCwd,
+        stream: error.stream,
+        maxBytes: error.maxOutputBytes,
+        observedBytes: error.observedOutputBytes,
+      });
+    }
+    if (error.code === "PROCESS_STDIN_FAILED") {
+      return new ProcessStdinError({
+        command: input.command,
+        argumentCount: input.args.length,
+        cwd: input.cwd,
+        spawnCwd: input.spawnCwd,
+        stdinBytes: Buffer.byteLength(input.stdin ?? ""),
+        cause: error,
+      });
+    }
+    return new ProcessReadError({
+      command: input.command,
+      argumentCount: input.args.length,
+      cwd: input.cwd,
+      spawnCwd: input.spawnCwd,
+      stream: "exitCode",
+      cause: error,
+    });
+  };
+
+  const runWithNative = Effect.fn("ProcessRunner.runWithNative")(function* (
+    input: ProcessRunInput,
+  ): Effect.fn.Return<ProcessRunOutput, ProcessRunError> {
+    const spawnCommand = yield* resolveSpawnCommand(
+      input.command,
+      input.args,
+      input.env === undefined ? {} : { env: input.env, extendEnv: true },
+    );
+    if (spawnCommand.shell) {
+      return yield* runWithNode(input);
+    }
+    const timeout = Duration.fromInputUnsafe(input.timeout ?? DEFAULT_TIMEOUT);
+    const result = yield* nativeRuntime
+      .run({
+        command: spawnCommand.command,
+        args: spawnCommand.args,
+        ...((input.spawnCwd ?? input.cwd) ? { cwd: input.spawnCwd ?? input.cwd } : {}),
+        ...(input.env === undefined ? {} : { env: input.env }),
+        ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
+        timeoutMs: Duration.toMillis(timeout),
+        maxOutputBytes: input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
+        outputMode: input.outputMode ?? "error",
+        truncatedMarker: input.truncatedMarker ?? "",
+      })
+      .pipe(
+        Effect.catch((error) => {
+          if (NativeRuntimeClient.isNativeRuntimeRequestFailed(error) && error.processStarted) {
+            return Effect.fail(mapStartedNativeFailure(input, error));
+          }
+          return Effect.logWarning("Native process runtime unavailable; using Node fallback", {
+            errorTag: error._tag,
+            command: input.command,
+          }).pipe(
+            Effect.andThen(runWithNode(input)),
+            Effect.map((output) => ({
+              exitCode: output.code,
+              timedOut: output.timedOut,
+              cancelled: false,
+              stdout: output.stdout,
+              stderr: output.stderr,
+              stdoutTruncated: output.stdoutTruncated,
+              stderrTruncated: output.stderrTruncated,
+            })),
+          );
+        }),
+      );
+    if (result.timedOut && input.timeoutBehavior !== "timedOutResult") {
+      return yield* new ProcessTimeoutError({
+        command: input.command,
+        argumentCount: input.args.length,
+        cwd: input.cwd,
+        spawnCwd: input.spawnCwd,
+        timeoutMs: Duration.toMillis(timeout),
+      });
+    }
+    return {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      code: result.exitCode === null ? null : ChildProcessSpawner.ExitCode(result.exitCode),
+      timedOut: result.timedOut,
+      stdoutTruncated: result.stdoutTruncated,
+      stderrTruncated: result.stderrTruncated,
+    };
+  });
 
   const run: ProcessRunner["Service"]["run"] = (input) =>
-    finalizeRunProcess(runProcessCore(spawner, input), input);
+    environment.T3CODE_RUST_RUNTIME === "1" ? runWithNative(input) : runWithNode(input);
 
   return ProcessRunner.of({
     run,
   });
 });
 
-export const layer = Layer.effect(ProcessRunner, make());
+export const layer = Layer.effect(ProcessRunner, make()).pipe(
+  Layer.provide(NativeRuntimeClient.layer),
+);
