@@ -85,4 +85,24 @@ describe("ProcessRunner native adapter", () => {
         ),
     ).pipe(Effect.provide(TestLayer));
   });
+
+  it.live("runs PowerShell as a native executable without shell concatenation", () =>
+    Effect.gen(function* () {
+      if (process.platform !== "win32") return;
+      const runner = yield* ProcessRunner;
+      const result = yield* runner.run({
+        command: "powershell.exe",
+        args: [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "[Console]::Out.Write('powershell-ok')",
+        ],
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe("powershell-ok");
+    }).pipe(Effect.provide(TestLayer)),
+  );
 });
