@@ -2,7 +2,8 @@ use std::process::Stdio;
 
 use base64::Engine;
 use t3_runtime_protocol::{
-    PROTOCOL_VERSION, RuntimeEvent, RuntimeRequest, RuntimeStream, STREAM_CHUNK_MAX_BYTES,
+    PROTOCOL_VERSION, RuntimeControl, RuntimeEvent, RuntimeRequest, RuntimeStream,
+    STREAM_CHUNK_MAX_BYTES,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -180,15 +181,24 @@ async fn stops_a_streaming_process_through_the_protocol() {
             session_id: "protocol-stop".into(),
         })
         .await;
-    assert!(matches!(
-        sidecar.next_event().await,
-        RuntimeEvent::ProcessExited {
-            request_id,
-            exit_code: None,
-            stopped: true,
-            ..
-        } if request_id == "protocol-stop"
-    ));
+    let mut accepted = false;
+    let mut exited = false;
+    while !accepted || !exited {
+        match sidecar.next_event().await {
+            RuntimeEvent::ControlAccepted {
+                request_id,
+                control: RuntimeControl::Stop,
+                ..
+            } if request_id == "protocol-stop-request" => accepted = true,
+            RuntimeEvent::ProcessExited {
+                request_id,
+                exit_code: None,
+                stopped: true,
+                ..
+            } if request_id == "protocol-stop" => exited = true,
+            event => panic!("unexpected stop event: {event:?}"),
+        }
+    }
     sidecar.shutdown().await;
 }
 
@@ -231,13 +241,19 @@ async fn reports_input_backpressure_without_blocking_stop() {
         .await;
 
     let mut saw_backpressure = false;
-    loop {
+    let mut saw_stop_receipt = false;
+    let mut exited = false;
+    while !saw_stop_receipt || !exited {
         match sidecar.next_event().await {
             RuntimeEvent::Error { code, .. } if code == "PROCESS_INPUT_QUEUE_FULL" => {
                 saw_backpressure = true;
             }
+            RuntimeEvent::ControlAccepted {
+                control: RuntimeControl::Stop,
+                ..
+            } => saw_stop_receipt = true,
             RuntimeEvent::ControlAccepted { .. } => {}
-            RuntimeEvent::ProcessExited { stopped: true, .. } => break,
+            RuntimeEvent::ProcessExited { stopped: true, .. } => exited = true,
             event => panic!("unexpected backpressure event: {event:?}"),
         }
     }

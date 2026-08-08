@@ -123,7 +123,7 @@ export const RuntimeProcessStartedEvent = Schema.Struct({
 });
 export type RuntimeProcessStartedEvent = typeof RuntimeProcessStartedEvent.Type;
 
-export const RuntimeControl = Schema.Literals(["write", "closeStdin"]);
+export const RuntimeControl = Schema.Literals(["write", "closeStdin", "stop"]);
 export type RuntimeControl = typeof RuntimeControl.Type;
 
 export const RuntimeControlAcceptedEvent = Schema.Struct({

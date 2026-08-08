@@ -483,6 +483,16 @@ async fn main() {
                 match process {
                     Some(ActiveProcess::Streaming { stop, .. }) => {
                         let _ = stop.send(());
+                        emit(
+                            &event_tx,
+                            RuntimeEvent::ControlAccepted {
+                                version: PROTOCOL_VERSION,
+                                request_id,
+                                session_id,
+                                control: RuntimeControl::Stop,
+                            },
+                        )
+                        .await;
                     }
                     Some(process @ ActiveProcess::Finite(_)) => {
                         active.lock().await.insert(session_id, process);

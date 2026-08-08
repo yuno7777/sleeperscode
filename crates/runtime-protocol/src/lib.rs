@@ -24,6 +24,7 @@ pub enum RuntimeStream {
 pub enum RuntimeControl {
     Write,
     CloseStdin,
+    Stop,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
