@@ -194,6 +194,35 @@ describe("NativeRuntimeClient", () => {
     ),
   );
 
+  it.live("keeps stdout and stderr byte sequences independent", () =>
+    Effect.gen(function* () {
+      const runtime = yield* NativeRuntimeClient;
+      const session = yield* runtime.startStreaming({
+        command: process.execPath,
+        args: [
+          "-e",
+          "process.stdout.write('out-1');process.stderr.write('err-1');setImmediate(()=>{process.stdout.write('out-2');process.stderr.write('err-2')})",
+        ],
+      });
+
+      expect(yield* session.exit).toEqual({ exitCode: 0, stopped: false });
+      const events = Array.from(yield* Stream.runCollect(session.output));
+      const outputFor = (stream: "stdout" | "stderr") =>
+        events.filter((event) => event.stream === stream);
+      const stdout = outputFor("stdout");
+      const stderr = outputFor("stderr");
+
+      expect(Buffer.concat(stdout.map((event) => Buffer.from(event.bytes))).toString()).toBe(
+        "out-1out-2",
+      );
+      expect(Buffer.concat(stderr.map((event) => Buffer.from(event.bytes))).toString()).toBe(
+        "err-1err-2",
+      );
+      expect(stdout.map((event) => event.sequence)).toEqual(stdout.map((_, index) => index));
+      expect(stderr.map((event) => event.sequence)).toEqual(stderr.map((_, index) => index));
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.live("acknowledges stop before reporting a stopped streaming exit", () =>
     Effect.gen(function* () {
       const runtime = yield* NativeRuntimeClient;
