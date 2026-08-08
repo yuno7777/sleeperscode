@@ -32,9 +32,14 @@ function numericArgument(name, fallback) {
 }
 
 const backendArgument = process.argv.slice(2).find((value) => value.startsWith("--backend="));
-const backend = backendArgument?.slice("--backend=".length) ?? "node";
-if (backend !== "node" && backend !== "rust") {
-  throw new Error(`Unknown runtime backend: ${backend}. Expected node or rust.`);
+// Startup time drifts with ambient machine load by more than the difference
+// between backends, so a comma-separated list is measured interleaved rather
+// than as two separate invocations.
+const backends = (backendArgument?.slice("--backend=".length) ?? "node").split(",");
+for (const candidate of backends) {
+  if (candidate !== "node" && candidate !== "rust") {
+    throw new Error(`Unknown runtime backend: ${candidate}. Expected node or rust.`);
+  }
 }
 const entryArgument = process.argv.slice(2).find((value) => value.startsWith("--entry="));
 const entryKind = entryArgument?.slice("--entry=".length) ?? "bundle";
@@ -151,7 +156,7 @@ async function sampleIdle(rootPid, seconds) {
  * One server lifecycle. `baseDir` is reused across runs to separate a cold first
  * start on an empty state directory from later warm starts.
  */
-async function measureRun(baseDir) {
+async function measureRun(baseDir, backend) {
   const port = await reservePort();
   const stderr = [];
   const startedAt = performance.now();
@@ -189,37 +194,49 @@ async function measureRun(baseDir) {
   }
 }
 
-const baseDir = await mkdtemp(path.join(os.tmpdir(), "t3-startup-bench-"));
+const baseDirs = new Map();
+for (const backend of backends) {
+  baseDirs.set(backend, await mkdtemp(path.join(os.tmpdir(), `t3-startup-${backend}-`)));
+}
 const runs = [];
 try {
   for (let iteration = 1; iteration <= repeat; iteration += 1) {
-    runs.push({
-      iteration,
-      state: iteration === 1 ? "cold" : "warm",
-      ...(await measureRun(baseDir)),
-    });
+    for (const backend of backends) {
+      runs.push({
+        iteration,
+        backend,
+        state: iteration === 1 ? "cold" : "warm",
+        ...(await measureRun(baseDirs.get(backend), backend)),
+      });
+    }
   }
 } finally {
-  await rm(baseDir, { recursive: true, force: true }).catch(() => undefined);
+  for (const directory of baseDirs.values()) {
+    await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
-const warm = runs.filter((run) => run.state === "warm");
 const mean = (values) => values.reduce((total, value) => total + value, 0) / values.length;
-const summary = {
-  coldSpawnToServeMs: runs[0].spawnToServeMs,
-  warmRuns: warm.length,
-  meanWarmSpawnToServeMs: warm.length > 0 ? mean(warm.map((run) => run.spawnToServeMs)) : null,
-  meanIdleRssBytes: mean(runs.map((run) => run.idle.meanRssBytes)),
-  peakIdleRssBytes: Math.max(...runs.map((run) => run.idle.peakRssBytes)),
-  meanIdleCpuPercent: mean(runs.map((run) => run.idle.meanCpuPercent)),
-  meanSettledRssBytes: mean(runs.map((run) => run.idle.tailMeanRssBytes)),
-  meanSettledCpuPercent: mean(runs.map((run) => run.idle.tailMeanCpuPercent)),
-  maximumProcessCount: Math.max(...runs.map((run) => run.idle.peakProcessCount)),
-};
+const summary = backends.map((backend) => {
+  const samples = runs.filter((run) => run.backend === backend);
+  const warm = samples.filter((run) => run.state === "warm");
+  return {
+    backend,
+    coldSpawnToServeMs: samples[0].spawnToServeMs,
+    warmRuns: warm.length,
+    meanWarmSpawnToServeMs: warm.length > 0 ? mean(warm.map((run) => run.spawnToServeMs)) : null,
+    meanIdleRssBytes: mean(samples.map((run) => run.idle.meanRssBytes)),
+    peakIdleRssBytes: Math.max(...samples.map((run) => run.idle.peakRssBytes)),
+    meanIdleCpuPercent: mean(samples.map((run) => run.idle.meanCpuPercent)),
+    meanSettledRssBytes: mean(samples.map((run) => run.idle.tailMeanRssBytes)),
+    meanSettledCpuPercent: mean(samples.map((run) => run.idle.tailMeanCpuPercent)),
+    maximumProcessCount: Math.max(...samples.map((run) => run.idle.peakProcessCount)),
+  };
+});
 
 process.stdout.write(
   `${JSON.stringify(
-    { backend, entryKind, serverEntry, repeat, idleSeconds, monitorPath, runs, summary },
+    { backends, entryKind, serverEntry, repeat, idleSeconds, monitorPath, runs, summary },
     null,
     2,
   )}\n`,
