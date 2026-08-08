@@ -84,4 +84,19 @@ describe("NativeRuntimeClient", () => {
       expect(sequences).toEqual(sequences.map((_, index) => index));
     }).pipe(Effect.provide(TestLayer)),
   );
+
+  it.live("acknowledges stop before reporting a stopped streaming exit", () =>
+    Effect.gen(function* () {
+      const runtime = yield* NativeRuntimeClient;
+      const session = yield* runtime.startStreaming({
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1000)"],
+      });
+
+      expect(session.pid).toBeGreaterThan(0);
+      yield* session.stop;
+      expect(yield* session.exit).toEqual({ exitCode: null, stopped: true });
+      expect(Array.from(yield* Stream.runCollect(session.output))).toEqual([]);
+    }).pipe(Effect.provide(TestLayer)),
+  );
 });
