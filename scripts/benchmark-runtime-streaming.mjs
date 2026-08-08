@@ -51,6 +51,15 @@ if (
 const repeat = readPositiveInteger("repeat", 3);
 const payloadBytes = readPositiveInteger("payload-bytes", 32 * 1024);
 const operationTimeoutMs = readPositiveInteger("timeout-ms", 15_000);
+const poolSizes = readOption("pool-sizes", "1,2,3").split(",").map(Number);
+if (
+  poolSizes.length === 0 ||
+  poolSizes.some(
+    (size, index) => !Number.isSafeInteger(size) || size < 1 || poolSizes.indexOf(size) !== index,
+  )
+) {
+  throw new Error("Invalid pool-sizes. Expected unique, positive integers separated by commas.");
+}
 const sidecarPath = path.resolve(readOption("sidecar", defaultSidecarPath));
 const fixturePath = path.resolve(readOption("fixture", defaultFixturePath));
 
@@ -251,11 +260,9 @@ class RuntimeSidecar {
   }
 }
 
-async function measure(mode, concurrency, iteration, payload) {
-  const sidecars = Array.from(
-    { length: mode === "shared" ? 1 : concurrency },
-    () => new RuntimeSidecar(sidecarPath),
-  );
+async function measure(sidecarCount, concurrency, iteration, payload) {
+  const mode = `sidecars-${sidecarCount}`;
+  const sidecars = Array.from({ length: sidecarCount }, () => new RuntimeSidecar(sidecarPath));
   try {
     await Promise.all(sidecars.map((sidecar) => sidecar.ready));
     await Promise.all(
@@ -270,7 +277,7 @@ async function measure(mode, concurrency, iteration, payload) {
     const sessions = await Promise.all(
       Array.from({ length: concurrency }, (_, index) =>
         withDeadline(
-          sidecars[mode === "shared" ? 0 : index].runEcho(
+          sidecars[index % sidecars.length].runEcho(
             `${mode}-${concurrency}-${iteration}-${index}`,
             payload,
           ),
@@ -294,13 +301,16 @@ for (let index = 0; index < payload.length; index += 1) payload[index] = index %
 const results = [];
 for (let iteration = 1; iteration <= repeat; iteration += 1) {
   for (const concurrency of levels) {
-    const modes = iteration % 2 === 0 ? ["dedicated", "shared"] : ["shared", "dedicated"];
-    for (const mode of modes) {
+    const counts = [
+      ...new Set([...poolSizes.map((size) => Math.min(size, concurrency)), concurrency]),
+    ].sort((left, right) => left - right);
+    if (iteration % 2 === 0) counts.reverse();
+    for (const sidecarCount of counts) {
       results.push({
-        mode,
+        sidecarCount,
         concurrency,
         iteration,
-        ...(await measure(mode, concurrency, iteration, payload)),
+        ...(await measure(sidecarCount, concurrency, iteration, payload)),
       });
     }
   }
@@ -308,24 +318,26 @@ for (let iteration = 1; iteration <= repeat; iteration += 1) {
 
 const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
 const summary = levels.flatMap((concurrency) =>
-  ["shared", "dedicated"].map((mode) => {
-    const samples = results.filter(
-      (result) => result.mode === mode && result.concurrency === concurrency,
-    );
-    return {
-      mode,
-      concurrency,
-      repetitions: samples.length,
-      meanElapsedMs: mean(samples.map((sample) => sample.elapsedMs)),
-      minimumElapsedMs: Math.min(...samples.map((sample) => sample.elapsedMs)),
-      maximumElapsedMs: Math.max(...samples.map((sample) => sample.elapsedMs)),
-      meanMaximumProcessStartedMs: mean(samples.map((sample) => sample.maximumProcessStartedMs)),
-      meanMaximumControlsAcceptedMs: mean(
-        samples.map((sample) => sample.maximumControlsAcceptedMs),
-      ),
-      meanMaximumProcessExitedMs: mean(samples.map((sample) => sample.maximumProcessExitedMs)),
-    };
-  }),
+  [...new Set([...poolSizes.map((size) => Math.min(size, concurrency)), concurrency])]
+    .sort((left, right) => left - right)
+    .map((sidecarCount) => {
+      const samples = results.filter(
+        (result) => result.sidecarCount === sidecarCount && result.concurrency === concurrency,
+      );
+      return {
+        sidecarCount,
+        concurrency,
+        repetitions: samples.length,
+        meanElapsedMs: mean(samples.map((sample) => sample.elapsedMs)),
+        minimumElapsedMs: Math.min(...samples.map((sample) => sample.elapsedMs)),
+        maximumElapsedMs: Math.max(...samples.map((sample) => sample.elapsedMs)),
+        meanMaximumProcessStartedMs: mean(samples.map((sample) => sample.maximumProcessStartedMs)),
+        meanMaximumControlsAcceptedMs: mean(
+          samples.map((sample) => sample.maximumControlsAcceptedMs),
+        ),
+        meanMaximumProcessExitedMs: mean(samples.map((sample) => sample.maximumProcessExitedMs)),
+      };
+    }),
 );
 
 process.stdout.write(
@@ -339,8 +351,9 @@ process.stdout.write(
       repeat,
       payloadBytes,
       operationTimeoutMs,
+      poolSizes,
       methodology:
-        "One exact echo warmup per sidecar; shared sidecar versus one sidecar per concurrent session; alternating mode order.",
+        "One exact echo warmup per sidecar; round-robin sidecar pools plus a dedicated-sidecar bound; alternating pool order.",
       results,
       summary,
     },
