@@ -145,6 +145,10 @@ function resourceMonitorBinaryName(platform: NodeJS.Platform): string {
   return platform === "win32" ? "t3-resource-monitor.exe" : "t3-resource-monitor";
 }
 
+function runtimeSidecarBinaryName(platform: NodeJS.Platform): string {
+  return platform === "win32" ? "t3-runtime-sidecar.exe" : "t3-runtime-sidecar";
+}
+
 const resolveResourceMonitorPath = Effect.fn(
   "desktop.backendConfiguration.resolveResourceMonitorPath",
 )(function* () {
@@ -168,6 +172,32 @@ const resolveResourceMonitorPath = Effect.fn(
       ? [environment.path.join(environment.resourcesPath, "resource-monitor", binaryName)]
       : environment.resolveResourcePathCandidates(
           environment.path.join("resource-monitor", binaryName),
+        );
+
+  for (const candidate of candidates) {
+    if (yield* fileSystem.exists(candidate).pipe(Effect.orElseSucceed(() => false))) {
+      return Option.some(candidate);
+    }
+  }
+
+  return Option.none<string>();
+});
+
+const resolveRuntimeSidecarPath = Effect.fn(
+  "desktop.backendConfiguration.resolveRuntimeSidecarPath",
+)(function* () {
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const binaryName = runtimeSidecarBinaryName(environment.platform);
+  const candidates = environment.isDevelopment
+    ? [
+        environment.path.join(environment.rootDir, "target/release", binaryName),
+        environment.path.join(environment.rootDir, "target/debug", binaryName),
+      ]
+    : environment.isPackaged
+      ? [environment.path.join(environment.resourcesPath, "runtime-sidecar", binaryName)]
+      : environment.resolveResourcePathCandidates(
+          environment.path.join("runtime-sidecar", binaryName),
         );
 
   for (const candidate of candidates) {
@@ -366,6 +396,7 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
   function* (
     input: SharedBootstrapInput & {
       readonly resourceMonitorPath: Option.Option<string>;
+      readonly runtimeSidecarPath: Option.Option<string>;
     },
   ): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
@@ -402,6 +433,12 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       env: {
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
+        ...Option.match(input.runtimeSidecarPath, {
+          onNone: () => ({}),
+          onSome: (runtimeSidecarPath) => ({
+            T3CODE_RUNTIME_SIDECAR_PATH: runtimeSidecarPath,
+          }),
+        }),
       },
       // Primary wants process.env (PATH, dev-runner's T3CODE_HOME, etc.).
       extendEnv: true,
@@ -671,11 +708,18 @@ export const make = Effect.gen(function* () {
 
   const buildWindowsPrimaryConfig = Effect.gen(function* () {
     const shared = yield* sharedInputs;
-    const resourceMonitorPath = yield* resolveResourceMonitorPath().pipe(
+    const [resourceMonitorPath, runtimeSidecarPath] = yield* Effect.all(
+      [resolveResourceMonitorPath(), resolveRuntimeSidecarPath()],
+      { concurrency: "unbounded" },
+    ).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
     );
-    return yield* resolvePrimaryStartConfig({ ...shared, resourceMonitorPath }).pipe(
+    return yield* resolvePrimaryStartConfig({
+      ...shared,
+      resourceMonitorPath,
+      runtimeSidecarPath,
+    }).pipe(
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
       Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),
     );

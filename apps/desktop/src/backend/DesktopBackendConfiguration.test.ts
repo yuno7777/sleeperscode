@@ -136,6 +136,7 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.cwd, environment.backendCwd);
         assert.equal(first.captureOutput, true);
         assert.equal(first.env.ELECTRON_RUN_AS_NODE, "1");
+        assert.isUndefined(first.env.T3CODE_RUNTIME_SIDECAR_PATH);
         assert.isUndefined(first.env.T3CODE_PORT);
         assert.isUndefined(first.env.T3CODE_MODE);
         assert.isUndefined(first.env.T3CODE_DESKTOP_LAN_HOST);
@@ -716,31 +717,42 @@ describe("DesktopBackendConfiguration", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("prefers the external packaged resource monitor over the copy inside the asar", () =>
+  it.effect("resolves external packaged native runtime resources", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-desktop-backend-config-test-",
       });
-      const resourcesPath = `${baseDir}/resources`;
-      const dirname = `${resourcesPath}/app.asar/apps/desktop/dist-electron`;
-      const embeddedMonitorPath = `${resourcesPath}/app.asar/apps/desktop/prod-resources/resource-monitor/t3-resource-monitor`;
-      const monitorPath = `${resourcesPath}/resource-monitor/t3-resource-monitor`;
+      const resourcesPath = path.join(baseDir, "resources");
+      const dirname = path.join(resourcesPath, "app.asar/apps/desktop/dist-electron");
+      const embeddedMonitorPath = path.join(
+        resourcesPath,
+        "app.asar/apps/desktop/prod-resources/resource-monitor/t3-resource-monitor",
+      );
+      const monitorPath = path.join(resourcesPath, "resource-monitor/t3-resource-monitor");
+      const runtimeSidecarPath = path.join(resourcesPath, "runtime-sidecar/t3-runtime-sidecar");
       yield* fileSystem.makeDirectory(
-        `${resourcesPath}/app.asar/apps/desktop/prod-resources/resource-monitor`,
+        path.join(resourcesPath, "app.asar/apps/desktop/prod-resources/resource-monitor"),
         { recursive: true },
       );
-      yield* fileSystem.makeDirectory(`${resourcesPath}/resource-monitor`, {
+      yield* fileSystem.makeDirectory(path.join(resourcesPath, "resource-monitor"), {
+        recursive: true,
+      });
+      yield* fileSystem.makeDirectory(path.join(resourcesPath, "runtime-sidecar"), {
         recursive: true,
       });
       yield* fileSystem.writeFileString(embeddedMonitorPath, "embedded");
       yield* fileSystem.writeFileString(monitorPath, "binary");
+      yield* fileSystem.writeFileString(runtimeSidecarPath, "binary");
       yield* fileSystem.chmod(monitorPath, 0o755);
+      yield* fileSystem.chmod(runtimeSidecarPath, 0o755);
 
       yield* Effect.gen(function* () {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
         const config = yield* configuration.resolvePrimary;
         assert.equal(config.bootstrap.resourceMonitorPath, monitorPath);
+        assert.equal(config.env.T3CODE_RUNTIME_SIDECAR_PATH, runtimeSidecarPath);
         assert.equal(config.bootstrap.desktopTelemetryFd, 4);
         assert.equal(config.bootstrap.desktopTelemetryControlFd, 5);
       }).pipe(
@@ -751,7 +763,7 @@ describe("DesktopBackendConfiguration", () => {
             Layer.provideMerge(DesktopWslEnvironment.layerTest()),
             Layer.provideMerge(
               makeEnvironmentLayer(baseDir, {
-                appPath: `${resourcesPath}/app.asar`,
+                appPath: path.join(resourcesPath, "app.asar"),
                 dirname,
                 isPackaged: true,
                 resourcesPath,
