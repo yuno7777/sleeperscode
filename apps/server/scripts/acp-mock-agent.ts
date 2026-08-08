@@ -40,6 +40,8 @@ const failSetConfigOption = process.env.T3_ACP_FAIL_SET_CONFIG_OPTION === "1";
 const exitOnSetConfigOption = process.env.T3_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
 const promptResponseText = process.env.T3_ACP_PROMPT_RESPONSE_TEXT;
 const promptDelayMs = Number(process.env.T3_ACP_PROMPT_DELAY_MS ?? "0");
+const streamChunkCount = Math.max(0, Number(process.env.T3_ACP_STREAM_CHUNK_COUNT ?? "0"));
+const streamChunkBytes = Math.max(1, Number(process.env.T3_ACP_STREAM_CHUNK_BYTES ?? "1024"));
 const permissionOptionIds = {
   allowOnce: process.env.T3_ACP_ALLOW_ONCE_OPTION_ID ?? "allow-once",
   allowAlways: process.env.T3_ACP_ALLOW_ALWAYS_OPTION_ID ?? "allow-always",
@@ -843,6 +845,20 @@ const program = Effect.gen(function* () {
             content: { type: "text", text: " root after child" },
           },
         });
+        return { stopReason: "end_turn" };
+      }
+
+      if (streamChunkCount > 0) {
+        const chunk = "x".repeat(streamChunkBytes);
+        for (let index = 0; index < streamChunkCount; index += 1) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: chunk },
+            },
+          });
+        }
         return { stopReason: "end_turn" };
       }
 
