@@ -249,6 +249,26 @@ with more installed agents would peak higher. It also means peak startup memory 
 provider discovery rather than of the runtime backend, which is consistent with Node and Rust being
 indistinguishable above.
 
+### Bundled against unbundled entry
+
+The harness treats each backend and entry combination as a variant and alternates all of them within
+an iteration, so this comparison carries the same drift protection as the backend one.
+
+```text
+node scripts/benchmark-server-startup.mjs --entry=bundle,source --backend=node --repeat=3 --idle-seconds=20
+```
+
+| Entry                     | Cold spawn to serve | Mean warm spawn to serve | Settled RSS | Settled CPU |
+| :------------------------ | ------------------: | -----------------------: | ----------: | ----------: |
+| `apps/server/dist` bundle |          3,941.2 ms |               3,819.3 ms |   174.9 MiB |       1.11% |
+| `apps/server/src` source  |          5,170.4 ms |               5,172.8 ms |   226.2 MiB |       0.54% |
+
+Running the server from TypeScript source costs about 1.35 seconds of startup and 51 MiB of settled
+resident memory against the bundle, and the three interleaved iterations do not overlap. This is a
+developer-experience number, not a product one: shipped surfaces run the bundle. It does mean that a
+startup or memory measurement taken against the source entry is not comparable to one taken against
+the bundle, which is why the entry kind is recorded with every result.
+
 ## Windows process-tree cancellation
 
 Command:
