@@ -5,6 +5,7 @@ import * as NodeURL from "node:url";
 import * as NodeFS from "node:fs";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -113,6 +114,48 @@ describe("AcpSessionRuntime", () => {
       ),
       Effect.scoped,
       Effect.provide(NodeServices.layer),
+    ),
+  );
+
+  it.effect("runs a provider-shaped session through the opt-in Rust transport", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      const started = yield* runtime.start();
+      const eventsFiber = yield* runtime
+        .getEvents()
+        .pipe(Stream.take(4), Stream.runCollect, Effect.forkChild);
+
+      const promptResult = yield* runtime.prompt({
+        prompt: [{ type: "text", text: "native transport" }],
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      expect(started.sessionId).toBe("mock-session-1");
+      expect(promptResult.stopReason).toBe("end_turn");
+      expect(events.map((event) => event._tag)).toEqual([
+        "PlanUpdated",
+        "AssistantItemStarted",
+        "ContentDelta",
+        "AssistantItemCompleted",
+      ]);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "t3-native-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+      Effect.provideService(HostProcessEnvironment, {
+        ...process.env,
+        T3CODE_RUNTIME_BACKEND: "rust",
+      }),
     ),
   );
 
