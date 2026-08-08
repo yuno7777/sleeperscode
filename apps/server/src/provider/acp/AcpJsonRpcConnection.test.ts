@@ -14,6 +14,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
+import * as NativeRuntimeClient from "../../nativeRuntime/NativeRuntimeClient.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 
@@ -158,6 +159,50 @@ describe("AcpSessionRuntime", () => {
       }),
     ),
   );
+
+  it.effect("keeps Windows command wrappers on the Node ACP transport", () => {
+    if (process.platform !== "win32") return Effect.void;
+    const nativeRuntime = NativeRuntimeClient.NativeRuntimeClient.of({
+      run: () => Effect.die("finite native runtime must not run for an ACP wrapper"),
+      startStreaming: () => Effect.die("streaming native runtime must not run for an ACP wrapper"),
+    });
+    return Effect.acquireUseRelease(
+      Effect.promise(() =>
+        NodeFS.promises.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-acp-wrapper-")),
+      ),
+      (directory) =>
+        Effect.gen(function* () {
+          const wrapper = NodePath.join(directory, "mock-agent.cmd");
+          yield* Effect.promise(() =>
+            NodeFS.promises.writeFile(
+              wrapper,
+              `@echo off\r\n"${process.execPath}" --experimental-strip-types "${mockAgentPath}" %*\r\n`,
+              "utf8",
+            ),
+          );
+          const runtime = yield* AcpSessionRuntime.make({
+            spawn: { command: wrapper, args: [] },
+            cwd: process.cwd(),
+            clientInfo: { name: "t3-wrapper-test", version: "0.0.0" },
+            authMethodId: "test",
+          });
+
+          expect((yield* runtime.start()).sessionId).toBe("mock-session-1");
+        }).pipe(
+          Effect.provideService(NativeRuntimeClient.NativeRuntimeClient, nativeRuntime),
+          Effect.provideService(HostProcessEnvironment, {
+            ...process.env,
+            T3CODE_RUNTIME_BACKEND: "rust",
+          }),
+          Effect.scoped,
+          Effect.provide(NodeServices.layer),
+        ),
+      (directory) =>
+        Effect.promise(() => NodeFS.promises.rm(directory, { recursive: true, force: true })).pipe(
+          Effect.ignore,
+        ),
+    );
+  });
 
   it.effect("preserves a one MiB incremental stream losslessly", () => {
     const chunkCount = 16;
