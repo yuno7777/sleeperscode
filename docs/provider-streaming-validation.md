@@ -35,9 +35,10 @@ Node and Rust. With Rust forced for the entire focused ACP file, all 17 lifecycl
 seconds.
 
 Two earlier equal-byte Node probes with higher event counts did not complete inside the existing
-60-second test budget: 64 x 16 KiB and 512 x 2 KiB. These were diagnostic runs, not passing
-benchmarks. The native transport now bounds sidecar output, per-session input, and TypeScript output
-queues, but the high-event-rate cases have not been rerun and the ACP event queue remains unbounded.
+60-second test budget: 64 x 16 KiB and 512 x 2 KiB. With the native transport's bounded sidecar
+output, per-session input, and TypeScript output queues, both shapes now pass as focused Rust-path
+regressions. Their focused test durations were 0.98 and 1.08 seconds respectively; both preserved all
+1 MiB and every ordered delta. The ACP event queue itself remains unbounded.
 
 ## Locally discovered CLIs
 
@@ -58,6 +59,6 @@ supported-version claim.
 
 - Exercise authenticated launch, authentication failure, and provider-specific crash behavior in a
   disposable account or sanctioned fixture environment.
-- Rerun and measure the 64-event and 512-event probes through both transports before expanding Rust
-  beyond opt-in ACP sessions.
+- Diagnose the Node-path high-event-rate stalls and decide whether the ACP event queue also needs a
+  bounded receipt-driven contract before expanding Rust beyond opt-in sessions.
 - Repeat 1/3/5/10 process-tree sampling with real provider fixtures and multiple runs per level.
