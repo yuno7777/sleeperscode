@@ -22,17 +22,18 @@ These are unpackaged development build directories and overlap because the serve
 the web client. They are not additive and do not represent installer or installed-application size.
 The build reported existing large-chunk and sourcemap warnings but exited successfully.
 
-| Metric                                |         Original |        Hybrid Rust |              Improvement |
-| ------------------------------------- | ---------------: | -----------------: | -----------------------: |
-| Idle RAM                              | **NOT MEASURED** |   **NOT MEASURED** |         **NOT MEASURED** |
-| Startup                               | **NOT MEASURED** |   **NOT MEASURED** |         **NOT MEASURED** |
-| Original generic process launch proxy |   48.912 ms mean | **NOT COMPARABLE** |         **NOT MEASURED** |
-| Paired no-op process launch           |   58.461 ms mean |     43.258 ms mean | 26.0% lower mean latency |
-| Three-process tree cancellation       | **NOT MEASURED** |      1.896 ms mean |       Native-only metric |
-| Agent launch                          | **NOT MEASURED** |   **NOT MEASURED** |         **NOT MEASURED** |
-| Git status                            |   92.871 ms mean |   **NOT MEASURED** |         **NOT MEASURED** |
-| Repository scan                       | **NOT MEASURED** |   **NOT MEASURED** |         **NOT MEASURED** |
-| Packaged app size                     | **NOT MEASURED** |   **NOT MEASURED** |         **NOT MEASURED** |
+| Metric                                |         Original |        Hybrid Rust |               Improvement |
+| ------------------------------------- | ---------------: | -----------------: | ------------------------: |
+| Idle RAM                              | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
+| Startup                               | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
+| Original generic process launch proxy |   48.912 ms mean | **NOT COMPARABLE** |          **NOT MEASURED** |
+| Paired no-op process launch (v1)      |   58.461 ms mean |     43.258 ms mean |  26.0% lower mean latency |
+| Paired no-op process launch (v2)      |   50.094 ms mean |     68.296 ms mean | 36.3% higher mean latency |
+| Three-process tree cancellation       | **NOT MEASURED** |      1.896 ms mean |        Native-only metric |
+| Agent launch                          | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
+| Git status                            |   92.871 ms mean |   **NOT MEASURED** |          **NOT MEASURED** |
+| Repository scan                       | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
+| Packaged app size                     | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
 
 ## Paired no-op launch detail
 
@@ -56,6 +57,33 @@ Hybrid raw milliseconds: `46.598, 43.120, 36.623, 49.565, 37.313, 43.875, 39.739
 Toolchain: Node 22.17.0, rustc 1.95.0, Windows x64. The repository's Node 24 requirement remains
 unmet on this host. A faster microbenchmark alone does not establish lower application RAM, startup
 time, agent launch time, or package size; those remain `NOT MEASURED`.
+
+### Protocol v2 re-measurement
+
+The same benchmark was repaired for protocol v2 (handshake version check, global-error handling,
+10-second operation deadlines) and re-run on the current sidecar under Node 24.14.0. The sidecar
+binary has grown to 1,434,112 bytes since the v1 capture because it now carries the streaming
+session machinery and the blocking-pool launch helper.
+
+```text
+node scripts/benchmark-runtime-sidecar.mjs target/release/t3-runtime-sidecar.exe 20
+```
+
+| Path                           |      Mean |    Median |            Range |
+| ------------------------------ | --------: | --------: | ---------------: |
+| Direct Node no-op child        | 50.094 ms | 47.648 ms | 42.079-62.964 ms |
+| Warm Rust sidecar finite child | 68.296 ms | 66.829 ms | 61.946-90.528 ms |
+
+The hybrid path is 36.3% slower than a direct Node child for this workload, reversing the v1 result.
+Two things changed at once between the captures, so this run does not attribute the reversal: the
+protocol and sidecar gained streaming support and blocking-pool launch, and the harness moved from
+Node 22.17.0 to Node 24.14.0. The direct Node baseline itself improved from 58.461 ms to 50.094 ms
+across the same change, which is consistent with the runtime bump accounting for part of the gap.
+
+This is a no-op `node -e ""` child launched through a warm sidecar. It is not a provider-performance
+claim: it measures per-launch protocol overhead on the smallest possible payload, where the round
+trip through the sidecar cannot be amortized against any real work. The session-scoped provider
+figures above remain the relevant evidence for ACP workloads, and `auto` stays on Node.
 
 ## Deterministic provider concurrency
 
