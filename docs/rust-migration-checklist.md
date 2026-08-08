@@ -15,7 +15,8 @@
 - [x] Implement the finite process runtime with bounded output and cleanup.
 - [x] Add matching TypeScript codecs and protocol fixture tests.
 - [x] Add lazy binary discovery and an opt-in compatibility adapter.
-- [ ] Package the sidecar for Windows desktop artifacts.
+- [-] Package the sidecar for Windows desktop artifacts (build staging and path forwarding pass; a
+  complete NSIS installer remains blocked on an uncached optional dependency download).
 
 ## Process migration
 
@@ -25,8 +26,10 @@
   `.cmd`, `.bat`, an installed npm wrapper, Unicode/deep/relative paths, a local administrative UNC
   path, environment, PATH overrides, and ACL-denied execution pass; a real non-ASCII Windows profile
   and an external network share remain unverified).
-- [ ] Extend to streaming provider processes with bounded queues.
-- [ ] Run every provider adapter lifecycle contract against Rust supervision.
+- [x] Extend the sidecar protocol and TypeScript client to streaming processes with bounded output
+      and per-session input queues, correlated control receipts, exact byte chunks, and priority stop.
+- [-] Run provider lifecycle contracts against Rust supervision (the shared ACP suite and Cursor/Grok
+  matrix pass; Claude, Codex, and OpenCode still use their provider-specific Node transports).
 - [x] Prove cancellation, timeout, parent crash, graceful shutdown, and abrupt sidecar exit leave no
       tested parent-child-grandchild process behind on Windows.
 
