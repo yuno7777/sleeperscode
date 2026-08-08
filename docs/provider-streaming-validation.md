@@ -38,7 +38,8 @@ Two earlier ad hoc Node probes with higher event counts did not complete inside 
 That result is not reproduced by the committed paired regressions: Node and Rust now both pass 64 x
 16 KiB and 512 x 2 KiB, preserving all 1 MiB and every ordered delta. All four cases completed in
 3.66 seconds of test time. The Rust-only focused durations were 0.98 and 1.08 seconds. The ACP event
-queue itself remains unbounded, and the cause of the earlier ad hoc timeout is unknown.
+queue is now bounded at 256 events; the 512-delta cases prove both transports can apply and release
+backpressure beyond that capacity. The cause of the earlier ad hoc timeout is unknown.
 
 ## Locally discovered CLIs
 
@@ -59,7 +60,6 @@ supported-version claim.
 
 - Exercise authenticated launch, authentication failure, and provider-specific crash behavior in a
   disposable account or sanctioned fixture environment.
-- Decide whether the ACP event queue needs a bounded receipt-driven contract before expanding Rust
-  beyond opt-in sessions; the paired regression closes the losslessness gate but is not a memory
-  bound.
+- Measure queue occupancy and process-tree memory under repeated high-event and slow-consumer runs;
+  the fixed capacity is a bound, not evidence that 256 is the optimal value.
 - Repeat 1/3/5/10 process-tree sampling with real provider fixtures and multiple runs per level.
