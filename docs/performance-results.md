@@ -88,18 +88,21 @@ pnpm bench:provider-concurrency -- --backend=rust --repeat=2
 | Sessions | Backend | Mean elapsed | Mean peak RSS | Maximum peak RSS | Maximum processes |
 | -------: | :------ | -----------: | ------------: | ---------------: | ----------------: |
 |        1 | Node    |      4.849 s |    589.07 MiB |       594.00 MiB |                 7 |
-|        1 | Rust    |      4.774 s |    564.17 MiB |       570.06 MiB |                 6 |
+|        1 | Rust    |      4.575 s |    589.85 MiB |       589.95 MiB |                 6 |
 |        3 | Node    |      5.056 s |    844.40 MiB |       897.17 MiB |                13 |
-|        3 | Rust    |      4.943 s |    744.78 MiB |       751.11 MiB |                10 |
+|        3 | Rust    |      4.953 s |    777.20 MiB |       798.59 MiB |                 8 |
 |        5 | Node    |      5.367 s |  1,088.62 MiB |     1,169.32 MiB |                19 |
-|        5 | Rust    |      5.243 s |    971.33 MiB |     1,018.99 MiB |                14 |
+|        5 | Rust    |      6.140 s |    960.13 MiB |       993.11 MiB |                10 |
 |       10 | Node    |      6.159 s |  1,713.18 MiB |     1,750.61 MiB |                32 |
-|       10 | Rust    |      5.942 s |  1,230.19 MiB |     1,234.62 MiB |                24 |
+|       10 | Rust    |      8.072 s |  1,212.15 MiB |     1,236.28 MiB |                15 |
 
-Rust was lower on mean elapsed and sampled peak tree RSS in this two-run snapshot. This is useful
-directional evidence, not a stable performance claim: two repetitions are too few, background load
-was not isolated, and Node process counts varied between repetitions. CPU samples are omitted from
-the comparison because the short runs produced high variance.
+The Rust rows use one shared sidecar across all sessions, matching adapter-scoped ownership. This
+reduced maximum process counts substantially and used less sampled peak tree RSS at 3, 5, and 10
+sessions. It did not improve throughput: mean elapsed time was worse at 5 and 10 sessions, and the
+second 10-session Rust run took 10.31 seconds versus 5.83 seconds for the first. The shared sidecar
+therefore exposes a contention or head-of-line-blocking gate that must be diagnosed before automatic
+selection. Two repetitions are still too few for stable ranking, background load was not isolated,
+and CPU samples are omitted because their variance was extreme.
 
 ## Windows process-tree cancellation
 
