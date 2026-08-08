@@ -16,6 +16,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -312,7 +313,7 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
     "nativeRuntime.nativeRuntimeClient.run",
   )(function* (input) {
     const handle = yield* ensureHandle;
-    const requestId = globalThis.crypto.randomUUID();
+    const requestId = `${yield* Random.nextInt}:${yield* Random.nextInt}`;
     const deferred = yield* Deferred.make<NativeRuntimeRunOutput, NativeRuntimeClientError>();
     yield* Ref.update(pendingRef, (pending) => {
       const next = new Map(pending);
