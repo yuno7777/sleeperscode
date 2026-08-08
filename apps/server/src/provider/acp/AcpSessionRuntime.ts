@@ -8,13 +8,10 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import * as Sink from "effect/Sink";
-import * as Stdio from "effect/Stdio";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
@@ -26,6 +23,7 @@ import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
 import * as NativeRuntimeClient from "../../nativeRuntime/NativeRuntimeClient.ts";
+import * as NativeRuntimeStdio from "../../nativeRuntime/NativeRuntimeStdio.ts";
 import { selectRuntimeBackend } from "../../nativeRuntime/RuntimeBackend.ts";
 import * as ServerConfig from "../../config.ts";
 
@@ -383,33 +381,7 @@ export const make = (
             );
           yield* Effect.addFinalizer(() => session.stop.pipe(Effect.ignore));
 
-          const mapNativeError = (
-            method: "read" | "write",
-            cause: NativeRuntimeClient.NativeRuntimeClientError,
-          ) =>
-            PlatformError.systemError({
-              _tag: "Unknown",
-              module: "NativeRuntimeAcpTransport",
-              method,
-              description: cause.message,
-              cause,
-            });
-          const encoder = new TextEncoder();
-          const stdio = Stdio.make({
-            args: Effect.succeed([]),
-            stdin: session.output.pipe(
-              Stream.filter((event) => event.stream === "stdout"),
-              Stream.map((event) => event.bytes),
-              Stream.mapError((cause) => mapNativeError("read", cause)),
-            ),
-            stdout: () =>
-              Sink.forEach((chunk: string | Uint8Array) =>
-                session
-                  .write(typeof chunk === "string" ? encoder.encode(chunk) : chunk)
-                  .pipe(Effect.mapError((cause) => mapNativeError("write", cause))),
-              ),
-            stderr: () => Sink.drain,
-          });
+          const stdio = NativeRuntimeStdio.make(session);
           const terminationError = Effect.match(session.exit, {
             onFailure: (cause) =>
               new EffectAcpErrors.AcpTransportError({
