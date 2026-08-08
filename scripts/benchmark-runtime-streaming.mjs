@@ -50,6 +50,7 @@ if (
 }
 const repeat = readPositiveInteger("repeat", 3);
 const payloadBytes = readPositiveInteger("payload-bytes", 32 * 1024);
+const operationTimeoutMs = readPositiveInteger("timeout-ms", 15_000);
 const sidecarPath = path.resolve(readOption("sidecar", defaultSidecarPath));
 const fixturePath = path.resolve(readOption("fixture", defaultFixturePath));
 
@@ -61,6 +62,17 @@ await Promise.all([
     throw new Error(`Runtime fixture not found at ${fixturePath}. Run pnpm build:runtime-sidecar.`);
   }),
 ]);
+
+function withDeadline(promise, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} exceeded ${operationTimeoutMs} ms.`)),
+      operationTimeoutMs,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 class RuntimeSidecar {
   constructor(executable) {
@@ -160,6 +172,7 @@ class RuntimeSidecar {
   }
 
   async runEcho(sessionId, payload) {
+    const startedAt = performance.now();
     let resolveStarted;
     let resolveExited;
     let reject;
@@ -186,6 +199,7 @@ class RuntimeSidecar {
       env: null,
     });
     await started;
+    const processStartedMs = performance.now() - startedAt;
     for (let offset = 0, chunkIndex = 0; offset < payload.length; chunkIndex += 1) {
       const chunk = payload.subarray(offset, offset + MAX_CHUNK_BYTES);
       offset += chunk.length;
@@ -203,19 +217,33 @@ class RuntimeSidecar {
       requestId: `${sessionId}-close`,
       sessionId,
     });
+    const controlsAcceptedMs = performance.now() - startedAt;
     const output = await exited;
     if (!output.equals(payload)) {
       throw new Error(
         `Session ${sessionId} returned ${output.length} of ${payload.length} exact bytes.`,
       );
     }
+    return {
+      processStartedMs,
+      controlsAcceptedMs,
+      processExitedMs: performance.now() - startedAt,
+    };
   }
 
   async close() {
     this.closing = true;
+    const exited = once(this.child, "exit");
     this.send({ version: PROTOCOL_VERSION, type: "shutdown" });
     this.child.stdin.end();
-    const [code, signal] = await once(this.child, "exit");
+    let code;
+    let signal;
+    try {
+      [code, signal] = await withDeadline(exited, "Runtime sidecar shutdown");
+    } catch (error) {
+      this.child.kill();
+      throw error;
+    }
     this.lines.close();
     if (code !== 0 || signal) {
       throw new Error(`Runtime sidecar shutdown failed (${signal ?? code}).`);
@@ -232,19 +260,30 @@ async function measure(mode, concurrency, iteration, payload) {
     await Promise.all(sidecars.map((sidecar) => sidecar.ready));
     await Promise.all(
       sidecars.map((sidecar, index) =>
-        sidecar.runEcho(`${mode}-${concurrency}-${iteration}-warmup-${index}`, payload),
-      ),
-    );
-    const startedAt = performance.now();
-    await Promise.all(
-      Array.from({ length: concurrency }, (_, index) =>
-        sidecars[mode === "shared" ? 0 : index].runEcho(
-          `${mode}-${concurrency}-${iteration}-${index}`,
-          payload,
+        withDeadline(
+          sidecar.runEcho(`${mode}-${concurrency}-${iteration}-warmup-${index}`, payload),
+          `${mode} ${concurrency}-session warmup`,
         ),
       ),
     );
-    return performance.now() - startedAt;
+    const startedAt = performance.now();
+    const sessions = await Promise.all(
+      Array.from({ length: concurrency }, (_, index) =>
+        withDeadline(
+          sidecars[mode === "shared" ? 0 : index].runEcho(
+            `${mode}-${concurrency}-${iteration}-${index}`,
+            payload,
+          ),
+          `${mode} ${concurrency}-session measurement`,
+        ),
+      ),
+    );
+    return {
+      elapsedMs: performance.now() - startedAt,
+      maximumProcessStartedMs: Math.max(...sessions.map((session) => session.processStartedMs)),
+      maximumControlsAcceptedMs: Math.max(...sessions.map((session) => session.controlsAcceptedMs)),
+      maximumProcessExitedMs: Math.max(...sessions.map((session) => session.processExitedMs)),
+    };
   } finally {
     await Promise.all(sidecars.map((sidecar) => sidecar.close()));
   }
@@ -261,7 +300,7 @@ for (let iteration = 1; iteration <= repeat; iteration += 1) {
         mode,
         concurrency,
         iteration,
-        elapsedMs: await measure(mode, concurrency, iteration, payload),
+        ...(await measure(mode, concurrency, iteration, payload)),
       });
     }
   }
@@ -280,6 +319,11 @@ const summary = levels.flatMap((concurrency) =>
       meanElapsedMs: mean(samples.map((sample) => sample.elapsedMs)),
       minimumElapsedMs: Math.min(...samples.map((sample) => sample.elapsedMs)),
       maximumElapsedMs: Math.max(...samples.map((sample) => sample.elapsedMs)),
+      meanMaximumProcessStartedMs: mean(samples.map((sample) => sample.maximumProcessStartedMs)),
+      meanMaximumControlsAcceptedMs: mean(
+        samples.map((sample) => sample.maximumControlsAcceptedMs),
+      ),
+      meanMaximumProcessExitedMs: mean(samples.map((sample) => sample.maximumProcessExitedMs)),
     };
   }),
 );
@@ -294,6 +338,7 @@ process.stdout.write(
       levels,
       repeat,
       payloadBytes,
+      operationTimeoutMs,
       methodology:
         "One exact echo warmup per sidecar; shared sidecar versus one sidecar per concurrent session; alternating mode order.",
       results,
