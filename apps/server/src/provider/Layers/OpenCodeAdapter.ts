@@ -1701,6 +1701,8 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        // @opencode-ai/sdk against a managed local OpenCode server.
+        integrationTransport: "vendor-app-server",
       },
       startSession,
       sendTurn,

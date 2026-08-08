@@ -25,11 +25,33 @@ import type * as Stream from "effect/Stream";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
+/**
+ * Machine interface an adapter talks to the agent through, richest first.
+ *
+ * Only the modes in use are listed. A new agent that can only be driven through
+ * a documented streaming CLI, a non-interactive CLI, or a terminal bridge adds
+ * the mode it needs here, which forces the choice to be stated rather than
+ * discovered by reading the adapter. Scraping a terminal when the agent offers a
+ * structured interface is not an acceptable mode.
+ */
+export type ProviderIntegrationTransport =
+  /** Official vendor SDK, driven in-process. */
+  | "vendor-sdk"
+  /** Official vendor structured protocol spoken to a managed agent process. */
+  | "vendor-app-server"
+  /** Agent Client Protocol over a subprocess, vendor extensions included. */
+  | "acp";
+
 export interface ProviderAdapterCapabilities {
   /**
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /**
+   * Declares how this adapter reaches its agent. Recorded per adapter so the
+   * integration mode is a stated fact rather than an implementation detail.
+   */
+  readonly integrationTransport: ProviderIntegrationTransport;
 }
 
 export interface ProviderThreadTurnSnapshot {

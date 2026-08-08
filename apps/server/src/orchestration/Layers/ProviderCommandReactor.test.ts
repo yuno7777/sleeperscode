@@ -319,6 +319,7 @@ describe("ProviderCommandReactor", () => {
       getCapabilities: (_provider) =>
         Effect.succeed({
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
+          integrationTransport: "acp" as const,
         }),
       getInstanceInfo: (instanceId) => {
         const raw = String(instanceId);

@@ -1971,6 +1971,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      // Codex app-server protocol via effect-codex-app-server.
+      integrationTransport: "vendor-app-server",
     },
     startSession,
     sendTurn,

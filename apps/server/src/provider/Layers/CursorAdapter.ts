@@ -1164,7 +1164,8 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      // ACP over a subprocess, plus the cursor/* extension methods.
+      capabilities: { sessionModelSwitch: "in-session", integrationTransport: "acp" },
       startSession,
       sendTurn,
       interruptTurn,

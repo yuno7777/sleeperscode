@@ -1446,7 +1446,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      // ACP over a subprocess, plus the _x.ai/* extension methods.
+      capabilities: { sessionModelSwitch: "in-session", integrationTransport: "acp" },
       startSession,
       sendTurn,
       interruptTurn,

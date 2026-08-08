@@ -4564,6 +4564,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      // @anthropic-ai/claude-agent-sdk, driven in-process.
+      integrationTransport: "vendor-sdk",
     },
     startSession,
     sendTurn,
