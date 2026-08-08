@@ -8,11 +8,12 @@ Status: `[ ]` pending, `[-]` in progress, `[x]` complete, `[!]` blocked, `[~]` d
 ## Current milestone
 
 The Rust sidecar now supports both bounded finite commands and opt-in byte-preserving streaming
-sessions. Its TypeScript client correlates start, write, close, stop, output, and exit events while
-keeping provider adapters on their existing Node transports. Windows process containment and the
-deterministic five-provider matrix pass under the supported Node toolchain. Node and Electron remain
-the default production path, and `auto` stays on Node until provider, packaging, and whole-application
-differential gates pass.
+sessions. Cursor and Grok can route ACP sessions through one adapter-scoped sidecar while preserving
+their Node wrapper fallback, and shared normalization bounds each provider event queue at 256 items.
+The deterministic provider matrix passes under the supported Node toolchain. A five-run,
+10-session comparison reduced mean peak RSS by 28.1% with Rust but increased mean elapsed time by
+42.3%, so Node and Electron remain the production default and `auto` stays on Node while shared
+sidecar contention, packaging, and whole-application differential gates remain open.
 
 ## Phase tracker
 
