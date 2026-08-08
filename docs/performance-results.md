@@ -5,6 +5,23 @@ release sidecar, not an application startup or memory benchmark. The thin-LTO re
 completed in 21.72 seconds after its dependency cache had been populated; the stripped Windows x64
 binary is 1,272,320 bytes.
 
+## Supported toolchain build baseline
+
+The frozen-lockfile workspace install completed under Node 24.14.0 and pnpm 11.16.0, including the
+repository prepare and Effect language-service patch steps. A cold-cache-disabled
+`pnpm build:desktop` then completed in 92.1 seconds. That focused task built the production web
+client, bundled server, and Electron main/preload code successfully.
+
+| Build output                         | Files |      Bytes |   MiB |
+| ------------------------------------ | ----: | ---------: | ----: |
+| `apps/web/dist`                      |   778 | 58,485,982 | 55.78 |
+| `apps/server/dist` (includes client) |   790 | 72,574,742 | 69.21 |
+| `apps/desktop/dist-electron`         |    12 |  3,812,869 |  3.64 |
+
+These are unpackaged development build directories and overlap because the server bundle embeds
+the web client. They are not additive and do not represent installer or installed-application size.
+The build reported existing large-chunk and sourcemap warnings but exited successfully.
+
 | Metric                                |         Original |        Hybrid Rust |              Improvement |
 | ------------------------------------- | ---------------: | -----------------: | -----------------------: |
 | Idle RAM                              | **NOT MEASURED** |   **NOT MEASURED** |         **NOT MEASURED** |
