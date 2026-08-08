@@ -526,8 +526,11 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
                 requestId,
                 sessionId,
               } satisfies RuntimeRequest);
-      yield* writeRequest(handle, request).pipe(
-        Effect.tapError(() =>
+      yield* Effect.gen(function* () {
+        yield* writeRequest(handle, request);
+        yield* Deferred.await(deferred);
+      }).pipe(
+        Effect.ensuring(
           Ref.update(controlRef, (controls) => {
             const next = new Map(controls);
             next.delete(requestId);
@@ -535,7 +538,6 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
           }),
         ),
       );
-      yield* Deferred.await(deferred);
     },
   );
 
