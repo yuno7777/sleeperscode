@@ -139,6 +139,24 @@ describe("NativeRuntimeClient", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
+  it.live("rejects controls after a streaming process exits", () =>
+    Effect.gen(function* () {
+      const runtime = yield* NativeRuntimeClient;
+      const session = yield* runtime.startStreaming({
+        command: process.execPath,
+        args: ["-e", "process.exit(0)"],
+      });
+
+      expect(yield* session.exit).toEqual({ exitCode: 0, stopped: false });
+      const error = yield* session.write(Buffer.from("late input")).pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "NativeRuntimeRequestFailed",
+        code: "PROCESS_NOT_FOUND",
+        processStarted: true,
+      });
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.live("acknowledges stop before reporting a stopped streaming exit", () =>
     Effect.gen(function* () {
       const runtime = yield* NativeRuntimeClient;
