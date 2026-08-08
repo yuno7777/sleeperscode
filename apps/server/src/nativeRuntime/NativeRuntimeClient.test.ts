@@ -1,7 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 
 import { NativeRuntimeClient, layer } from "./NativeRuntimeClient.ts";
 
@@ -46,6 +48,40 @@ describe("NativeRuntimeClient", () => {
 
       expect(first.stdout).toBe("one");
       expect(second.stdout).toBe("two");
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.live("round-trips binary stdin larger than one protocol chunk", () =>
+    Effect.gen(function* () {
+      const runtime = yield* NativeRuntimeClient;
+      const session = yield* runtime.startStreaming({
+        command: process.execPath,
+        args: ["-e", "process.stdin.pipe(process.stdout)"],
+      });
+      const outputFiber = yield* Effect.forkChild(Stream.runCollect(session.output), {
+        startImmediately: true,
+      });
+      const expected = Uint8Array.from(
+        { length: 64 * 1024 + 257 },
+        (_, index) => (index * 31) % 256,
+      );
+
+      yield* session.write(expected);
+      yield* session.closeStdin;
+      const exit = yield* session.exit;
+      const events = Array.from(yield* Fiber.join(outputFiber));
+      const stdout = Buffer.concat(
+        events
+          .filter((event) => event.stream === "stdout")
+          .map((event) => Buffer.from(event.bytes)),
+      );
+      const sequences = events
+        .filter((event) => event.stream === "stdout")
+        .map((event) => event.sequence);
+
+      expect(exit).toEqual({ exitCode: 0, stopped: false });
+      expect(stdout).toEqual(Buffer.from(expected));
+      expect(sequences).toEqual(sequences.map((_, index) => index));
     }).pipe(Effect.provide(TestLayer)),
   );
 });
