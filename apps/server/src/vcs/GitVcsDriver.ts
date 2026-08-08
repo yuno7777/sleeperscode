@@ -623,13 +623,20 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       }),
     );
 
-  const hasHeadCommit = (cwd: string) =>
+  /** Resolves the HEAD commit oid, or `null` in a repository with no commits. */
+  const resolveHeadOid = (cwd: string) =>
     execute({
       operation: "GitVcsDriver.checkpoints.hasHeadCommit",
       cwd,
       args: ["rev-parse", "--verify", "HEAD"],
       allowNonZeroExit: true,
-    }).pipe(Effect.map((result) => result.exitCode === 0));
+    }).pipe(
+      Effect.map((result) => {
+        if (result.exitCode !== 0) return null;
+        const oid = result.stdout.trim();
+        return oid.length > 0 ? oid : null;
+      }),
+    );
 
   const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
     execute({
@@ -679,23 +686,80 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         .remove(tempIndexPath, { force: true })
         .pipe(Effect.ignore);
 
-      yield* Effect.gen(function* () {
-        const headExists = yield* hasHeadCommit(input.cwd);
-        if (headExists) {
-          yield* execute({
-            operation,
-            cwd: input.cwd,
-            args: ["read-tree", "HEAD"],
-            env: commitEnv,
-          });
-        }
+      // `git add -A` trusts the stat data cached in the index to decide what
+      // changed. A fresh index seeded by `read-tree HEAD` carries tree content but
+      // no stat cache, so staging re-hashes the entire worktree on every turn:
+      // 20.4 s of a 24.6 s capture on a 15,000 file repository. Carrying the
+      // previous capture's index forward makes that step incremental.
+      //
+      // The cache is a hint, never a source of truth. It is reused only when its
+      // recorded HEAD matches the current one, and a cache that cannot be read,
+      // copied, or staged against is discarded and re-seeded from HEAD. A bad
+      // cache therefore costs time and never produces a different tree.
+      // Concurrent captures still get their own index and can only race on
+      // refreshing the cache, where the loser leaves the next capture to re-seed.
+      const cacheIndexPath = path.join(gitCommonDir, "t3-checkpoint-index-cache");
+      const cacheHeadPath = `${cacheIndexPath}.head`;
 
-        yield* execute({
+      const seedFromCache = (headOid: string) =>
+        Effect.gen(function* () {
+          const recordedHead = yield* fileSystem.readFileString(cacheHeadPath);
+          if (recordedHead.trim() !== headOid) return false;
+          yield* fileSystem.copyFile(cacheIndexPath, tempIndexPath);
+          return true;
+        }).pipe(Effect.orElseSucceed(() => false));
+
+      const discardCache = Effect.all(
+        [
+          fileSystem.remove(cacheIndexPath, { force: true }).pipe(Effect.ignore),
+          fileSystem.remove(cacheHeadPath, { force: true }).pipe(Effect.ignore),
+          fileSystem.remove(tempIndexPath, { force: true }).pipe(Effect.ignore),
+        ],
+        { discard: true },
+      );
+
+      const refreshCache = (headOid: string) =>
+        fileSystem
+          .copyFile(tempIndexPath, cacheIndexPath)
+          .pipe(Effect.andThen(fileSystem.writeFileString(cacheHeadPath, headOid)), Effect.ignore);
+
+      yield* Effect.gen(function* () {
+        const headOid = yield* resolveHeadOid(input.cwd);
+        const readTreeHead = execute({
+          operation,
+          cwd: input.cwd,
+          args: ["read-tree", "HEAD"],
+          env: commitEnv,
+        });
+        const stageWorktree = execute({
           operation,
           cwd: input.cwd,
           args: ["add", "-A", "--", "."],
           env: commitEnv,
         });
+
+        const seeded = headOid === null ? false : yield* seedFromCache(headOid);
+        if (headOid !== null && !seeded) {
+          yield* readTreeHead;
+        }
+
+        // A structurally valid copy can still be an index Git rejects, so the
+        // retry covers corruption that inspection would miss.
+        yield* seeded
+          ? stageWorktree.pipe(
+              Effect.catch(() =>
+                Effect.gen(function* () {
+                  yield* discardCache;
+                  if (headOid !== null) yield* readTreeHead;
+                  yield* stageWorktree;
+                }),
+              ),
+            )
+          : stageWorktree;
+
+        if (headOid !== null) {
+          yield* refreshCache(headOid);
+        }
 
         const writeTreeResult = yield* execute({
           operation,
@@ -769,7 +833,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         args: ["clean", "-fd", "--", "."],
       });
 
-      const headExists = yield* hasHeadCommit(input.cwd);
+      const headExists = (yield* resolveHeadOid(input.cwd)) !== null;
       if (headExists) {
         yield* execute({
           operation,
