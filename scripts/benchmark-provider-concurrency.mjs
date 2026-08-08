@@ -16,7 +16,17 @@ const defaultMonitorPath = path.join(
   "release",
   executableName,
 );
-const monitorPath = path.resolve(process.argv[2] ?? defaultMonitorPath);
+const argumentsList = process.argv.slice(2);
+const backendArgument = argumentsList.find((argument) => argument.startsWith("--backend="));
+const backend = backendArgument?.slice("--backend=".length) ?? "node";
+if (backend !== "node" && backend !== "rust") {
+  throw new Error(`Unknown runtime backend: ${backend}. Expected node or rust.`);
+}
+const positionalArguments = argumentsList.filter((argument) => !argument.startsWith("--backend="));
+if (positionalArguments.length > 1) {
+  throw new Error("Expected at most one resource-monitor path.");
+}
+const monitorPath = path.resolve(positionalArguments[0] ?? defaultMonitorPath);
 const levels = [1, 3, 5, 10];
 const vitePlus = path.join(repositoryRoot, "node_modules", "vite-plus", "dist", "bin.js");
 const stressTest = "apps/server/src/provider/acp/ProviderStreamingStress.test.ts";
@@ -45,7 +55,10 @@ async function measureLevel(concurrency) {
     ],
     {
       cwd: repositoryRoot,
-      env: process.env,
+      env: {
+        ...process.env,
+        T3CODE_RUNTIME_BACKEND: backend,
+      },
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
     },
@@ -110,4 +123,4 @@ for (const level of levels) {
   results.push(await measureLevel(level));
 }
 
-process.stdout.write(`${JSON.stringify({ monitorPath, results }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ backend, monitorPath, results }, null, 2)}\n`);
