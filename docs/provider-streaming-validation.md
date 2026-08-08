@@ -12,9 +12,9 @@ pnpm test:provider-streaming
 ```
 
 The command runs the existing adapter and transport suites for Claude, Codex, Cursor, Grok,
-OpenCode, and the shared ACP JSON-RPC runtime. The latest local run passed 208 tests across eight
-files in 31.25 seconds. The suites use repository-owned mocks and do not read or store provider
-credentials.
+OpenCode, and the shared ACP JSON-RPC runtime. The latest local run passed 212 tests across nine
+files in 34.44 seconds under Node 24.14.0. The suites use repository-owned mocks and do not read or
+store provider credentials.
 
 On Windows, Cursor and Grok mock sessions launch through `provider-mock-launcher.exe`. It preserves
 stdin/stdout/stderr streaming and owns the mock Node process in a kill-on-close Job Object. Lifecycle
@@ -52,4 +52,3 @@ supported-version claim.
   disposable account or sanctioned fixture environment.
 - Design and measure bounded high-event-rate backpressure before moving streaming ownership to Rust.
 - Repeat 1/3/5/10 process-tree sampling with real provider fixtures and multiple runs per level.
-- Repeat the matrix under the repository-required Node 24 toolchain.
