@@ -196,6 +196,26 @@ async fn main() {
                     task_active.lock().await.remove(&request_id);
                 });
             }
+            RuntimeRequest::Start { request_id, .. }
+            | RuntimeRequest::Write { request_id, .. }
+            | RuntimeRequest::CloseStdin { request_id, .. }
+            | RuntimeRequest::Stop { request_id, .. } => {
+                emit(
+                    &event_tx,
+                    RuntimeEvent::Error {
+                        version: PROTOCOL_VERSION,
+                        request_id: Some(request_id),
+                        code: "STREAMING_NOT_IMPLEMENTED".into(),
+                        message: "Streaming process control is not enabled in this sidecar.".into(),
+                        recoverable: true,
+                        debug_detail: None,
+                        stream: None,
+                        max_output_bytes: None,
+                        observed_output_bytes: None,
+                    },
+                )
+                .await;
+            }
             RuntimeRequest::Cancel { request_id, .. } => {
                 if let Some(cancel) = active.lock().await.remove(&request_id) {
                     let _ = cancel.send(());

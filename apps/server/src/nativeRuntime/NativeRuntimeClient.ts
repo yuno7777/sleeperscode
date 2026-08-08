@@ -188,6 +188,9 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
           next.set(event.requestId, { ...request, processStarted: true });
           return next;
         });
+      case "processOutput":
+      case "processExited":
+        return Effect.void;
       case "processCompleted":
         return Effect.gen(function* () {
           const request = yield* Ref.modify(pendingRef, (pending) => {

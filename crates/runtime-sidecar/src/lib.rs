@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use t3_runtime_protocol::{OutputMode, PROTOCOL_VERSION, RuntimeEvent};
+use t3_runtime_protocol::{OutputMode, PROTOCOL_VERSION, RuntimeEvent, RuntimeStream};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
@@ -336,7 +336,11 @@ pub fn error_event(request_id: Option<String>, error: &RunError) -> RuntimeEvent
             max_bytes,
             observed_bytes,
         } => (
-            Some((*stream).into()),
+            Some(if *stream == "stdout" {
+                RuntimeStream::Stdout
+            } else {
+                RuntimeStream::Stderr
+            }),
             Some(*max_bytes),
             Some(*observed_bytes),
         ),
