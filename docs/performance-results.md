@@ -289,6 +289,41 @@ developer-experience number, not a product one: shipped surfaces run the bundle.
 startup or memory measurement taken against the source entry is not comparable to one taken against
 the bundle, which is why the entry kind is recorded with every result.
 
+## Rust release optimisation level
+
+The release profile sets thin LTO, `panic = "abort"`, and stripping, leaving `opt-level` at its
+release default of 3. Phase 109 asked for a 3 / s / z comparison. Built into an isolated target
+directory so the comparison never disturbs the committed artifact:
+
+```text
+CARGO_TARGET_DIR=<scratch> CARGO_PROFILE_RELEASE_OPT_LEVEL=<3|s|z> cargo build --locked --release -p t3-runtime-sidecar
+```
+
+| `opt-level` | Stripped size |   vs 3 | Build |
+| :---------- | ------------: | -----: | ----: |
+| 3           |   1,434,112 B |      — | 8.4 s |
+| s           |   1,096,192 B | -23.6% | 7.2 s |
+| z           |   1,040,896 B | -27.4% | 6.7 s |
+
+Runtime, from three interleaved rounds of the finite no-op benchmark at 10 iterations each:
+
+| `opt-level` | Mean hybrid launch | Rounds              |
+| :---------- | -----------------: | :------------------ |
+| 3           |           70.29 ms | 67.0, 66.3, 77.6 ms |
+| s           |           70.16 ms | 64.9, 70.1, 75.5 ms |
+| z           |           66.90 ms | 64.7, 67.1, 69.0 ms |
+
+The three are indistinguishable, which is expected: `docs/git-runtime-audit.md` established that this
+path is dominated by Windows process launch, so the optimiser has little to act on. Two interleaved
+streaming rounds were also run at 3 and z (285.1 and 106.9 ms against 109.5 and 162.6 ms); that
+benchmark's variance is far larger than any difference between the levels, so it resolves nothing.
+
+**Decision: keep `opt-level` at 3.** The size win is real but small in context. Saving 383 KiB on a
+sidecar that ships alongside a ~70 MiB server bundle does not pay for weakening optimisation on a
+component whose streaming throughput this host cannot measure precisely enough to clear. Revisit if
+packaging size becomes a binding constraint, in which case `z` is the option to take, and measure
+streaming on a quieter machine first.
+
 ## Windows process-tree cancellation
 
 Command:
