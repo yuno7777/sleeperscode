@@ -192,9 +192,29 @@ same 250 ms resource monitor:
 
 Session-scoped Rust was 3.3% slower by mean elapsed time, used 21.8% less mean peak tree RSS, and
 reduced the maximum process count by 10. This removes most of the shared-sidecar throughput penalty:
-the earlier shared sample was 42.3% slower. Rust is still not faster on this workload, the samples
-were taken under uncontrolled local background load, and packaging plus whole-application gates
-remain open, so `auto` continues to select Node.
+the earlier shared sample was 42.3% slower. Rust is still not faster on this workload, and packaging
+plus whole-application gates remain open, so `auto` continues to select Node.
+
+### Interleaved re-measurement
+
+Those rows came from two separate invocations. The startup harness later showed that pattern
+inventing a 1.2 second gap purely from ambient load, so the comparison was repeated with the
+backends alternating inside one invocation:
+
+```text
+node scripts/benchmark-provider-concurrency.mjs --backend=node,rust --levels=10 --repeat=5
+```
+
+| Backend | Runs | Mean elapsed | Elapsed range | Mean peak RSS | Maximum peak RSS | Maximum processes |
+| :------ | ---: | -----------: | ------------: | ------------: | ---------------: | ----------------: |
+| Node    |    5 |      6.020 s | 5.789-6.439 s |   1,823.1 MiB |      1,920.3 MiB |                34 |
+| Rust    |    5 |      6.144 s | 5.962-6.301 s |   1,437.1 MiB |      1,633.0 MiB |                24 |
+
+The claim survives its own methodology check. Interleaved, Rust is 2.1% slower by mean elapsed time
+with 21.2% less mean peak tree RSS and the same 10 fewer maximum processes, close enough to the
+separately measured 3.3% and 21.8% that the earlier conclusion stands. The elapsed ranges overlap,
+so the throughput difference at this workload is best described as small rather than quantified;
+the memory difference does not overlap and is the real result.
 
 ## Controlled server startup and idle
 
