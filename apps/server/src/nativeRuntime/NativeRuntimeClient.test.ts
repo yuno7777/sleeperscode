@@ -1,5 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeFS from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -155,6 +158,40 @@ describe("NativeRuntimeClient", () => {
         processStarted: true,
       });
     }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.live("preserves streaming cwd and Unicode environment values", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => NodeFS.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-stream-path-"))),
+      (root) =>
+        Effect.gen(function* () {
+          const cwd = NodePath.join(root, "sp ace-值");
+          yield* Effect.promise(() => NodeFS.mkdir(cwd));
+          const runtime = yield* NativeRuntimeClient;
+          const session = yield* runtime.startStreaming({
+            command: process.execPath,
+            args: [
+              "-e",
+              "process.stdout.write(JSON.stringify([process.cwd(),process.env.SLEEPERS_STREAM_VALUE]))",
+            ],
+            cwd,
+            env: {
+              ...process.env,
+              SLEEPERS_STREAM_VALUE: "välue-值",
+            },
+          });
+
+          expect(yield* session.exit).toEqual({ exitCode: 0, stopped: false });
+          const stdout = Buffer.concat(
+            Array.from(yield* Stream.runCollect(session.output))
+              .filter((event) => event.stream === "stdout")
+              .map((event) => Buffer.from(event.bytes)),
+          ).toString("utf8");
+          expect(JSON.parse(stdout)).toEqual([cwd, "välue-值"]);
+        }).pipe(Effect.provide(TestLayer)),
+      (root) =>
+        Effect.promise(() => NodeFS.rm(root, { recursive: true, force: true })).pipe(Effect.ignore),
+    ),
   );
 
   it.live("acknowledges stop before reporting a stopped streaming exit", () =>
