@@ -225,10 +225,29 @@ Node, so the gap was ambient machine load, not the backend. Startup timing on th
 more than a second between otherwise identical runs.
 
 The stable result is the resident profile: an idle headless server settles near 175-180 MiB across
-7-10 processes at about 1% CPU, after a transient peak near 1.1 GiB during startup. The transient is
-six times the settled figure and is the more interesting target; this harness does not attribute it
-to a specific child process. Electron, the web client, an open project, and live provider sessions
-are all absent, so this is a server floor and not an application baseline.
+7-10 processes at about 1% CPU, after a transient peak during startup. Electron, the web client, an
+open project, and live provider sessions are all absent, so this is a server floor and not an
+application baseline.
+
+### What the startup transient is
+
+The harness keeps the five largest processes from whichever sample produced the peak. Three runs:
+
+| Run | Peak tree RSS | Processes | Largest processes                                                |
+| --: | ------------: | --------: | :--------------------------------------------------------------- |
+|   1 |     793.3 MiB |         7 | server 282.0, `opencode` 239.2, `opencode` 238.6                 |
+|   2 |   1,070.4 MiB |         9 | `claude` 322.1, server 284.6, `opencode` 219.2, `opencode` 202.6 |
+|   3 |     606.1 MiB |         9 | `opencode` 301.8, server 279.5                                   |
+
+The transient is provider CLI probing, not the server. Each probed CLI is a 200-320 MiB Node process
+launched through a `cmd.exe` wrapper, and several overlap; the run-to-run spread from 606 MiB to
+1,070 MiB tracks how many probes happen to coincide. The server process itself is stable at roughly
+280 MiB during startup and settles to about 175 MiB.
+
+This is host-specific: only the provider CLIs installed on this machine get probed, so a machine
+with more installed agents would peak higher. It also means peak startup memory is a property of
+provider discovery rather than of the runtime backend, which is consistent with Node and Rust being
+indistinguishable above.
 
 ## Windows process-tree cancellation
 
