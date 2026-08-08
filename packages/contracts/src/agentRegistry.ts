@@ -155,3 +155,75 @@ export const deriveAcpInstallSafety = (agent: AcpRegistryAgent): AcpInstallSafet
     risks,
   };
 };
+
+/**
+ * Platform triple used by registry `binary` keys, in the publisher's spelling.
+ *
+ * Takes `platform` and `architecture` as plain strings, in Node's spelling
+ * (`win32`/`darwin`/`linux`, `x64`/`arm64`), because these contracts are shared
+ * with the web and mobile clients and must not depend on Node's type
+ * definitions.
+ *
+ * Returns `undefined` for platforms the registry has no vocabulary for, rather
+ * than guessing a triple that would silently match nothing.
+ */
+export const acpPlatformTriple = (platform: string, architecture: string): string | undefined => {
+  const cpu = architecture === "x64" ? "x86_64" : architecture === "arm64" ? "aarch64" : undefined;
+  if (cpu === undefined) return undefined;
+  switch (platform) {
+    case "win32":
+      return `windows-${cpu}`;
+    case "darwin":
+      return `darwin-${cpu}`;
+    case "linux":
+      return `linux-${cpu}`;
+    default:
+      return undefined;
+  }
+};
+
+export type AcpDistributionChoice =
+  | {
+      readonly kind: "binary";
+      readonly triple: string;
+      readonly artifact: AcpRegistryBinaryArtifact;
+    }
+  | {
+      readonly kind: "npx" | "uvx";
+      readonly distribution: AcpRegistryPackageDistribution;
+    }
+  | {
+      readonly kind: "unavailable";
+      readonly reason: "unsupported_platform" | "no_distribution_for_platform";
+    };
+
+/**
+ * Picks how to obtain an agent on one platform, following the Phase 22 ordering.
+ *
+ * That ordering prefers a verified standalone binary over a package manager, so
+ * a platform-matched `binary` artifact wins when one exists: it is the only form
+ * that can carry a checksum, which is what makes a download verifiable before it
+ * runs. `npx` is preferred over `uvx` only because Node is already a hard
+ * requirement of this application while Python tooling is not, so it is the
+ * option less likely to need a prerequisite installed first.
+ *
+ * Selection is deliberately independent of whether the chosen artifact passes
+ * `deriveAcpInstallSafety`. Choosing and permitting are separate steps: an
+ * installer still has to consult the safety gate before acting on this.
+ */
+export const selectAcpDistribution = (
+  agent: AcpRegistryAgent,
+  triple: string | undefined,
+): AcpDistributionChoice => {
+  if (triple === undefined) return { kind: "unavailable", reason: "unsupported_platform" };
+
+  const artifact = agent.distribution.binary?.[triple];
+  if (artifact !== undefined) return { kind: "binary", triple, artifact };
+  if (agent.distribution.npx !== undefined) {
+    return { kind: "npx", distribution: agent.distribution.npx };
+  }
+  if (agent.distribution.uvx !== undefined) {
+    return { kind: "uvx", distribution: agent.distribution.uvx };
+  }
+  return { kind: "unavailable", reason: "no_distribution_for_platform" };
+};

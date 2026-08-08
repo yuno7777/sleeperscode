@@ -1,7 +1,13 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { AcpRegistry, AcpRegistryAgent, deriveAcpInstallSafety } from "./agentRegistry.ts";
+import {
+  AcpRegistry,
+  AcpRegistryAgent,
+  acpPlatformTriple,
+  deriveAcpInstallSafety,
+  selectAcpDistribution,
+} from "./agentRegistry.ts";
 
 const decodeRegistry = Schema.decodeUnknownSync(AcpRegistry);
 const decodeAgent = Schema.decodeUnknownSync(AcpRegistryAgent);
@@ -79,6 +85,82 @@ describe("AcpRegistry decoding", () => {
       extensions: [{ id: "future-thing" }],
     });
     expect(registry.agents).toHaveLength(1);
+  });
+});
+
+describe("acpPlatformTriple", () => {
+  it("maps the platforms the registry publishes for", () => {
+    expect(acpPlatformTriple("win32", "x64")).toBe("windows-x86_64");
+    expect(acpPlatformTriple("win32", "arm64")).toBe("windows-aarch64");
+    expect(acpPlatformTriple("darwin", "arm64")).toBe("darwin-aarch64");
+    expect(acpPlatformTriple("linux", "x64")).toBe("linux-x86_64");
+  });
+
+  it("returns undefined rather than guessing an unmatchable triple", () => {
+    expect(acpPlatformTriple("linux", "ppc64")).toBeUndefined();
+    expect(acpPlatformTriple("aix", "x64")).toBeUndefined();
+  });
+});
+
+describe("selectAcpDistribution", () => {
+  it("prefers a platform-matched binary over a package manager", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: { ...ampAcpEntry.distribution, npx: { package: "@example/agent" } },
+    });
+    const choice = selectAcpDistribution(agent, "windows-x86_64");
+    expect(choice.kind).toBe("binary");
+    expect(choice.kind === "binary" && choice.artifact.cmd).toBe("amp-acp.exe");
+  });
+
+  it("falls back to npx when no binary matches this platform", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: { ...ampAcpEntry.distribution, npx: { package: "@example/agent" } },
+    });
+    const choice = selectAcpDistribution(agent, "darwin-aarch64");
+    expect(choice.kind).toBe("npx");
+  });
+
+  it("prefers npx over uvx, since Node is already required and Python is not", () => {
+    const agent = decodeAgent({
+      ...npxEntry,
+      distribution: { npx: { package: "@example/agent" }, uvx: { package: "example-agent" } },
+    });
+    expect(selectAcpDistribution(agent, "windows-x86_64").kind).toBe("npx");
+  });
+
+  it("uses uvx when it is the only package distribution", () => {
+    const agent = decodeAgent({
+      ...npxEntry,
+      distribution: { uvx: { package: "example-agent" } },
+    });
+    expect(selectAcpDistribution(agent, "windows-x86_64").kind).toBe("uvx");
+  });
+
+  it("reports an unsupported platform distinctly from a missing distribution", () => {
+    const agent = decodeAgent(ampAcpEntry);
+    expect(selectAcpDistribution(agent, undefined)).toEqual({
+      kind: "unavailable",
+      reason: "unsupported_platform",
+    });
+    expect(selectAcpDistribution(agent, "darwin-aarch64")).toEqual({
+      kind: "unavailable",
+      reason: "no_distribution_for_platform",
+    });
+  });
+
+  it("selects without regard to install safety, which is a separate gate", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: {
+        binary: {
+          "windows-x86_64": { archive: "http://example.invalid/a.zip", cmd: "a.exe" },
+        },
+      },
+    });
+    expect(selectAcpDistribution(agent, "windows-x86_64").kind).toBe("binary");
+    expect(deriveAcpInstallSafety(agent).checksumVerifiable).toBe(false);
   });
 });
 
