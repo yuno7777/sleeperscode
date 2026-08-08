@@ -1,0 +1,170 @@
+import * as Schema from "effect/Schema";
+import { describe, expect, it } from "vite-plus/test";
+
+import { AcpRegistry, AcpRegistryAgent, deriveAcpInstallSafety } from "./agentRegistry.ts";
+
+const decodeRegistry = Schema.decodeUnknownSync(AcpRegistry);
+const decodeAgent = Schema.decodeUnknownSync(AcpRegistryAgent);
+
+/**
+ * Copied verbatim from the published registry so the schema is checked against
+ * the real payload shape rather than one invented to match the schema.
+ */
+const ampAcpEntry = {
+  id: "amp-acp",
+  name: "Amp",
+  version: "0.9.0",
+  description: "ACP wrapper for Amp - the frontier coding agent",
+  repository: "https://github.com/tao12345666333/amp-acp",
+  authors: ["tao12345666333"],
+  license: "Apache-2.0",
+  icon: "https://cdn.agentclientprotocol.com/registry/v1/latest/amp-acp.svg",
+  distribution: {
+    binary: {
+      "windows-x86_64": {
+        archive:
+          "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-windows-x86_64.zip",
+        cmd: "amp-acp.exe",
+        sha256: "3b2c3d14d703fcf9572da9733e4941703a7744bd37ec4aaa75421d6002c0157b",
+      },
+      "linux-x86_64": {
+        archive:
+          "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-linux-x86_64.tar.gz",
+        cmd: "./amp-acp",
+        sha256: "afaa50a152eb86a8ff21e354ded63fe2d21b730859692e3a60b2c4c9ef23df31",
+      },
+    },
+  },
+};
+
+const npxEntry = {
+  id: "claude-acp",
+  name: "Claude Agent",
+  version: "0.66.0",
+  description: "ACP wrapper for Anthropic's Claude",
+  repository: "https://github.com/agentclientprotocol/claude-agent-acp",
+  authors: ["Anthropic", "Zed Industries", "JetBrains"],
+  license: "proprietary",
+  distribution: { npx: { package: "@zed-industries/claude-code-acp" } },
+};
+
+describe("AcpRegistry decoding", () => {
+  it("decodes a published binary entry without loss", () => {
+    const agent = decodeAgent(ampAcpEntry);
+    expect(agent.id).toBe("amp-acp");
+    expect(agent.distribution.binary?.["windows-x86_64"]?.cmd).toBe("amp-acp.exe");
+    expect(agent.distribution.binary?.["windows-x86_64"]?.sha256).toBe(
+      "3b2c3d14d703fcf9572da9733e4941703a7744bd37ec4aaa75421d6002c0157b",
+    );
+  });
+
+  it("decodes an entry that only ships a package distribution", () => {
+    const agent = decodeAgent(npxEntry);
+    expect(agent.distribution.npx?.package).toBe("@zed-industries/claude-code-acp");
+    expect(agent.distribution.binary).toBeUndefined();
+  });
+
+  it("drops entries this build cannot decode instead of failing the payload", () => {
+    const registry = decodeRegistry({
+      version: "1.0.0",
+      agents: [ampAcpEntry, { id: "broken", name: "Broken" }, npxEntry],
+    });
+    expect(registry.agents.map((agent) => agent.id)).toEqual(["amp-acp", "claude-acp"]);
+  });
+
+  it("ignores registry keys this build does not model", () => {
+    const registry = decodeRegistry({
+      version: "1.0.0",
+      agents: [npxEntry],
+      extensions: [{ id: "future-thing" }],
+    });
+    expect(registry.agents).toHaveLength(1);
+  });
+});
+
+describe("deriveAcpInstallSafety", () => {
+  it("treats fully checksummed HTTPS binaries as verifiable", () => {
+    expect(deriveAcpInstallSafety(decodeAgent(ampAcpEntry))).toEqual({
+      checksumVerifiable: true,
+      risks: [],
+    });
+  });
+
+  it("flags a package-manager entry as unverifiable before install", () => {
+    expect(deriveAcpInstallSafety(decodeAgent(npxEntry))).toEqual({
+      checksumVerifiable: false,
+      risks: ["package_manager_install"],
+    });
+  });
+
+  it("flags a binary published without a checksum", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: {
+        binary: {
+          "linux-x86_64": {
+            archive: "https://example.invalid/agent.tar.gz",
+            cmd: "./agent",
+          },
+        },
+      },
+    });
+    expect(deriveAcpInstallSafety(agent)).toEqual({
+      checksumVerifiable: false,
+      risks: ["unverified_checksum"],
+    });
+  });
+
+  it("rejects a malformed checksum as if it were absent", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: {
+        binary: {
+          "linux-x86_64": {
+            archive: "https://example.invalid/agent.tar.gz",
+            cmd: "./agent",
+            sha256: "not-a-real-digest",
+          },
+        },
+      },
+    });
+    expect(deriveAcpInstallSafety(agent).risks).toEqual(["unverified_checksum"]);
+  });
+
+  it("flags a plain HTTP archive", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: {
+        binary: {
+          "linux-x86_64": {
+            archive: "http://example.invalid/agent.tar.gz",
+            cmd: "./agent",
+            sha256: "afaa50a152eb86a8ff21e354ded63fe2d21b730859692e3a60b2c4c9ef23df31",
+          },
+        },
+      },
+    });
+    expect(deriveAcpInstallSafety(agent).risks).toEqual(["insecure_archive_url"]);
+  });
+
+  it("does not consider a mixed entry verifiable, because the package path would run", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: {
+        ...ampAcpEntry.distribution,
+        npx: { package: "@example/agent" },
+      },
+    });
+    const safety = deriveAcpInstallSafety(agent);
+    expect(safety.checksumVerifiable).toBe(false);
+    expect(safety.risks).toEqual(["package_manager_install"]);
+  });
+
+  it("reports an entry with no distribution at all", () => {
+    const agent = decodeAgent({ ...ampAcpEntry, distribution: {} });
+    expect(deriveAcpInstallSafety(agent)).toEqual({
+      checksumVerifiable: false,
+      risks: ["no_distribution"],
+    });
+  });
+});
