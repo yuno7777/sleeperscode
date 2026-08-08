@@ -24,8 +24,10 @@ The build reported existing large-chunk and sourcemap warnings but exited succes
 
 | Metric                                |         Original |        Hybrid Rust |               Improvement |
 | ------------------------------------- | ---------------: | -----------------: | ------------------------: |
-| Idle RAM                              | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
-| Startup                               | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
+| Idle RAM (headless server only)       |       174.74 MiB |         178.08 MiB |   Within run-to-run noise |
+| Startup (headless server only)        |  3,713.9 ms warm |    3,691.1 ms warm |   Within run-to-run noise |
+| Idle RAM (whole application)          | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
+| Startup (whole application)           | **NOT MEASURED** |   **NOT MEASURED** |          **NOT MEASURED** |
 | Original generic process launch proxy |   48.912 ms mean | **NOT COMPARABLE** |          **NOT MEASURED** |
 | Paired no-op process launch (v1)      |   58.461 ms mean |     43.258 ms mean |  26.0% lower mean latency |
 | Paired no-op process launch (v2)      |   50.094 ms mean |     68.296 ms mean | 36.3% higher mean latency |
@@ -193,6 +195,40 @@ reduced the maximum process count by 10. This removes most of the shared-sidecar
 the earlier shared sample was 42.3% slower. Rust is still not faster on this workload, the samples
 were taken under uncontrolled local background load, and packaging plus whole-application gates
 remain open, so `auto` continues to select Node.
+
+## Controlled server startup and idle
+
+Command:
+
+```text
+node scripts/benchmark-server-startup.mjs --backend=node,rust --repeat=4 --idle-seconds=20
+```
+
+Each run spawns the bundled `apps/server/dist/bin.mjs` on a reserved ephemeral port against a
+throwaway base directory, times spawn until `/.well-known/t3/environment` answers, then samples the
+server process tree every 250 ms for 20 seconds. No client is connected, no project is opened, and
+no provider session is started. The two backends alternate within each iteration.
+
+| Backend | Cold spawn to serve | Mean warm spawn to serve | Mean window RSS | Peak window RSS | Settled RSS | Settled CPU | Max processes |
+| :------ | ------------------: | -----------------------: | --------------: | --------------: | ----------: | ----------: | ------------: |
+| Node    |          2,715.2 ms |               3,713.9 ms |      232.54 MiB |    1,074.20 MiB |  174.74 MiB |       1.20% |             9 |
+| Rust    |          3,876.2 ms |               3,691.1 ms |      230.67 MiB |    1,122.89 MiB |  178.08 MiB |       1.12% |            10 |
+
+Settled figures are the mean over the second half of each window; answering HTTP is not the same as
+being quiet. The backends are indistinguishable here, which is expected: nothing in this scenario
+starts a provider process. The cold rows differ by 1.2 seconds on one sample each and should not be
+read as a backend difference.
+
+That interleaving is not decorative. An earlier pair of separate invocations put Rust 1.2 seconds
+behind Node across all three runs; re-measuring Node afterwards reproduced the slower number on
+Node, so the gap was ambient machine load, not the backend. Startup timing on this host drifts by
+more than a second between otherwise identical runs.
+
+The stable result is the resident profile: an idle headless server settles near 175-180 MiB across
+7-10 processes at about 1% CPU, after a transient peak near 1.1 GiB during startup. The transient is
+six times the settled figure and is the more interesting target; this harness does not attribute it
+to a specific child process. Electron, the web client, an open project, and live provider sessions
+are all absent, so this is a server floor and not an application baseline.
 
 ## Windows process-tree cancellation
 
