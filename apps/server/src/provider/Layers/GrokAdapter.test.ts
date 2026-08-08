@@ -26,6 +26,11 @@ import {
 } from "@t3tools/contracts";
 
 import { ServerConfig } from "../../config.ts";
+import {
+  makeProviderMockLauncher,
+  waitForChildProcessesToExit,
+  waitForLoggedChildPids,
+} from "../testUtils/providerMockLauncher.ts";
 import { grokPromptSettlementBelongsToContext, makeGrokAdapter } from "./GrokAdapter.ts";
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
 
@@ -33,19 +38,17 @@ const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.ts");
 const mockAgentCommand = process.execPath;
 
-async function makeMockGrokWrapper(extraEnv?: Record<string, string>) {
-  const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-acp-mock-"));
-  const wrapperPath = NodePath.join(dir, "fake-grok.sh");
-  const envExports = Object.entries(extraEnv ?? {})
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join("\n");
-  const script = `#!/bin/sh
-${envExports}
-exec ${JSON.stringify(mockAgentCommand)} ${JSON.stringify(mockAgentPath)} "$@"
-`;
-  await NodeFSP.writeFile(wrapperPath, script, "utf8");
-  await NodeFSP.chmod(wrapperPath, 0o755);
-  return wrapperPath;
+async function makeMockGrokWrapper(
+  extraEnv?: Record<string, string>,
+  options?: { childPidLogPath?: string },
+) {
+  return makeProviderMockLauncher({
+    prefix: "grok-acp-mock-",
+    command: mockAgentCommand,
+    args: ["--experimental-strip-types", mockAgentPath],
+    ...(extraEnv ? { env: extraEnv } : {}),
+    ...(options?.childPidLogPath ? { childPidLogPath: options.childPidLogPath } : {}),
+  });
 }
 
 function waitForFileContent(
@@ -195,11 +198,13 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-adapter-exit-log-")),
       );
       const exitLogPath = NodePath.join(tempDir, "exit.log");
+      const childPidLogPath = NodePath.join(tempDir, "child-pids.txt");
 
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockGrokWrapper({
-          T3_ACP_EXIT_LOG_PATH: exitLogPath,
-        }),
+        makeMockGrokWrapper(
+          { T3_ACP_EXIT_LOG_PATH: exitLogPath },
+          process.platform === "win32" ? { childPidLogPath } : undefined,
+        ),
       );
       const adapter = yield* makeTestAdapter(wrapperPath);
 
@@ -211,10 +216,18 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-build" },
       });
 
+      const childPids =
+        process.platform === "win32"
+          ? yield* Effect.promise(() => waitForLoggedChildPids(childPidLogPath, 1))
+          : [];
       yield* adapter.stopSession(threadId);
 
-      const exitLog = yield* waitForFileContent(exitLogPath);
-      assert.include(exitLog, "SIGTERM");
+      if (process.platform === "win32") {
+        yield* Effect.promise(() => waitForChildProcessesToExit(childPids));
+      } else {
+        const exitLog = yield* waitForFileContent(exitLogPath);
+        assert.include(exitLog, "SIGTERM");
+      }
     }),
   );
 
