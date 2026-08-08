@@ -123,6 +123,32 @@ processes at the maximum, but elapsed time was 42.3% worse. The result confirms 
 at this workload; it does not identify whether the bottleneck is the sidecar event channel, the
 single TypeScript NDJSON reader, queue scheduling, or another shared resource.
 
+### Raw streaming sidecar pool probe
+
+The provider and Effect layers were removed from a second diagnostic. Each session sends an exact
+32 KiB payload to the release `runtime-fixture`, closes stdin, and verifies the echoed bytes. One
+warmup runs per sidecar before timing. The harness records process-start, control-acceptance, and
+exit phases and enforces a 15-second operation deadline:
+
+```text
+node scripts/benchmark-runtime-streaming.mjs --levels=10 --pool-sizes=1,3,5 --repeat=3 --timeout-ms=15000
+```
+
+| Sidecars | Sessions | Runs | Mean elapsed |    Elapsed range | Mean last start |
+| -------: | -------: | ---: | -----------: | ---------------: | --------------: |
+|        1 |       10 |    3 |   3,139.2 ms | 603.3-4,618.5 ms |      3,134.5 ms |
+|        3 |       10 |    3 |     857.4 ms | 261.3-1,760.9 ms |        852.9 ms |
+|        5 |       10 |    3 |     192.9 ms |   130.9-269.4 ms |        187.2 ms |
+|       10 |       10 |    3 |     108.8 ms |   103.1-116.6 ms |        102.7 ms |
+
+Moving synchronous Windows launch and Job Object attachment to Tokio's blocking pool reduced a
+small three-session shared-sidecar probe, but did not remove the parent-local launch bottleneck. In
+the repeated 10-session sample, nearly all elapsed time accumulated before the last
+`processStarted`; control acceptance and exact echo completion followed within about 4-6 ms. The
+raw result rules out the TypeScript NDJSON reader and ACP event queue as the primary cause for this
+workload. It favors session-scoped sidecars for latency, but does not yet quantify their process-tree
+RSS cost, so it is a design input rather than an automatic-backend qualification.
+
 ## Windows process-tree cancellation
 
 Command:
