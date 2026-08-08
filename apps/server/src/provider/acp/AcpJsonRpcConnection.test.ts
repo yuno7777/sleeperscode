@@ -7,6 +7,7 @@ import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import { it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -307,6 +308,93 @@ describe("AcpSessionRuntime", () => {
         ),
       );
     }
+  }
+
+  for (const backend of ["node", "rust"] as const) {
+    it.effect(`holds the agent when the ${backend} event consumer stalls`, () => {
+      const chunkCount = 1024;
+      const chunkBytes = 4 * 1024;
+      // A stalled consumer stops the transport well before the event queue fills:
+      // read-ahead is capped by the pipe and the transport's own buffers, not by
+      // ACP_SESSION_EVENT_QUEUE_CAPACITY. Keep this receipt below that observed
+      // floor so it is always reached.
+      const readMessagesBeforeAssert = 16;
+      let incomingRawMessages = 0;
+      let streaming: Deferred.Deferred<void> | undefined;
+
+      return Effect.gen(function* () {
+        streaming = yield* Deferred.make<void>();
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+
+        const promptFiber = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "stream while the consumer stalls" }] })
+          .pipe(Effect.forkChild);
+
+        // Wait on a transport receipt rather than a timer: the agent has streamed
+        // into the turn while nothing has consumed a single event.
+        yield* Deferred.await(streaming);
+
+        // The undelivered deltas dwarf every buffer between the agent and the
+        // event queue, so the prompt cannot finish while nothing drains. Had the
+        // transport read ahead instead of propagating backpressure to the agent,
+        // the prompt would already have completed.
+        expect(chunkCount).toBeGreaterThan(AcpSessionRuntime.ACP_SESSION_EVENT_QUEUE_CAPACITY);
+        expect(promptFiber.pollUnsafe()).toBeUndefined();
+
+        // Resuming loses nothing that was produced while the consumer was stalled.
+        const events = Array.from(
+          yield* runtime.getEvents().pipe(Stream.take(chunkCount + 2), Stream.runCollect),
+        );
+        const result = yield* Fiber.join(promptFiber);
+
+        expect(result.stopReason).toBe("end_turn");
+        expect(events[0]?._tag).toBe("AssistantItemStarted");
+        expect(events.at(-1)?._tag).toBe("AssistantItemCompleted");
+        const deltas = events.filter((event) => event._tag === "ContentDelta");
+        expect(deltas).toHaveLength(chunkCount);
+        expect(
+          deltas.reduce(
+            (total, event) => total + (event._tag === "ContentDelta" ? event.text.length : 0),
+            0,
+          ),
+        ).toBe(chunkCount * chunkBytes);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                T3_ACP_STREAM_CHUNK_COUNT: String(chunkCount),
+                T3_ACP_STREAM_CHUNK_BYTES: String(chunkBytes),
+              },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "t3-slow-consumer-test", version: "0.0.0" },
+            authMethodId: "test",
+            protocolLogging: {
+              logIncoming: true,
+              logger: (event) => {
+                if (event.direction !== "incoming" || event.stage !== "raw") {
+                  return Effect.void;
+                }
+                incomingRawMessages += 1;
+                return incomingRawMessages === readMessagesBeforeAssert && streaming
+                  ? Deferred.succeed(streaming, void 0).pipe(Effect.asVoid)
+                  : Effect.void;
+              },
+            },
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(HostProcessEnvironment, {
+          ...process.env,
+          T3CODE_RUNTIME_BACKEND: backend,
+        }),
+      );
+    });
   }
 
   it.effect("keeps assistant item IDs unique when a provider session restarts", () => {
