@@ -36,6 +36,7 @@
     "bench:provider-concurrency": "node scripts/benchmark-provider-concurrency.mjs",
     "bench:server-startup": "node scripts/benchmark-server-startup.mjs",
     "bench:git-operations": "node scripts/benchmark-git-operations.mjs",
+    "bench:workspace-scan": "node scripts/benchmark-workspace-scan.mjs",
     "test:desktop-smoke": "vp run --filter @t3tools/desktop smoke-test",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
