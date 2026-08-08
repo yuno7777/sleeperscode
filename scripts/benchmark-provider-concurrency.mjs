@@ -27,14 +27,27 @@ const repeat = Number(repeatArgument?.slice("--repeat=".length) ?? "1");
 if (!Number.isSafeInteger(repeat) || repeat < 1) {
   throw new Error(`Invalid repeat count: ${repeat}. Expected a positive integer.`);
 }
+const supportedLevels = [1, 3, 5, 10];
+const levelsArgument = argumentsList.find((argument) => argument.startsWith("--levels="));
+const levels = (levelsArgument?.slice("--levels=".length) ?? supportedLevels.join(","))
+  .split(",")
+  .map(Number);
+if (
+  levels.length === 0 ||
+  levels.some((level, index) => !supportedLevels.includes(level) || levels.indexOf(level) !== index)
+) {
+  throw new Error(`Invalid concurrency levels. Expected unique values from ${supportedLevels}.`);
+}
 const positionalArguments = argumentsList.filter(
-  (argument) => !argument.startsWith("--backend=") && !argument.startsWith("--repeat="),
+  (argument) =>
+    !argument.startsWith("--backend=") &&
+    !argument.startsWith("--repeat=") &&
+    !argument.startsWith("--levels="),
 );
 if (positionalArguments.length > 1) {
   throw new Error("Expected at most one resource-monitor path.");
 }
 const monitorPath = path.resolve(positionalArguments[0] ?? defaultMonitorPath);
-const levels = [1, 3, 5, 10];
 const vitePlus = path.join(repositoryRoot, "node_modules", "vite-plus", "dist", "bin.js");
 const stressTest = "apps/server/src/provider/acp/ProviderStreamingStress.test.ts";
 
