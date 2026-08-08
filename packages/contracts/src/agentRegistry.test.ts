@@ -5,6 +5,7 @@ import {
   AcpRegistry,
   AcpRegistryAgent,
   acpPlatformTriple,
+  acpPrerequisitesFor,
   deriveAcpInstallSafety,
   selectAcpDistribution,
 } from "./agentRegistry.ts";
@@ -161,6 +162,28 @@ describe("selectAcpDistribution", () => {
     });
     expect(selectAcpDistribution(agent, "windows-x86_64").kind).toBe("binary");
     expect(deriveAcpInstallSafety(agent).checksumVerifiable).toBe(false);
+  });
+});
+
+describe("acpPrerequisitesFor", () => {
+  it("needs nothing for a self-contained binary", () => {
+    const choice = selectAcpDistribution(decodeAgent(ampAcpEntry), "windows-x86_64");
+    expect(acpPrerequisitesFor(choice)).toEqual([]);
+  });
+
+  it("needs Node on PATH for an npx distribution", () => {
+    const choice = selectAcpDistribution(decodeAgent(npxEntry), "windows-x86_64");
+    expect(acpPrerequisitesFor(choice)).toEqual(["node"]);
+  });
+
+  it("needs uv for a uvx distribution", () => {
+    const agent = decodeAgent({ ...npxEntry, distribution: { uvx: { package: "example" } } });
+    expect(acpPrerequisitesFor(selectAcpDistribution(agent, "linux-x86_64"))).toEqual(["uv"]);
+  });
+
+  it("asks for nothing when there is nothing to install", () => {
+    const agent = decodeAgent({ ...ampAcpEntry, distribution: {} });
+    expect(acpPrerequisitesFor(selectAcpDistribution(agent, "linux-x86_64"))).toEqual([]);
   });
 });
 

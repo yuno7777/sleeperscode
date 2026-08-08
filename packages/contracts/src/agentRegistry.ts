@@ -227,3 +227,37 @@ export const selectAcpDistribution = (
   }
   return { kind: "unavailable", reason: "no_distribution_for_platform" };
 };
+
+/**
+ * Third-party tooling a distribution needs before it can run.
+ *
+ * `node` is listed even though this application already requires Node, because
+ * an agent launched through `npx` needs Node reachable on the user's PATH, which
+ * is a different question from the runtime this server happens to be running on.
+ */
+export const AcpPrerequisite = Schema.Literals(["node", "uv"]);
+export type AcpPrerequisite = typeof AcpPrerequisite.Type;
+
+/**
+ * Prerequisites implied by how an agent is obtained.
+ *
+ * A downloaded binary is self-contained and needs nothing installed first, which
+ * is the second reason Phase 22's ordering prefers it: fewer things to ask the
+ * user to install before they can try an agent.
+ *
+ * This states what a distribution *requires*. Whether the machine has it is a
+ * runtime probe, not something a contract can answer.
+ */
+export const acpPrerequisitesFor = (
+  choice: AcpDistributionChoice,
+): ReadonlyArray<AcpPrerequisite> => {
+  switch (choice.kind) {
+    case "npx":
+      return ["node"];
+    case "uvx":
+      return ["uv"];
+    case "binary":
+    case "unavailable":
+      return [];
+  }
+};
