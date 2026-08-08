@@ -2,7 +2,15 @@ import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-export const RUNTIME_PROTOCOL_VERSION = 1 as const;
+export const RUNTIME_PROTOCOL_VERSION = 2 as const;
+export const RUNTIME_STREAM_CHUNK_MAX_BYTES = 64 * 1024;
+const RUNTIME_STREAM_CHUNK_MAX_BASE64_LENGTH = Math.ceil(RUNTIME_STREAM_CHUNK_MAX_BYTES / 3) * 4;
+
+export const RuntimeBase64Chunk = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(RUNTIME_STREAM_CHUNK_MAX_BASE64_LENGTH),
+  Schema.isPattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+);
+export type RuntimeBase64Chunk = typeof RuntimeBase64Chunk.Type;
 
 export const RuntimeBackend = Schema.Literals(["node", "rust", "auto"]);
 export type RuntimeBackend = typeof RuntimeBackend.Type;
@@ -27,6 +35,39 @@ export const RuntimeRunRequest = Schema.Struct({
 });
 export type RuntimeRunRequest = typeof RuntimeRunRequest.Type;
 
+export const RuntimeStartRequest = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("start"),
+  requestId: TrimmedNonEmptyString,
+  command: TrimmedNonEmptyString,
+  args: Schema.Array(Schema.String),
+  cwd: Schema.NullOr(Schema.String),
+  env: Schema.NullOr(Schema.Record(Schema.String, Schema.String)),
+});
+export type RuntimeStartRequest = typeof RuntimeStartRequest.Type;
+
+export const RuntimeWriteRequest = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("write"),
+  requestId: TrimmedNonEmptyString,
+  dataBase64: RuntimeBase64Chunk,
+});
+export type RuntimeWriteRequest = typeof RuntimeWriteRequest.Type;
+
+export const RuntimeCloseStdinRequest = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("closeStdin"),
+  requestId: TrimmedNonEmptyString,
+});
+export type RuntimeCloseStdinRequest = typeof RuntimeCloseStdinRequest.Type;
+
+export const RuntimeStopRequest = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("stop"),
+  requestId: TrimmedNonEmptyString,
+});
+export type RuntimeStopRequest = typeof RuntimeStopRequest.Type;
+
 export const RuntimeCancelRequest = Schema.Struct({
   version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
   type: Schema.Literal("cancel"),
@@ -42,6 +83,10 @@ export type RuntimeShutdownRequest = typeof RuntimeShutdownRequest.Type;
 
 export const RuntimeRequest = Schema.Union([
   RuntimeRunRequest,
+  RuntimeStartRequest,
+  RuntimeWriteRequest,
+  RuntimeCloseStdinRequest,
+  RuntimeStopRequest,
   RuntimeCancelRequest,
   RuntimeShutdownRequest,
 ]);
@@ -75,6 +120,25 @@ export const RuntimeProcessStartedEvent = Schema.Struct({
 });
 export type RuntimeProcessStartedEvent = typeof RuntimeProcessStartedEvent.Type;
 
+export const RuntimeProcessOutputEvent = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("processOutput"),
+  requestId: TrimmedNonEmptyString,
+  stream: Schema.Literals(["stdout", "stderr"]),
+  sequence: NonNegativeInt,
+  dataBase64: RuntimeBase64Chunk,
+});
+export type RuntimeProcessOutputEvent = typeof RuntimeProcessOutputEvent.Type;
+
+export const RuntimeProcessExitedEvent = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("processExited"),
+  requestId: TrimmedNonEmptyString,
+  exitCode: Schema.NullOr(Schema.Int),
+  stopped: Schema.Boolean,
+});
+export type RuntimeProcessExitedEvent = typeof RuntimeProcessExitedEvent.Type;
+
 export const RuntimeProcessCompletedEvent = Schema.Struct({
   version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
   type: Schema.Literal("processCompleted"),
@@ -106,6 +170,8 @@ export type RuntimeErrorEvent = typeof RuntimeErrorEvent.Type;
 export const RuntimeEvent = Schema.Union([
   RuntimeHelloEvent,
   RuntimeProcessStartedEvent,
+  RuntimeProcessOutputEvent,
+  RuntimeProcessExitedEvent,
   RuntimeProcessCompletedEvent,
   RuntimeErrorEvent,
 ]);

@@ -17,7 +17,7 @@ describe("native runtime protocol", () => {
 
   it("decodes a Rust run request fixture", () => {
     const decoded = Schema.decodeUnknownSync(RuntimeRequest)({
-      version: 1,
+      version: 2,
       type: "run",
       requestId: "request-1",
       command: "program.exe",
@@ -39,7 +39,7 @@ describe("native runtime protocol", () => {
   it("decodes structured completion and error events", () => {
     expect(
       Schema.decodeUnknownSync(RuntimeEvent)({
-        version: 1,
+        version: 2,
         type: "processCompleted",
         requestId: "request-1",
         exitCode: 0,
@@ -53,7 +53,7 @@ describe("native runtime protocol", () => {
     ).toBe("processCompleted");
     expect(
       Schema.decodeUnknownSync(RuntimeEvent)({
-        version: 1,
+        version: 2,
         type: "error",
         requestId: "request-1",
         code: "PROCESS_SPAWN_FAILED",
@@ -65,5 +65,34 @@ describe("native runtime protocol", () => {
         observedOutputBytes: null,
       }).type,
     ).toBe("error");
+  });
+
+  it("decodes bounded streaming requests and byte events", () => {
+    const write = Schema.decodeUnknownSync(RuntimeRequest)({
+      version: 2,
+      type: "write",
+      requestId: "session-1",
+      dataBase64: "aGVsbG8=",
+    });
+    expect(write.type).toBe("write");
+
+    const output = Schema.decodeUnknownSync(RuntimeEvent)({
+      version: 2,
+      type: "processOutput",
+      requestId: "session-1",
+      stream: "stdout",
+      sequence: 0,
+      dataBase64: "8J+Zgg==",
+    });
+    expect(output.type).toBe("processOutput");
+
+    expect(() =>
+      Schema.decodeUnknownSync(RuntimeRequest)({
+        version: 2,
+        type: "write",
+        requestId: "session-1",
+        dataBase64: "not base64",
+      }),
+    ).toThrow();
   });
 });
