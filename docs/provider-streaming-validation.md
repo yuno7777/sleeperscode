@@ -51,5 +51,5 @@ supported-version claim.
 - Exercise authenticated launch, authentication failure, and provider-specific crash behavior in a
   disposable account or sanctioned fixture environment.
 - Design and measure bounded high-event-rate backpressure before moving streaming ownership to Rust.
-- Run 1/3/5/10 concurrent provider sessions with complete process-tree CPU and memory sampling.
+- Repeat 1/3/5/10 process-tree sampling with real provider fixtures and multiple runs per level.
 - Repeat the matrix under the repository-required Node 24 toolchain.
