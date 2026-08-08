@@ -250,56 +250,59 @@ describe("AcpSessionRuntime", () => {
     );
   });
 
-  it.effect("preserves a 64-event native stream losslessly", () => {
-    const chunkCount = 64;
-    const chunkBytes = 16 * 1024;
-    return Effect.gen(function* () {
-      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
-      yield* runtime.start();
-      const eventsFiber = yield* runtime
-        .getEvents()
-        .pipe(Stream.take(chunkCount + 2), Stream.runCollect, Effect.forkChild);
+  for (const [chunkCount, chunkBytes] of [
+    [64, 16 * 1024],
+    [512, 2 * 1024],
+  ] as const) {
+    it.effect(`preserves a ${chunkCount}-event native stream losslessly`, () =>
+      Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        const eventsFiber = yield* runtime
+          .getEvents()
+          .pipe(Stream.take(chunkCount + 2), Stream.runCollect, Effect.forkChild);
 
-      const result = yield* runtime.prompt({
-        prompt: [{ type: "text", text: "stream more events" }],
-      });
-      const events = Array.from(yield* Fiber.join(eventsFiber));
-      const deltas = events.filter((event) => event._tag === "ContentDelta");
+        const result = yield* runtime.prompt({
+          prompt: [{ type: "text", text: "stream more events" }],
+        });
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+        const deltas = events.filter((event) => event._tag === "ContentDelta");
 
-      expect(result.stopReason).toBe("end_turn");
-      expect(events[0]?._tag).toBe("AssistantItemStarted");
-      expect(events.at(-1)?._tag).toBe("AssistantItemCompleted");
-      expect(deltas).toHaveLength(chunkCount);
-      expect(
-        deltas.reduce(
-          (total, event) => total + (event._tag === "ContentDelta" ? event.text.length : 0),
-          0,
-        ),
-      ).toBe(chunkCount * chunkBytes);
-    }).pipe(
-      Effect.provide(
-        AcpSessionRuntime.layer({
-          spawn: {
-            command: mockAgentCommand,
-            args: mockAgentArgs,
-            env: {
-              T3_ACP_STREAM_CHUNK_COUNT: String(chunkCount),
-              T3_ACP_STREAM_CHUNK_BYTES: String(chunkBytes),
+        expect(result.stopReason).toBe("end_turn");
+        expect(events[0]?._tag).toBe("AssistantItemStarted");
+        expect(events.at(-1)?._tag).toBe("AssistantItemCompleted");
+        expect(deltas).toHaveLength(chunkCount);
+        expect(
+          deltas.reduce(
+            (total, event) => total + (event._tag === "ContentDelta" ? event.text.length : 0),
+            0,
+          ),
+        ).toBe(chunkCount * chunkBytes);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                T3_ACP_STREAM_CHUNK_COUNT: String(chunkCount),
+                T3_ACP_STREAM_CHUNK_BYTES: String(chunkBytes),
+              },
             },
-          },
-          cwd: process.cwd(),
-          clientInfo: { name: "t3-native-backpressure-test", version: "0.0.0" },
-          authMethodId: "test",
+            cwd: process.cwd(),
+            clientInfo: { name: "t3-native-backpressure-test", version: "0.0.0" },
+            authMethodId: "test",
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(HostProcessEnvironment, {
+          ...process.env,
+          T3CODE_RUNTIME_BACKEND: "rust",
         }),
       ),
-      Effect.scoped,
-      Effect.provide(NodeServices.layer),
-      Effect.provideService(HostProcessEnvironment, {
-        ...process.env,
-        T3CODE_RUNTIME_BACKEND: "rust",
-      }),
     );
-  });
+  }
 
   it.effect("keeps assistant item IDs unique when a provider session restarts", () => {
     const collectFirstAssistantItemId = Effect.gen(function* () {
