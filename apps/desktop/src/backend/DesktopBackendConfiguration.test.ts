@@ -728,10 +728,10 @@ describe("DesktopBackendConfiguration", () => {
       const dirname = path.join(resourcesPath, "app.asar/apps/desktop/dist-electron");
       const embeddedMonitorPath = path.join(
         resourcesPath,
-        "app.asar/apps/desktop/prod-resources/resource-monitor/t3-resource-monitor",
+        "app.asar/apps/desktop/prod-resources/resource-monitor/t3-resource-monitor.exe",
       );
-      const monitorPath = path.join(resourcesPath, "resource-monitor/t3-resource-monitor");
-      const runtimeSidecarPath = path.join(resourcesPath, "runtime-sidecar/t3-runtime-sidecar");
+      const monitorPath = path.join(resourcesPath, "resource-monitor/t3-resource-monitor.exe");
+      const runtimeSidecarPath = path.join(resourcesPath, "runtime-sidecar/t3-runtime-sidecar.exe");
       yield* fileSystem.makeDirectory(
         path.join(resourcesPath, "app.asar/apps/desktop/prod-resources/resource-monitor"),
         { recursive: true },
@@ -766,6 +766,7 @@ describe("DesktopBackendConfiguration", () => {
                 appPath: path.join(resourcesPath, "app.asar"),
                 dirname,
                 isPackaged: true,
+                platform: "win32",
                 resourcesPath,
               }),
             ),
