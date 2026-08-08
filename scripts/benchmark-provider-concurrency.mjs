@@ -18,9 +18,14 @@ const defaultMonitorPath = path.join(
 );
 const argumentsList = process.argv.slice(2);
 const backendArgument = argumentsList.find((argument) => argument.startsWith("--backend="));
-const backend = backendArgument?.slice("--backend=".length) ?? "node";
-if (backend !== "node" && backend !== "rust") {
-  throw new Error(`Unknown runtime backend: ${backend}. Expected node or rust.`);
+// Ambient machine load moves these timings by more than the backends differ, so a
+// comma-separated list alternates them inside one invocation instead of relying on
+// two separate runs being comparable.
+const backends = (backendArgument?.slice("--backend=".length) ?? "node").split(",");
+for (const candidate of backends) {
+  if (candidate !== "node" && candidate !== "rust") {
+    throw new Error(`Unknown runtime backend: ${candidate}. Expected node or rust.`);
+  }
 }
 const repeatArgument = argumentsList.find((argument) => argument.startsWith("--repeat="));
 const repeat = Number(repeatArgument?.slice("--repeat=".length) ?? "1");
@@ -61,7 +66,7 @@ function writeCommand(child, command) {
   child.stdin.write(`${JSON.stringify(command)}\n`);
 }
 
-async function measureLevel(concurrency) {
+async function measureLevel(concurrency, backend) {
   const test = spawn(
     process.execPath,
     [
@@ -116,11 +121,11 @@ async function measureLevel(concurrency) {
 
   if (testCode !== 0 || testSignal) {
     throw new Error(
-      `Concurrency ${concurrency} failed (${testSignal ?? testCode}): ${Buffer.concat(stderr).toString("utf8")}`,
+      `Concurrency ${concurrency} on ${backend} failed (${testSignal ?? testCode}): ${Buffer.concat(stderr).toString("utf8")}`,
     );
   }
   if (snapshots.length === 0) {
-    throw new Error(`Concurrency ${concurrency} produced no resource snapshots.`);
+    throw new Error(`Concurrency ${concurrency} on ${backend} produced no resource snapshots.`);
   }
 
   const totals = snapshots.map((snapshot) => ({
@@ -130,6 +135,7 @@ async function measureLevel(concurrency) {
   }));
   return {
     concurrency,
+    backend,
     elapsedMs,
     samples: snapshots.length,
     peakRssBytes: Math.max(...totals.map((sample) => sample.rssBytes)),
@@ -141,24 +147,31 @@ async function measureLevel(concurrency) {
 const results = [];
 for (let iteration = 1; iteration <= repeat; iteration += 1) {
   for (const level of levels) {
-    results.push({ iteration, ...(await measureLevel(level)) });
+    for (const backend of backends) {
+      results.push({ iteration, ...(await measureLevel(level, backend)) });
+    }
   }
 }
 
 const mean = (values) => values.reduce((total, value) => total + value, 0) / values.length;
-const summary = levels.map((concurrency) => {
-  const samples = results.filter((result) => result.concurrency === concurrency);
-  return {
-    concurrency,
-    repetitions: samples.length,
-    meanElapsedMs: mean(samples.map((sample) => sample.elapsedMs)),
-    meanPeakRssBytes: mean(samples.map((sample) => sample.peakRssBytes)),
-    maximumPeakRssBytes: Math.max(...samples.map((sample) => sample.peakRssBytes)),
-    meanPeakCpuPercent: mean(samples.map((sample) => sample.peakCpuPercent)),
-    maximumProcessCount: Math.max(...samples.map((sample) => sample.peakProcessCount)),
-  };
-});
+const summary = levels.flatMap((concurrency) =>
+  backends.map((backend) => {
+    const samples = results.filter(
+      (result) => result.concurrency === concurrency && result.backend === backend,
+    );
+    return {
+      concurrency,
+      backend,
+      repetitions: samples.length,
+      meanElapsedMs: mean(samples.map((sample) => sample.elapsedMs)),
+      meanPeakRssBytes: mean(samples.map((sample) => sample.peakRssBytes)),
+      maximumPeakRssBytes: Math.max(...samples.map((sample) => sample.peakRssBytes)),
+      meanPeakCpuPercent: mean(samples.map((sample) => sample.peakCpuPercent)),
+      maximumProcessCount: Math.max(...samples.map((sample) => sample.peakProcessCount)),
+    };
+  }),
+);
 
 process.stdout.write(
-  `${JSON.stringify({ backend, repeat, monitorPath, results, summary }, null, 2)}\n`,
+  `${JSON.stringify({ backends, repeat, monitorPath, results, summary }, null, 2)}\n`,
 );
