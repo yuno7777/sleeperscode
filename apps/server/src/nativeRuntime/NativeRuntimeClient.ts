@@ -173,6 +173,7 @@ interface StreamingSessionState {
   readonly started: Deferred.Deferred<number, NativeRuntimeClientError>;
   readonly exit: Deferred.Deferred<NativeRuntimeStreamingExit, NativeRuntimeClientError>;
   readonly output: Queue.Queue<NativeRuntimeStreamChunk, NativeRuntimeClientError | Cause.Done>;
+  readonly processStarted: boolean;
 }
 
 interface PendingStreamingControl {
@@ -278,10 +279,15 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
             next.set(event.requestId, { ...request, processStarted: true });
             return next;
           });
-          const sessions = yield* Ref.get(streamingRef);
-          const session = sessions.get(event.requestId);
-          if (session) {
-            yield* Deferred.succeed(session.started, event.pid);
+          const session = yield* Ref.modify(streamingRef, (sessions) => {
+            const current = sessions.get(event.requestId);
+            if (!current) return [Option.none<StreamingSessionState>(), sessions];
+            const next = new Map(sessions);
+            next.set(event.requestId, { ...current, processStarted: true });
+            return [Option.some(current), next];
+          });
+          if (Option.isSome(session)) {
+            yield* Deferred.succeed(session.value.started, event.pid);
           }
         });
       case "processOutput":
@@ -389,7 +395,7 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
             return [Option.fromUndefinedOr(current), next];
           });
           if (Option.isNone(session)) return;
-          const error = makeError(true);
+          const error = makeError(session.value.processStarted);
           yield* Deferred.fail(session.value.started, error);
           yield* Deferred.fail(session.value.exit, error);
           yield* Queue.fail(session.value.output, error);
@@ -558,7 +564,7 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
       NativeRuntimeStreamChunk,
       NativeRuntimeClientError | Cause.Done
     >(STREAM_OUTPUT_QUEUE_CAPACITY);
-    const state = { started, exit, output } satisfies StreamingSessionState;
+    const state = { started, exit, output, processStarted: false } satisfies StreamingSessionState;
     yield* Ref.update(streamingRef, (sessions) => {
       const next = new Map(sessions);
       next.set(sessionId, state);
