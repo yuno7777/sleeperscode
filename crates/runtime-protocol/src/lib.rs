@@ -19,6 +19,13 @@ pub enum RuntimeStream {
     Stderr,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RuntimeControl {
+    Write,
+    CloseStdin,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(
     tag = "type",
@@ -53,15 +60,18 @@ pub enum RuntimeRequest {
     Write {
         version: u32,
         request_id: String,
+        session_id: String,
         data_base64: String,
     },
     CloseStdin {
         version: u32,
         request_id: String,
+        session_id: String,
     },
     Stop {
         version: u32,
         request_id: String,
+        session_id: String,
     },
     Cancel {
         version: u32,
@@ -115,6 +125,12 @@ pub enum RuntimeEvent {
         version: u32,
         request_id: String,
         pid: u32,
+    },
+    ControlAccepted {
+        version: u32,
+        request_id: String,
+        session_id: String,
+        control: RuntimeControl,
     },
     ProcessOutput {
         version: u32,
@@ -207,7 +223,8 @@ mod tests {
     fn streaming_messages_round_trip_without_losing_bytes() {
         let request = RuntimeRequest::Write {
             version: PROTOCOL_VERSION,
-            request_id: "session-1".into(),
+            request_id: "write-1".into(),
+            session_id: "session-1".into(),
             data_base64: "8J+Zgg==".into(),
         };
         let request_json = serde_json::to_string(&request).expect("serialize write request");
@@ -229,6 +246,19 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<RuntimeEvent>(&event_json).expect("deserialize output"),
             event
+        );
+
+        let receipt = RuntimeEvent::ControlAccepted {
+            version: PROTOCOL_VERSION,
+            request_id: "write-1".into(),
+            session_id: "session-1".into(),
+            control: RuntimeControl::Write,
+        };
+        let receipt_json = serde_json::to_string(&receipt).expect("serialize control receipt");
+        assert!(receipt_json.contains(r#""control":"write""#));
+        assert_eq!(
+            serde_json::from_str::<RuntimeEvent>(&receipt_json).expect("deserialize receipt"),
+            receipt
         );
     }
 }

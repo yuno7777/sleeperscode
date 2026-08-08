@@ -190,6 +190,7 @@ export const make = Effect.fn("nativeRuntime.nativeRuntimeClient.make")(function
         });
       case "processOutput":
       case "processExited":
+      case "controlAccepted":
         return Effect.void;
       case "processCompleted":
         return Effect.gen(function* () {

@@ -90,18 +90,21 @@ async fn streams_bytes_through_the_ndjson_protocol() {
     sidecar
         .send(RuntimeRequest::Write {
             version: PROTOCOL_VERSION,
-            request_id: "protocol-stream".into(),
+            request_id: "protocol-write".into(),
+            session_id: "protocol-stream".into(),
             data_base64: base64::engine::general_purpose::STANDARD.encode(&expected),
         })
         .await;
     sidecar
         .send(RuntimeRequest::CloseStdin {
             version: PROTOCOL_VERSION,
-            request_id: "protocol-stream".into(),
+            request_id: "protocol-close".into(),
+            session_id: "protocol-stream".into(),
         })
         .await;
 
     let mut actual = Vec::new();
+    let mut accepted = Vec::new();
     let mut exited = false;
     while !exited {
         match sidecar.next_event().await {
@@ -121,10 +124,12 @@ async fn streams_bytes_through_the_ndjson_protocol() {
                 assert!(!stopped);
                 exited = true;
             }
+            RuntimeEvent::ControlAccepted { control, .. } => accepted.push(control),
             event => panic!("unexpected streaming event: {event:?}"),
         }
     }
     assert_eq!(actual, expected);
+    assert_eq!(accepted.len(), 2);
     sidecar.shutdown().await;
 }
 
@@ -134,7 +139,8 @@ async fn rejects_invalid_base64_without_crashing_the_sidecar() {
     sidecar
         .send(RuntimeRequest::Write {
             version: PROTOCOL_VERSION,
-            request_id: "invalid-stream".into(),
+            request_id: "invalid-write".into(),
+            session_id: "invalid-stream".into(),
             data_base64: "not base64".into(),
         })
         .await;
@@ -145,7 +151,7 @@ async fn rejects_invalid_base64_without_crashing_the_sidecar() {
             code,
             recoverable: true,
             ..
-        } if request_id == "invalid-stream" && code == "INVALID_STREAM_CHUNK"
+        } if request_id == "invalid-write" && code == "INVALID_STREAM_CHUNK"
     ));
     sidecar.shutdown().await;
 }
@@ -170,7 +176,8 @@ async fn stops_a_streaming_process_through_the_protocol() {
     sidecar
         .send(RuntimeRequest::Stop {
             version: PROTOCOL_VERSION,
-            request_id: "protocol-stop".into(),
+            request_id: "protocol-stop-request".into(),
+            session_id: "protocol-stop".into(),
         })
         .await;
     assert!(matches!(
@@ -205,11 +212,12 @@ async fn reports_input_backpressure_without_blocking_stop() {
 
     let chunk =
         base64::engine::general_purpose::STANDARD.encode(vec![b'x'; STREAM_CHUNK_MAX_BYTES]);
-    for _ in 0..40 {
+    for index in 0..40 {
         sidecar
             .send(RuntimeRequest::Write {
                 version: PROTOCOL_VERSION,
-                request_id: "protocol-backpressure".into(),
+                request_id: format!("backpressure-write-{index}"),
+                session_id: "protocol-backpressure".into(),
                 data_base64: chunk.clone(),
             })
             .await;
@@ -217,7 +225,8 @@ async fn reports_input_backpressure_without_blocking_stop() {
     sidecar
         .send(RuntimeRequest::Stop {
             version: PROTOCOL_VERSION,
-            request_id: "protocol-backpressure".into(),
+            request_id: "backpressure-stop".into(),
+            session_id: "protocol-backpressure".into(),
         })
         .await;
 
@@ -227,6 +236,7 @@ async fn reports_input_backpressure_without_blocking_stop() {
             RuntimeEvent::Error { code, .. } if code == "PROCESS_INPUT_QUEUE_FULL" => {
                 saw_backpressure = true;
             }
+            RuntimeEvent::ControlAccepted { .. } => {}
             RuntimeEvent::ProcessExited { stopped: true, .. } => break,
             event => panic!("unexpected backpressure event: {event:?}"),
         }

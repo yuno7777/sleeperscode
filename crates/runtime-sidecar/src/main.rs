@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use base64::Engine;
 use t3_runtime_protocol::{
-    PROTOCOL_VERSION, RuntimeCapabilities, RuntimeEvent, RuntimeRequest, STREAM_CHUNK_MAX_BYTES,
+    PROTOCOL_VERSION, RuntimeCapabilities, RuntimeControl, RuntimeEvent, RuntimeRequest,
+    STREAM_CHUNK_MAX_BYTES,
 };
 use t3_runtime_sidecar::{
     RunInput, StreamingCommand, StreamingInput, error_event, run_process, run_streaming_process,
@@ -292,6 +293,7 @@ async fn main() {
             }
             RuntimeRequest::Write {
                 request_id,
+                session_id,
                 data_base64,
                 ..
             } => {
@@ -335,7 +337,7 @@ async fn main() {
                         continue;
                     }
                 };
-                let commands = active.lock().await.get(&request_id).and_then(|process| {
+                let commands = active.lock().await.get(&session_id).and_then(|process| {
                     if let ActiveProcess::Streaming { commands, .. } = process {
                         Some(commands.clone())
                     } else {
@@ -386,10 +388,25 @@ async fn main() {
                         },
                     )
                     .await;
+                } else {
+                    emit(
+                        &event_tx,
+                        RuntimeEvent::ControlAccepted {
+                            version: PROTOCOL_VERSION,
+                            request_id,
+                            session_id,
+                            control: RuntimeControl::Write,
+                        },
+                    )
+                    .await;
                 }
             }
-            RuntimeRequest::CloseStdin { request_id, .. } => {
-                let commands = active.lock().await.get(&request_id).and_then(|process| {
+            RuntimeRequest::CloseStdin {
+                request_id,
+                session_id,
+                ..
+            } => {
+                let commands = active.lock().await.get(&session_id).and_then(|process| {
                     if let ActiveProcess::Streaming { commands, .. } = process {
                         Some(commands.clone())
                     } else {
@@ -424,6 +441,17 @@ async fn main() {
                                 },
                             )
                             .await;
+                        } else {
+                            emit(
+                                &event_tx,
+                                RuntimeEvent::ControlAccepted {
+                                    version: PROTOCOL_VERSION,
+                                    request_id,
+                                    session_id,
+                                    control: RuntimeControl::CloseStdin,
+                                },
+                            )
+                            .await;
                         }
                     }
                     None => {
@@ -446,14 +474,18 @@ async fn main() {
                     }
                 }
             }
-            RuntimeRequest::Stop { request_id, .. } => {
-                let process = active.lock().await.remove(&request_id);
+            RuntimeRequest::Stop {
+                request_id,
+                session_id,
+                ..
+            } => {
+                let process = active.lock().await.remove(&session_id);
                 match process {
                     Some(ActiveProcess::Streaming { stop, .. }) => {
                         let _ = stop.send(());
                     }
                     Some(process @ ActiveProcess::Finite(_)) => {
-                        active.lock().await.insert(request_id.clone(), process);
+                        active.lock().await.insert(session_id, process);
                         emit(
                             &event_tx,
                             RuntimeEvent::Error {
