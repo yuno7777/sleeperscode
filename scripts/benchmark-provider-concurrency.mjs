@@ -22,7 +22,14 @@ const backend = backendArgument?.slice("--backend=".length) ?? "node";
 if (backend !== "node" && backend !== "rust") {
   throw new Error(`Unknown runtime backend: ${backend}. Expected node or rust.`);
 }
-const positionalArguments = argumentsList.filter((argument) => !argument.startsWith("--backend="));
+const repeatArgument = argumentsList.find((argument) => argument.startsWith("--repeat="));
+const repeat = Number(repeatArgument?.slice("--repeat=".length) ?? "1");
+if (!Number.isSafeInteger(repeat) || repeat < 1) {
+  throw new Error(`Invalid repeat count: ${repeat}. Expected a positive integer.`);
+}
+const positionalArguments = argumentsList.filter(
+  (argument) => !argument.startsWith("--backend=") && !argument.startsWith("--repeat="),
+);
 if (positionalArguments.length > 1) {
   throw new Error("Expected at most one resource-monitor path.");
 }
@@ -119,8 +126,26 @@ async function measureLevel(concurrency) {
 }
 
 const results = [];
-for (const level of levels) {
-  results.push(await measureLevel(level));
+for (let iteration = 1; iteration <= repeat; iteration += 1) {
+  for (const level of levels) {
+    results.push({ iteration, ...(await measureLevel(level)) });
+  }
 }
 
-process.stdout.write(`${JSON.stringify({ backend, monitorPath, results }, null, 2)}\n`);
+const mean = (values) => values.reduce((total, value) => total + value, 0) / values.length;
+const summary = levels.map((concurrency) => {
+  const samples = results.filter((result) => result.concurrency === concurrency);
+  return {
+    concurrency,
+    repetitions: samples.length,
+    meanElapsedMs: mean(samples.map((sample) => sample.elapsedMs)),
+    meanPeakRssBytes: mean(samples.map((sample) => sample.peakRssBytes)),
+    maximumPeakRssBytes: Math.max(...samples.map((sample) => sample.peakRssBytes)),
+    meanPeakCpuPercent: mean(samples.map((sample) => sample.peakCpuPercent)),
+    maximumProcessCount: Math.max(...samples.map((sample) => sample.peakProcessCount)),
+  };
+});
+
+process.stdout.write(
+  `${JSON.stringify({ backend, repeat, monitorPath, results, summary }, null, 2)}\n`,
+);
