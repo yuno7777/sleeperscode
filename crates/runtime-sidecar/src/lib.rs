@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
+use base64::Engine;
 use t3_runtime_protocol::{OutputMode, PROTOCOL_VERSION, RuntimeEvent, RuntimeStream};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -28,6 +29,22 @@ pub struct RunInput {
     pub max_output_bytes: usize,
     pub output_mode: OutputMode,
     pub truncated_marker: String,
+}
+
+#[derive(Debug)]
+pub struct StreamingInput {
+    pub request_id: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub cwd: Option<String>,
+    pub env: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug)]
+pub enum StreamingCommand {
+    Write(Vec<u8>),
+    CloseStdin,
+    Stop,
 }
 
 #[derive(Debug)]
@@ -183,6 +200,181 @@ async fn capture_stream(
         bytes,
         truncated: observed_bytes > max_bytes,
     })
+}
+
+async fn forward_stream(
+    mut stream: impl AsyncRead + Unpin,
+    stream_kind: RuntimeStream,
+    request_id: String,
+    events: mpsc::Sender<RuntimeEvent>,
+    errors: mpsc::Sender<RunError>,
+) {
+    let stream_name = match stream_kind {
+        RuntimeStream::Stdout => "stdout",
+        RuntimeStream::Stderr => "stderr",
+    };
+    let mut chunk = vec![0_u8; OUTPUT_READ_CHUNK_BYTES];
+    let mut sequence = 0usize;
+
+    loop {
+        let read = match stream.read(&mut chunk).await {
+            Ok(read) => read,
+            Err(source) => {
+                let _ = errors
+                    .send(RunError::Read {
+                        stream: stream_name,
+                        source,
+                    })
+                    .await;
+                return;
+            }
+        };
+        if read == 0 {
+            return;
+        }
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(&chunk[..read]);
+        if events
+            .send(RuntimeEvent::ProcessOutput {
+                version: PROTOCOL_VERSION,
+                request_id: request_id.clone(),
+                stream: stream_kind,
+                sequence,
+                data_base64,
+            })
+            .await
+            .is_err()
+        {
+            return;
+        }
+        sequence = sequence.saturating_add(1);
+    }
+}
+
+pub async fn run_streaming_process(
+    input: StreamingInput,
+    events: mpsc::Sender<RuntimeEvent>,
+    mut commands: mpsc::Receiver<StreamingCommand>,
+) -> Result<(), RunError> {
+    if let Some(cwd) = &input.cwd {
+        let metadata =
+            std::fs::metadata(cwd).map_err(|_| RunError::InvalidWorkingDirectory(cwd.clone()))?;
+        if !metadata.is_dir() {
+            return Err(RunError::InvalidWorkingDirectory(cwd.clone()));
+        }
+    }
+
+    let mut command = Command::new(&input.command);
+    command
+        .args(&input.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(cwd) = &input.cwd {
+        command.current_dir(cwd);
+    }
+    if let Some(env) = &input.env {
+        command.envs(env);
+    }
+
+    let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
+    let mut child = command.spawn().map_err(RunError::Spawn)?;
+    if let Err(error) = process_tree.attach_and_start(&child) {
+        process_tree.terminate(&mut child).await;
+        return Err(RunError::ProcessTree(error));
+    }
+    let pid = child.id().unwrap_or_default();
+    events
+        .send(RuntimeEvent::ProcessStarted {
+            version: PROTOCOL_VERSION,
+            request_id: input.request_id.clone(),
+            pid,
+        })
+        .await
+        .ok();
+
+    let stdout = child.stdout.take().expect("stdout configured as piped");
+    let stderr = child.stderr.take().expect("stderr configured as piped");
+    let mut stdin = child.stdin.take();
+    let (error_tx, mut error_rx) = mpsc::channel(2);
+    let stdout_task = tokio::spawn(forward_stream(
+        stdout,
+        RuntimeStream::Stdout,
+        input.request_id.clone(),
+        events.clone(),
+        error_tx.clone(),
+    ));
+    let stderr_task = tokio::spawn(forward_stream(
+        stderr,
+        RuntimeStream::Stderr,
+        input.request_id.clone(),
+        events.clone(),
+        error_tx,
+    ));
+
+    let (exit_code, stopped) = loop {
+        tokio::select! {
+            status = child.wait() => {
+                let status = status.map_err(RunError::Wait)?;
+                process_tree.terminate_remaining();
+                break (status.code(), false);
+            }
+            command = commands.recv() => {
+                match command {
+                    Some(StreamingCommand::Write(bytes)) => {
+                        let Some(child_stdin) = stdin.as_mut() else {
+                            process_tree.terminate(&mut child).await;
+                            return Err(RunError::Stdin(std::io::Error::new(
+                                std::io::ErrorKind::BrokenPipe,
+                                "stdin is closed",
+                            )));
+                        };
+                        if let Err(error) = child_stdin.write_all(&bytes).await {
+                            process_tree.terminate(&mut child).await;
+                            return Err(RunError::Stdin(error));
+                        }
+                    }
+                    Some(StreamingCommand::CloseStdin) => {
+                        if let Some(mut child_stdin) = stdin.take() {
+                            child_stdin.shutdown().await.map_err(RunError::Stdin)?;
+                        }
+                    }
+                    Some(StreamingCommand::Stop) | None => {
+                        process_tree.terminate(&mut child).await;
+                        break (None, true);
+                    }
+                }
+            }
+            Some(error) = error_rx.recv() => {
+                process_tree.terminate(&mut child).await;
+                return Err(error);
+            }
+        }
+    };
+
+    drop(stdin);
+    stdout_task.await.map_err(|error| RunError::Read {
+        stream: "stdout",
+        source: std::io::Error::other(error),
+    })?;
+    stderr_task.await.map_err(|error| RunError::Read {
+        stream: "stderr",
+        source: std::io::Error::other(error),
+    })?;
+    if let Ok(error) = error_rx.try_recv() {
+        return Err(error);
+    }
+
+    events
+        .send(RuntimeEvent::ProcessExited {
+            version: PROTOCOL_VERSION,
+            request_id: input.request_id,
+            exit_code,
+            stopped,
+        })
+        .await
+        .ok();
+    Ok(())
 }
 
 pub async fn run_process(
