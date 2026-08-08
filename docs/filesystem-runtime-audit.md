@@ -51,12 +51,41 @@ fast enough and already native.
 and 2,893 ms. This is the one filesystem decision that measurably matters, and the existing code
 already makes it.
 
-**Content indexing is expensive and highly variable.** Building the content index averaged 14.1
-seconds with a range of 0.31 to 41.6 seconds across three runs, the spread tracking filesystem cache
-warmth. Production caps this with a 15-second timeout, so on a cold cache a first content search over
-a repository this size can exceed the timeout and surface `WorkspaceSearchIndexScanTimedOut`. That is
-the one finding here worth acting on, and it is a bounds and user-experience question rather than a
-language question.
+**Content indexing looked expensive and highly variable.** Building the content index averaged 14.1
+seconds with a range of 0.31 to 41.6 seconds across three runs. See the correction below: that mean
+is one cold outlier, and the follow-up measurement withdraws the conclusion originally drawn from it.
+
+## Correction: the content index is not near its timeout
+
+This document first concluded that a cold-cache content search on a large repository could exceed the
+15-second production timeout, and listed that as Phase 7's one measured problem. A follow-up
+measurement relating index time to file count does not support it.
+
+```text
+node scripts/benchmark-content-index.mjs --sizes=1000,5000,15000,30000 --repeat=3
+```
+
+| Target                 | Content index mean |
+| :--------------------- | -----------------: |
+| 1,000 synthetic files  |            61.7 ms |
+| 5,000 synthetic files  |           191.4 ms |
+| 15,000 synthetic files |           508.1 ms |
+| 30,000 synthetic files |         1,065.8 ms |
+| this monorepo          |         331-413 ms |
+
+Index construction is linear at roughly 35 microseconds per file. Reaching the 15-second timeout by
+computation alone would take on the order of 400,000 files, and the index caps at 25,000 entries
+before that. Repeated runs on this monorepo now complete in 303-433 ms.
+
+The original 14.1-second mean came from three samples of which one was 41.6 seconds and two were
+about 0.3 seconds. That 41.6-second run was the first content index ever built over this repository
+on this machine, so it measured cold first-touch I/O, not index work. It is not reproducible now that
+the page cache is warm, and a benchmark should not drop the OS cache to try.
+
+**Corrected conclusion: the 15-second timeout is not tight, and no change to it is justified.** What
+remains genuinely unmeasured is a first-ever content index over a large repository on a cold cache,
+which is where the single 41.6-second observation came from. That is a real risk worth remembering,
+but one outlier is not evidence of a defect, and the timeout constant should not be moved on it.
 
 ## Decision
 
@@ -66,14 +95,14 @@ already satisfied, not pending.
 
 Remaining work, in order of value:
 
-1. **Characterise the content-index timeout.** Establish how repository size relates to cold-cache
-   index time, and decide whether 15 seconds is the right bound, whether the failure should be
-   retried or degraded to path-only results, and what the user sees when it trips. This is Phase 7's
-   only measured problem.
-2. **Inventory watcher behavior for Phase 8.** Debounce, deduplication, batching, and storm
+1. **Inventory watcher behavior for Phase 8.** Debounce, deduplication, batching, and storm
    protection were not audited here. The 27x exclusion result strongly suggests watcher exclusions
    deserve the same scrutiny, since a dependency install touches the same 380,000 files.
+2. **Leave the content-index timeout alone.** Characterised above: linear at about 35 microseconds
+   per file, roughly 400,000 files from the bound, and capped at 25,000 entries well before that.
 3. **Leave `WorkspaceEntries` alone.** Single-directory `readdir` is not worth a native call.
+
+Phase 7 therefore has no confirmed defect. It is closed on evidence rather than on work done.
 
 ## A note on measuring this
 
