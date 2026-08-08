@@ -149,6 +149,23 @@ raw result rules out the TypeScript NDJSON reader and ACP event queue as the pri
 workload. It favors session-scoped sidecars for latency, but does not yet quantify their process-tree
 RSS cost, so it is a design input rather than an automatic-backend qualification.
 
+### Session-scoped provider follow-up
+
+Cursor and Grok were then changed from one adapter-scoped sidecar to one lazy sidecar per active ACP
+session. The production-shaped 10-session benchmark was repeated five times per backend with the
+same 250 ms resource monitor:
+
+| Backend | Runs | Mean elapsed | Elapsed range | Mean peak RSS | Maximum peak RSS | Maximum processes |
+| :------ | ---: | -----------: | ------------: | ------------: | ---------------: | ----------------: |
+| Node    |    5 |      5.963 s | 5.517-6.461 s |  1,821.85 MiB |     1,893.29 MiB |                34 |
+| Rust    |    5 |      6.161 s | 6.055-6.321 s |  1,423.96 MiB |     1,694.70 MiB |                24 |
+
+Session-scoped Rust was 3.3% slower by mean elapsed time, used 21.8% less mean peak tree RSS, and
+reduced the maximum process count by 10. This removes most of the shared-sidecar throughput penalty:
+the earlier shared sample was 42.3% slower. Rust is still not faster on this workload, the samples
+were taken under uncontrolled local background load, and packaging plus whole-application gates
+remain open, so `auto` continues to select Node.
+
 ## Windows process-tree cancellation
 
 Command:
