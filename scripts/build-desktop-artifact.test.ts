@@ -2,8 +2,10 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -36,11 +38,13 @@ import {
   resolveDesktopWebAssetBrand,
   resolveResourceMonitorRustTargets,
   resourceMonitorExecutableName,
+  runtimeSidecarExecutableName,
   resolveGitHubPublishConfig,
   resolveMockUpdateServerPort,
   resolveMockUpdateServerUrl,
   resolvePackageManagerUserAgent,
   stageLinuxIconSize,
+  stageRuntimeSidecar,
   STAGE_INSTALL_ARGS,
   WINDOWS_ASAR_UNPACK,
 } from "./build-desktop-artifact.ts";
@@ -558,6 +562,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         from: "apps/desktop/prod-resources/resource-monitor",
         to: "resource-monitor",
       },
+      {
+        from: "apps/desktop/prod-resources/runtime-sidecar",
+        to: "runtime-sidecar",
+      },
     ]);
     assert.deepStrictEqual(resolveResourceMonitorRustTargets("mac", "universal"), [
       "aarch64-apple-darwin",
@@ -571,7 +579,75 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ]);
     assert.equal(resourceMonitorExecutableName("mac"), "t3-resource-monitor");
     assert.equal(resourceMonitorExecutableName("win"), "t3-resource-monitor.exe");
+    assert.equal(runtimeSidecarExecutableName("mac"), "t3-runtime-sidecar");
+    assert.equal(runtimeSidecarExecutableName("win"), "t3-runtime-sidecar.exe");
   });
+
+  it.effect("builds and stages the runtime sidecar for the target architecture", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const repoRoot = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-runtime-sidecar-stage-test-",
+      });
+      const stageResourcesDir = path.join(repoRoot, "stage/resources");
+      const builtBinary = path.join(
+        repoRoot,
+        "target/x86_64-pc-windows-msvc/release/t3-runtime-sidecar.exe",
+      );
+      yield* fileSystem.makeDirectory(path.dirname(builtBinary), { recursive: true });
+      yield* fileSystem.writeFileString(builtBinary, "runtime-sidecar");
+
+      const commands: Array<{
+        readonly command: string;
+        readonly args: ReadonlyArray<string>;
+      }> = [];
+      const spawnerLayer = Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make((command) =>
+          Effect.sync(() => {
+            const childProcess = command as unknown as {
+              readonly command: string;
+              readonly args: ReadonlyArray<string>;
+            };
+            commands.push({
+              command: childProcess.command,
+              args: childProcess.args,
+            });
+            return mockProcess(0);
+          }),
+        ),
+      );
+
+      yield* stageRuntimeSidecar({
+        repoRoot,
+        stageResourcesDir,
+        platform: "win",
+        arch: "x64",
+        verbose: false,
+      }).pipe(Effect.provide(spawnerLayer));
+
+      assert.lengthOf(commands, 1);
+      assert.include(commands[0]!.command.toLowerCase(), "cargo");
+      assert.deepEqual(commands[0]!.args, [
+        "build",
+        "--locked",
+        "--release",
+        "--package",
+        "t3-runtime-sidecar",
+        "--bin",
+        "t3-runtime-sidecar",
+        "--target",
+        "x86_64-pc-windows-msvc",
+      ]);
+      assert.equal(
+        yield* fileSystem.readFileString(
+          path.join(stageResourcesDir, "runtime-sidecar/t3-runtime-sidecar.exe"),
+        ),
+        "runtime-sidecar",
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
   it("promotes target fff binaries to direct staged dependencies", () => {
     assert.deepStrictEqual(resolveFffNativeDependencies("mac", "arm64", "0.9.4"), {
       "@ff-labs/fff-bin-darwin-arm64": "0.9.4",
