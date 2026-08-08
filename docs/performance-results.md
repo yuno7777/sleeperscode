@@ -40,6 +40,24 @@ Toolchain: Node 22.17.0, rustc 1.95.0, Windows x64. The repository's Node 24 req
 unmet on this host. A faster microbenchmark alone does not establish lower application RAM, startup
 time, agent launch time, or package size; those remain `NOT MEASURED`.
 
+## Deterministic provider concurrency
+
+Command: `pnpm bench:provider-concurrency`. Each row is one isolated run of the ACP mock-provider
+stress test while the release resource monitor sampled the complete Vitest process tree every 250
+milliseconds.
+
+| Concurrent sessions | Elapsed | Samples | Peak tree RSS | Peak sampled CPU | Peak processes |
+| ------------------: | ------: | ------: | ------------: | ---------------: | -------------: |
+|                   1 | 2.986 s |       7 |    464.41 MiB |          163.68% |              5 |
+|                   3 | 3.555 s |       9 |    711.66 MiB |          306.42% |              7 |
+|                   5 | 3.890 s |       9 |    908.28 MiB |          566.34% |              9 |
+|                  10 | 4.878 s |       8 |  1,507.00 MiB |          188.24% |             14 |
+
+These numbers include the Vite/Vitest runner, worker, resource monitor, and mock Node agents. They
+are not production-agent RAM claims. There is one run per level and only 7-9 CPU samples, so the CPU
+peaks are observational and should not be ranked across rows. The functional 1/3/5/10 matrix passed;
+real provider and repeated-run distributions remain unmeasured.
+
 ## Windows process-tree cancellation
 
 Command:
