@@ -8,10 +8,13 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as Sink from "effect/Sink";
+import * as Stdio from "effect/Stdio";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
@@ -19,7 +22,12 @@ import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+
+import * as NativeRuntimeClient from "../../nativeRuntime/NativeRuntimeClient.ts";
+import { selectRuntimeBackend } from "../../nativeRuntime/RuntimeBackend.ts";
+import * as ServerConfig from "../../config.ts";
 
 import {
   collectSessionConfigOptionValues,
@@ -276,6 +284,13 @@ export const make = (
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const nativeRuntime = yield* Effect.serviceOption(NativeRuntimeClient.NativeRuntimeClient);
+    const environment = yield* HostProcessEnvironment;
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    const backend = selectRuntimeBackend({
+      configured: Option.isSome(config) ? config.value.runtimeBackend : undefined,
+      environment,
+    });
     const runtimeScope = yield* Scope.Scope;
     const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
     const modeStateRef = yield* Ref.make<AcpSessionModeState | undefined>(undefined);
@@ -334,36 +349,107 @@ export const make = (
       options.spawn.args,
       options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {},
     );
-    const child = yield* spawner
-      .spawn(
-        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-          ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
-          ...(options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {}),
-          shell: spawnCommand.shell,
-        }),
-      )
-      .pipe(
-        Effect.provideService(Scope.Scope, runtimeScope),
-        Effect.mapError(
-          (cause) =>
-            new EffectAcpErrors.AcpSpawnError({
-              command: options.spawn.command,
-              cause,
-            }),
-        ),
-      );
+    const clientOptions = {
+      ...(options.protocolLogging?.logIncoming !== undefined
+        ? { logIncoming: options.protocolLogging.logIncoming }
+        : {}),
+      ...(options.protocolLogging?.logOutgoing !== undefined
+        ? { logOutgoing: options.protocolLogging.logOutgoing }
+        : {}),
+      ...(options.protocolLogging?.logger ? { logger: options.protocolLogging.logger } : {}),
+    };
+    const acpLayer = yield* backend.active === "rust" &&
+    !spawnCommand.shell &&
+    Option.isSome(nativeRuntime)
+      ? Effect.gen(function* () {
+          const session = yield* nativeRuntime.value
+            .startStreaming({
+              command: spawnCommand.command,
+              args: spawnCommand.args,
+              ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
+              ...(options.spawn.env ? { env: options.spawn.env } : {}),
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new EffectAcpErrors.AcpSpawnError({
+                    command: options.spawn.command,
+                    cause,
+                  }),
+              ),
+            );
+          yield* Effect.addFinalizer(() => session.stop.pipe(Effect.ignore));
 
-    const acpContext = yield* Layer.build(
-      EffectAcpClient.layerChildProcess(child, {
-        ...(options.protocolLogging?.logIncoming !== undefined
-          ? { logIncoming: options.protocolLogging.logIncoming }
-          : {}),
-        ...(options.protocolLogging?.logOutgoing !== undefined
-          ? { logOutgoing: options.protocolLogging.logOutgoing }
-          : {}),
-        ...(options.protocolLogging?.logger ? { logger: options.protocolLogging.logger } : {}),
-      }),
-    ).pipe(Effect.provideService(Scope.Scope, runtimeScope));
+          const mapNativeError = (
+            method: "read" | "write",
+            cause: NativeRuntimeClient.NativeRuntimeClientError,
+          ) =>
+            PlatformError.systemError({
+              _tag: "Unknown",
+              module: "NativeRuntimeAcpTransport",
+              method,
+              description: cause.message,
+              cause,
+            });
+          const encoder = new TextEncoder();
+          const stdio = Stdio.make({
+            args: Effect.succeed([]),
+            stdin: session.output.pipe(
+              Stream.filter((event) => event.stream === "stdout"),
+              Stream.map((event) => event.bytes),
+              Stream.mapError((cause) => mapNativeError("read", cause)),
+            ),
+            stdout: () =>
+              Sink.forEach((chunk: string | Uint8Array) =>
+                session
+                  .write(typeof chunk === "string" ? encoder.encode(chunk) : chunk)
+                  .pipe(Effect.mapError((cause) => mapNativeError("write", cause))),
+              ),
+            stderr: () => Sink.drain,
+          });
+          const terminationError = Effect.match(session.exit, {
+            onFailure: (cause) =>
+              new EffectAcpErrors.AcpTransportError({
+                operation: "read-process-exit-status",
+                pid: session.pid,
+                cause,
+              }),
+            onSuccess: (exit) =>
+              new EffectAcpErrors.AcpProcessExitedError({
+                ...(exit.exitCode === null ? {} : { code: exit.exitCode }),
+                pid: session.pid,
+              }),
+          });
+          return Layer.effect(
+            EffectAcpClient.AcpClient,
+            EffectAcpClient.make(stdio, clientOptions, terminationError),
+          );
+        })
+      : Effect.gen(function* () {
+          const child = yield* spawner
+            .spawn(
+              ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+                ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
+                ...(options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {}),
+                shell: spawnCommand.shell,
+              }),
+            )
+            .pipe(
+              Effect.provideService(Scope.Scope, runtimeScope),
+              Effect.mapError(
+                (cause) =>
+                  new EffectAcpErrors.AcpSpawnError({
+                    command: options.spawn.command,
+                    cause,
+                  }),
+              ),
+            );
+          return EffectAcpClient.layerChildProcess(child, clientOptions);
+        });
+
+    const acpContext = yield* Layer.build(acpLayer).pipe(
+      Effect.provideService(Scope.Scope, runtimeScope),
+    );
 
     const acp = yield* Effect.service(EffectAcpClient.AcpClient).pipe(Effect.provide(acpContext));
 
@@ -815,7 +901,7 @@ export const layer = (
   AcpSessionRuntime,
   EffectAcpErrors.AcpError,
   ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
-> => Layer.effect(AcpSessionRuntime, make(options));
+> => Layer.effect(AcpSessionRuntime, make(options)).pipe(Layer.provide(NativeRuntimeClient.layer));
 
 function sessionConfigOptionsFromSetup(
   response:
