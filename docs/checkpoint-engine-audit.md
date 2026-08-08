@@ -97,8 +97,33 @@ must produce the **same tree OID** as the current implementation. That is a diff
 judgement call, and it should cover a clean tree, modified files, new files, deletions, renames,
 ignored files, a HEAD change between captures, and an empty repository with no HEAD.
 
-Until those tests exist, the current behavior stays. A wrong checkpoint tree is silent data loss at
-restore time, and 24 seconds of correct behavior beats 0.4 seconds of nearly correct behavior.
+## Implemented
+
+`GitVcsDriver.checkpoints.captureCheckpoint` now keeps a cached index at
+`<git-common-dir>/t3-checkpoint-index-cache`, alongside a `.head` file recording the HEAD it was
+built against.
+
+The cache is treated as a hint and never as a source of truth:
+
+- It is copied into the capture's own temporary index only when its recorded HEAD matches the
+  current one. A HEAD move, branch switch, or restore falls back to `read-tree HEAD`.
+- A cache that cannot be read or copied falls back to `read-tree HEAD`.
+- A cache that Git rejects when staging is discarded, re-seeded from HEAD, and retried once. This
+  case was not in the original design; the corruption test found it, because a copied index can be
+  structurally intact and still be one Git refuses.
+- Captures keep their own temporary index, so concurrent captures cannot interleave. They can only
+  race on refreshing the cache, where the loser leaves the next capture to re-seed.
+- Reading HEAD now returns the oid rather than a boolean, so the stamp costs no extra Git launch.
+  The capture still runs seven launches, or six when the cache is reused.
+
+`apps/server/src/vcs/GitCheckpointCapture.test.ts` asserts the captured tree oid equals the uncached
+sequence across repeated captures with edits, additions and deletions; a new commit; a branch switch;
+ignored files; a repository with no commits; and a deliberately corrupted cache. All five pass, and
+the surrounding VCS and checkpoint suites show no new failures.
+
+The measured mechanism is the benchmark's equivalent sequence: 10x faster at 5,000 files and 59x at
+15,000. The production path adds the HEAD stamp and the retry, so a first capture after a HEAD move
+still pays the full cost, by design.
 
 ## Limitations
 
