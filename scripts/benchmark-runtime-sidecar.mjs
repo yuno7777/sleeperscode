@@ -4,6 +4,8 @@ import { createInterface } from "node:readline";
 import { performance } from "node:perf_hooks";
 import { resolve } from "node:path";
 
+const PROTOCOL_VERSION = 2;
+const OPERATION_TIMEOUT_MS = 10_000;
 const iterations = Number.parseInt(process.argv[3] ?? "20", 10);
 const executableName =
   process.platform === "win32" ? "t3-runtime-sidecar.exe" : "t3-runtime-sidecar";
@@ -29,6 +31,17 @@ const summarize = (samples) => {
     maxMs: sorted.at(-1),
     rawMs: samples,
   };
+};
+
+const withDeadline = (promise, label) => {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} exceeded ${OPERATION_TIMEOUT_MS} ms.`)),
+      OPERATION_TIMEOUT_MS,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 };
 
 const runDirect = () =>
@@ -58,10 +71,22 @@ const hello = new Promise((resolveHello, rejectHello) => {
 lines.on("line", (line) => {
   const event = JSON.parse(line);
   if (event.type === "hello") {
+    if (event.version !== PROTOCOL_VERSION) {
+      helloReject(
+        new Error(`runtime sidecar protocol ${event.version} does not match ${PROTOCOL_VERSION}`),
+      );
+      return;
+    }
     helloResolve(event);
     return;
   }
   if (event.type !== "processCompleted" && event.type !== "error") return;
+  if (event.type === "error" && event.requestId === null) {
+    const error = new Error(`${event.code}: ${event.message}`);
+    for (const request of pending.values()) request.reject(error);
+    pending.clear();
+    return;
+  }
   const request = pending.get(event.requestId);
   if (!request) return;
   pending.delete(event.requestId);
@@ -87,7 +112,7 @@ const runViaSidecar = (requestId) =>
     });
     sidecar.stdin.write(
       `${JSON.stringify({
-        version: 1,
+        version: PROTOCOL_VERSION,
         type: "run",
         requestId,
         command: process.execPath,
@@ -104,17 +129,19 @@ const runViaSidecar = (requestId) =>
   });
 
 try {
-  await hello;
+  await withDeadline(hello, "sidecar handshake");
   for (let index = 0; index < 3; index += 1) {
     await runDirect();
-    await runViaSidecar(`warmup-${index}`);
+    await withDeadline(runViaSidecar(`warmup-${index}`), "sidecar warmup");
   }
 
   const direct = [];
   const hybrid = [];
   for (let index = 0; index < iterations; index += 1) {
     direct.push(await runDirect());
-    hybrid.push(await runViaSidecar(`measured-${index}`));
+    hybrid.push(
+      await withDeadline(runViaSidecar(`measured-${index}`), "sidecar launch measurement"),
+    );
   }
 
   console.log(
@@ -132,6 +159,6 @@ try {
     ),
   );
 } finally {
-  sidecar.stdin.write(`${JSON.stringify({ version: 1, type: "shutdown" })}\n`);
+  sidecar.stdin.write(`${JSON.stringify({ version: PROTOCOL_VERSION, type: "shutdown" })}\n`);
   sidecar.stdin.end();
 }
