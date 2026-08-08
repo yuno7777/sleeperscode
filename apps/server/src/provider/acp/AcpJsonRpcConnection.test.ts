@@ -269,6 +269,9 @@ describe("AcpSessionRuntime", () => {
           const events = Array.from(yield* Fiber.join(eventsFiber));
           const deltas = events.filter((event) => event._tag === "ContentDelta");
 
+          if (chunkCount === 512) {
+            expect(AcpSessionRuntime.ACP_SESSION_EVENT_QUEUE_CAPACITY).toBeLessThan(chunkCount);
+          }
           expect(result.stopReason).toBe("end_turn");
           expect(events[0]?._tag).toBe("AssistantItemStarted");
           expect(events.at(-1)?._tag).toBe("AssistantItemCompleted");
