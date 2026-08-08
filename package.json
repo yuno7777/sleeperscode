@@ -35,6 +35,7 @@
     "bench:runtime-cancellation": "node scripts/benchmark-runtime-cancellation.mjs",
     "bench:provider-concurrency": "node scripts/benchmark-provider-concurrency.mjs",
     "bench:server-startup": "node scripts/benchmark-server-startup.mjs",
+    "bench:git-operations": "node scripts/benchmark-git-operations.mjs",
     "test:desktop-smoke": "vp run --filter @t3tools/desktop smoke-test",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
