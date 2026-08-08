@@ -34,6 +34,12 @@ Node and Rust. With Rust forced for the entire focused ACP file, all 17 lifecycl
 19.55 seconds. The native 1/3/5/10 concurrent-session matrix also passed all four cases in 8.08
 seconds.
 
+Cursor and Grok now construct one lazy native client per adapter scope and pass it into every ACP
+session, rather than starting one sidecar per session. A five-run 10-session resource sample reduced
+the maximum observed process count from 34 on Node to 15 on Rust and reduced mean peak tree RSS by
+28.1%, but Rust mean elapsed time was 42.3% worse. See `performance-results.md`; this throughput gate
+keeps native provider transport opt-in.
+
 Two earlier ad hoc Node probes with higher event counts did not complete inside a 60-second budget.
 That result is not reproduced by the committed paired regressions: Node and Rust now both pass 64 x
 16 KiB and 512 x 2 KiB, preserving all 1 MiB and every ordered delta. All four cases completed in
