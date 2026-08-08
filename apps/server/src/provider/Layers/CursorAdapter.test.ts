@@ -28,6 +28,11 @@ import {
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import type { CursorAdapterShape } from "../Services/CursorAdapter.ts";
+import {
+  makeProviderMockLauncher,
+  waitForChildProcessesToExit,
+  waitForLoggedChildPids,
+} from "../testUtils/providerMockLauncher.ts";
 import { makeCursorAdapter } from "./CursorAdapter.ts";
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
@@ -38,26 +43,23 @@ class CursorAdapter extends Context.Service<CursorAdapter, CursorAdapterShape>()
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.ts");
-const mockAgentCommand = "node";
-const mockAgentArgs = [mockAgentPath] as const;
+const mockAgentCommand = process.execPath;
+const mockAgentArgs = ["--experimental-strip-types", mockAgentPath] as const;
 
 async function makeMockAgentWrapper(
   extraEnv?: Record<string, string>,
-  options?: { initialDelaySeconds?: number },
+  options?: { initialDelaySeconds?: number; childPidLogPath?: string },
 ) {
-  const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-acp-mock-"));
-  const wrapperPath = NodePath.join(dir, "fake-agent.sh");
-  const envExports = Object.entries(extraEnv ?? {})
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join("\n");
-  const script = `#!/bin/sh
-${envExports}
-${options?.initialDelaySeconds ? `sleep ${JSON.stringify(String(options.initialDelaySeconds))}` : ""}
-exec ${JSON.stringify(mockAgentCommand)} ${mockAgentArgs.map((arg) => JSON.stringify(arg)).join(" ")} "$@"
-`;
-  await NodeFSP.writeFile(wrapperPath, script, "utf8");
-  await NodeFSP.chmod(wrapperPath, 0o755);
-  return wrapperPath;
+  return makeProviderMockLauncher({
+    prefix: "cursor-acp-mock-",
+    command: mockAgentCommand,
+    args: mockAgentArgs,
+    ...(extraEnv ? { env: extraEnv } : {}),
+    ...(options?.initialDelaySeconds
+      ? { initialDelayMs: Math.round(options.initialDelaySeconds * 1000) }
+      : {}),
+    ...(options?.childPidLogPath ? { childPidLogPath: options.childPidLogPath } : {}),
+  });
 }
 
 async function makeProbeWrapper(
@@ -65,21 +67,13 @@ async function makeProbeWrapper(
   argvLogPath: string,
   extraEnv?: Record<string, string>,
 ) {
-  const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-acp-probe-"));
-  const wrapperPath = NodePath.join(dir, "fake-agent.sh");
-  const envExports = Object.entries(extraEnv ?? {})
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join("\n");
-  const script = `#!/bin/sh
-printf '%s\t' "$@" >> ${JSON.stringify(argvLogPath)}
-printf '\n' >> ${JSON.stringify(argvLogPath)}
-export T3_ACP_REQUEST_LOG_PATH=${JSON.stringify(requestLogPath)}
-${envExports}
-exec ${JSON.stringify(mockAgentCommand)} ${mockAgentArgs.map((arg) => JSON.stringify(arg)).join(" ")} "$@"
-`;
-  await NodeFSP.writeFile(wrapperPath, script, "utf8");
-  await NodeFSP.chmod(wrapperPath, 0o755);
-  return wrapperPath;
+  return makeProviderMockLauncher({
+    prefix: "cursor-acp-probe-",
+    command: mockAgentCommand,
+    args: mockAgentArgs,
+    env: { T3_ACP_REQUEST_LOG_PATH: requestLogPath, ...extraEnv },
+    argvLogPath,
+  });
 }
 
 async function readArgvLog(filePath: string) {
@@ -335,11 +329,13 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-adapter-exit-log-")),
       );
       const exitLogPath = NodePath.join(tempDir, "exit.log");
+      const childPidLogPath = NodePath.join(tempDir, "child-pids.txt");
 
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({
-          T3_ACP_EXIT_LOG_PATH: exitLogPath,
-        }),
+        makeMockAgentWrapper(
+          { T3_ACP_EXIT_LOG_PATH: exitLogPath },
+          process.platform === "win32" ? { childPidLogPath } : undefined,
+        ),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -351,10 +347,18 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
       });
 
+      const childPids =
+        process.platform === "win32"
+          ? yield* Effect.promise(() => waitForLoggedChildPids(childPidLogPath, 1))
+          : [];
       yield* adapter.stopSession(threadId);
 
-      const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
-      assert.include(exitLog, "SIGTERM");
+      if (process.platform === "win32") {
+        yield* Effect.promise(() => waitForChildProcessesToExit(childPids));
+      } else {
+        const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
+        assert.include(exitLog, "SIGTERM");
+      }
     }),
   );
 
@@ -369,13 +373,17 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-adapter-concurrent-exit-log-")),
         );
         const exitLogPath = NodePath.join(tempDir, "exit.log");
+        const childPidLogPath = NodePath.join(tempDir, "child-pids.txt");
 
         const wrapperPath = yield* Effect.promise(() =>
           makeMockAgentWrapper(
             {
               T3_ACP_EXIT_LOG_PATH: exitLogPath,
             },
-            { initialDelaySeconds: 0.2 },
+            {
+              initialDelaySeconds: 0.2,
+              ...(process.platform === "win32" ? { childPidLogPath } : {}),
+            },
           ),
         );
         yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
@@ -403,10 +411,18 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         assert.equal(firstSession.threadId, threadId);
         assert.equal(secondSession.threadId, threadId);
 
+        const childPids =
+          process.platform === "win32"
+            ? yield* Effect.promise(() => waitForLoggedChildPids(childPidLogPath, 2))
+            : [];
         yield* adapter.stopSession(threadId);
 
-        const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
-        assert.equal(exitLog.match(/SIGTERM/g)?.length ?? 0, 2);
+        if (process.platform === "win32") {
+          yield* Effect.promise(() => waitForChildProcessesToExit(childPids));
+        } else {
+          const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
+          assert.equal(exitLog.match(/SIGTERM/g)?.length ?? 0, 2);
+        }
       }),
   );
 
