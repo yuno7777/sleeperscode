@@ -121,6 +121,24 @@ describe("NativeRuntimeClient", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
+  it.live("reports streaming spawn failures before process start", () =>
+    Effect.gen(function* () {
+      const runtime = yield* NativeRuntimeClient;
+      const error = yield* runtime
+        .startStreaming({
+          command: `sleepers-missing-stream-executable-${process.pid}.exe`,
+          args: [],
+        })
+        .pipe(Effect.flip);
+
+      expect(error).toMatchObject({
+        _tag: "NativeRuntimeRequestFailed",
+        code: "PROCESS_SPAWN_FAILED",
+        processStarted: false,
+      });
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.live("acknowledges stop before reporting a stopped streaming exit", () =>
     Effect.gen(function* () {
       const runtime = yield* NativeRuntimeClient;
