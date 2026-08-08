@@ -12,6 +12,10 @@ export * from "./terminal.ts";
 export * from "./provider.ts";
 export * from "./providerInstance.ts";
 export * from "./providerRuntime.ts";
+// Fork-added exports sit beside the module they extend rather than at the end of
+// this list. Upstream appends near `rpc.ts`, so anything parked there turns every
+// upstream addition into a merge conflict in this barrel.
+export * from "./runtime.ts";
 export * from "./model.ts";
 export * from "./keybindings.ts";
 export * from "./server.ts";
@@ -29,5 +33,4 @@ export * from "./review.ts";
 export * from "./preview.ts";
 export * from "./previewAutomation.ts";
 export * from "./resourceTelemetry.ts";
-export * from "./runtime.ts";
 export * from "./rpc.ts";
