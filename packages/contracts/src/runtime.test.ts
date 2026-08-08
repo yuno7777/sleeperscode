@@ -72,6 +72,7 @@ describe("native runtime protocol", () => {
       version: 2,
       type: "write",
       requestId: "session-1",
+      sessionId: "stream-1",
       dataBase64: "aGVsbG8=",
     });
     expect(write.type).toBe("write");
@@ -91,8 +92,19 @@ describe("native runtime protocol", () => {
         version: 2,
         type: "write",
         requestId: "session-1",
+        sessionId: "stream-1",
         dataBase64: "not base64",
       }),
     ).toThrow();
+
+    expect(
+      Schema.decodeUnknownSync(RuntimeEvent)({
+        version: 2,
+        type: "controlAccepted",
+        requestId: "write-1",
+        sessionId: "stream-1",
+        control: "write",
+      }).type,
+    ).toBe("controlAccepted");
   });
 });

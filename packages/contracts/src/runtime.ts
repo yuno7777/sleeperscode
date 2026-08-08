@@ -50,6 +50,7 @@ export const RuntimeWriteRequest = Schema.Struct({
   version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
   type: Schema.Literal("write"),
   requestId: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
   dataBase64: RuntimeBase64Chunk,
 });
 export type RuntimeWriteRequest = typeof RuntimeWriteRequest.Type;
@@ -58,6 +59,7 @@ export const RuntimeCloseStdinRequest = Schema.Struct({
   version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
   type: Schema.Literal("closeStdin"),
   requestId: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
 });
 export type RuntimeCloseStdinRequest = typeof RuntimeCloseStdinRequest.Type;
 
@@ -65,6 +67,7 @@ export const RuntimeStopRequest = Schema.Struct({
   version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
   type: Schema.Literal("stop"),
   requestId: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
 });
 export type RuntimeStopRequest = typeof RuntimeStopRequest.Type;
 
@@ -120,6 +123,18 @@ export const RuntimeProcessStartedEvent = Schema.Struct({
 });
 export type RuntimeProcessStartedEvent = typeof RuntimeProcessStartedEvent.Type;
 
+export const RuntimeControl = Schema.Literals(["write", "closeStdin"]);
+export type RuntimeControl = typeof RuntimeControl.Type;
+
+export const RuntimeControlAcceptedEvent = Schema.Struct({
+  version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
+  type: Schema.Literal("controlAccepted"),
+  requestId: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
+  control: RuntimeControl,
+});
+export type RuntimeControlAcceptedEvent = typeof RuntimeControlAcceptedEvent.Type;
+
 export const RuntimeProcessOutputEvent = Schema.Struct({
   version: Schema.Literal(RUNTIME_PROTOCOL_VERSION),
   type: Schema.Literal("processOutput"),
@@ -170,6 +185,7 @@ export type RuntimeErrorEvent = typeof RuntimeErrorEvent.Type;
 export const RuntimeEvent = Schema.Union([
   RuntimeHelloEvent,
   RuntimeProcessStartedEvent,
+  RuntimeControlAcceptedEvent,
   RuntimeProcessOutputEvent,
   RuntimeProcessExitedEvent,
   RuntimeProcessCompletedEvent,
