@@ -67,6 +67,7 @@ export interface AcpSpawnInput {
 export interface AcpSessionRuntimeOptions {
   readonly spawn: AcpSpawnInput;
   readonly cwd: string;
+  readonly nativeRuntime?: NativeRuntimeClient.NativeRuntimeClient["Service"];
   readonly resumeSessionId?: string;
   readonly sessionLoadTimeout?: Duration.Input;
   readonly sessionLoadReplayIdleGap?: Duration.Input;
@@ -283,7 +284,9 @@ export const make = (
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const nativeRuntime = yield* Effect.serviceOption(NativeRuntimeClient.NativeRuntimeClient);
+    const nativeRuntime = options.nativeRuntime
+      ? Option.some(options.nativeRuntime)
+      : yield* Effect.serviceOption(NativeRuntimeClient.NativeRuntimeClient);
     const environment = yield* HostProcessEnvironment;
     const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
     const backend = selectRuntimeBackend({
@@ -876,7 +879,12 @@ export const layer = (
   AcpSessionRuntime,
   EffectAcpErrors.AcpError,
   ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
-> => Layer.effect(AcpSessionRuntime, make(options)).pipe(Layer.provide(NativeRuntimeClient.layer));
+> => {
+  const runtimeLayer = Layer.effect(AcpSessionRuntime, make(options));
+  return options.nativeRuntime
+    ? runtimeLayer
+    : runtimeLayer.pipe(Layer.provide(NativeRuntimeClient.layer));
+};
 
 function sessionConfigOptionsFromSetup(
   response:
