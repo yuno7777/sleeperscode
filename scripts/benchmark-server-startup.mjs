@@ -136,6 +136,21 @@ async function sampleIdle(rootPid, seconds) {
     cpuPercent: snapshot.processes.reduce((sum, entry) => sum + entry.cpuPercent, 0),
     processCount: snapshot.processes.length,
   }));
+  // The startup transient is far above the settled figure, so keep the breakdown
+  // of whichever sample produced the peak.
+  const peakIndex = totals.reduce(
+    (best, sample, index) => (sample.rssBytes > totals[best].rssBytes ? index : best),
+    0,
+  );
+  const peakBreakdown = [...snapshots[peakIndex].processes]
+    .sort((left, right) => right.residentBytes - left.residentBytes)
+    .slice(0, 5)
+    .map((entry) => ({
+      pid: entry.pid,
+      name: entry.name,
+      residentBytes: entry.residentBytes,
+      command: entry.command.slice(0, 160),
+    }));
   const mean = (values) => values.reduce((total, value) => total + value, 0) / values.length;
   // Answering HTTP is not the same as being settled, so report the tail of the
   // window separately from the whole window.
@@ -149,6 +164,7 @@ async function sampleIdle(rootPid, seconds) {
     tailMeanRssBytes: mean(tail.map((sample) => sample.rssBytes)),
     tailMeanCpuPercent: mean(tail.map((sample) => sample.cpuPercent)),
     peakProcessCount: Math.max(...totals.map((sample) => sample.processCount)),
+    peakBreakdown,
   };
 }
 
