@@ -18,11 +18,12 @@ Web / mobile / Electron clients (unchanged)
 
 The Rust sidecar is lazy: it starts only when native finite-process or ACP execution is enabled and
 first used. A protocol or binary failure does not prevent the server/UI from starting. Cursor and
-Grok share the opt-in ACP transport; each adapter scope owns one lazy native client and reuses its
-sidecar across that adapter's concurrent sessions. Cursor and Grok do not share a global sidecar with
-each other. Their adapters remain protocol-focused and do not handle native byte framing. Claude,
-Codex, OpenCode, terminal PTYs, filesystem search, persistence, WebSocket transport, and Electron
-retain their existing runtime paths.
+Grok share the opt-in ACP transport contract, but each active ACP session owns its lazy native client
+and sidecar. This avoids the measured Windows process-start contention of multiplexing concurrent
+providers through one sidecar while keeping cleanup aligned with the existing session scope. Their
+adapters remain protocol-focused and do not handle native byte framing. Claude, Codex, OpenCode,
+terminal PTYs, filesystem search, persistence, WebSocket transport, and Electron retain their
+existing runtime paths.
 
 Fallback is deliberately limited to failures before the requested process starts. Once Rust emits
 `processStarted`, the adapter maps any error back into the existing `ProcessRunner` error contract
@@ -41,5 +42,7 @@ The native ACP path preserves JSON-RPC bytes through bounded start/write/output/
 wrappers remain on Node, which preserves Windows `.cmd` and `.bat` behavior. Later phases may move
 the remaining long-lived provider processes behind similarly narrow boundaries. No frontend
 component needs to know whether Node or Rust owns a process. Shared-sidecar stress tests currently
-show a memory/process-count benefit and a throughput regression at 5-10 concurrent mock sessions, so
-`auto` must remain on Node while that contention is unresolved.
+showed a severe Windows launch bottleneck. Session-scoped follow-up reduced the 10-session mean
+elapsed regression from 42.3% to 3.3% while retaining lower sampled RSS and process counts. `auto`
+still remains on Node while the residual throughput, packaging, and whole-application gates are
+open.
