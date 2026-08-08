@@ -1,7 +1,7 @@
 # Provider streaming validation
 
-Captured on 2026-08-08 on Windows x64. This phase validates the existing provider boundaries before
-any long-lived provider session is migrated to Rust.
+Captured on 2026-08-08 on Windows x64. This phase validates the provider boundary on both the
+existing Node transport and the opt-in Rust streaming transport.
 
 ## Deterministic matrix
 
@@ -9,12 +9,18 @@ Run:
 
 ```text
 pnpm test:provider-streaming
+pnpm test:provider-streaming -- --backend=rust cursor grok
 ```
 
 The command runs the existing adapter and transport suites for Claude, Codex, Cursor, Grok,
 OpenCode, and the shared ACP JSON-RPC runtime. The latest local run passed 212 tests across nine
-files in 34.44 seconds under Node 24.14.0. The suites use repository-owned mocks and do not read or
-store provider credentials.
+files in 34.44 seconds under Node 24.14.0. The Rust-selected Cursor/Grok slice passed 59 tests across
+four files in 32.39 seconds. The suites use repository-owned mocks and do not read or store provider
+credentials.
+
+`--backend=node` and `--backend=rust` make transport selection explicit. Rust currently changes the
+shared ACP subprocess transport used by Cursor and Grok; Claude, Codex, and OpenCode retain their
+existing provider-specific transports.
 
 On Windows, Cursor and Grok mock sessions launch through `provider-mock-launcher.exe`. It preserves
 stdin/stdout/stderr streaming and owns the mock Node process in a kill-on-close Job Object. Lifecycle
@@ -23,13 +29,15 @@ do not assume Unix `SIGTERM` behavior.
 
 ## High-volume stream probe
 
-A deterministic 1 MiB response sent as 16 ordered 64 KiB content deltas completed losslessly. The
-focused ACP file passed 16 tests in 19.52 seconds; the high-volume case itself took 1.06 seconds.
+A deterministic 1 MiB response sent as 16 ordered 64 KiB content deltas completed losslessly on both
+Node and Rust. With Rust forced for the entire focused ACP file, all 17 lifecycle tests passed in
+19.55 seconds. The native 1/3/5/10 concurrent-session matrix also passed all four cases in 8.08
+seconds.
 
-Two equal-byte probes with higher event counts did not complete inside the existing 60-second test
-budget: 64 x 16 KiB and 512 x 2 KiB. These were diagnostic runs, not passing benchmarks. The current
-ACP event queue is unbounded, so this result is evidence for a bounded backpressure design rather
-than evidence that high event-rate streaming is ready to migrate.
+Two earlier equal-byte Node probes with higher event counts did not complete inside the existing
+60-second test budget: 64 x 16 KiB and 512 x 2 KiB. These were diagnostic runs, not passing
+benchmarks. The native transport now bounds sidecar output, per-session input, and TypeScript output
+queues, but the high-event-rate cases have not been rerun and the ACP event queue remains unbounded.
 
 ## Locally discovered CLIs
 
@@ -50,5 +58,6 @@ supported-version claim.
 
 - Exercise authenticated launch, authentication failure, and provider-specific crash behavior in a
   disposable account or sanctioned fixture environment.
-- Design and measure bounded high-event-rate backpressure before moving streaming ownership to Rust.
+- Rerun and measure the 64-event and 512-event probes through both transports before expanding Rust
+  beyond opt-in ACP sessions.
 - Repeat 1/3/5/10 process-tree sampling with real provider fixtures and multiple runs per level.
