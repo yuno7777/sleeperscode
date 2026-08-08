@@ -27,6 +27,12 @@ const matrix = {
 };
 
 const requested = process.argv.slice(2);
+const backendArgument = requested.find((argument) => argument.startsWith("--backend="));
+const backend = backendArgument?.slice("--backend=".length);
+if (backend !== undefined && backend !== "node" && backend !== "rust") {
+  process.stderr.write(`Unknown runtime backend: ${backend}. Expected node or rust.\n`);
+  process.exit(2);
+}
 if (requested.includes("--list")) {
   for (const [provider, files] of Object.entries(matrix)) {
     process.stdout.write(`${provider}: ${files.join(", ")}\n`);
@@ -34,7 +40,8 @@ if (requested.includes("--list")) {
   process.exit(0);
 }
 
-const providers = requested.length === 0 ? Object.keys(matrix) : requested;
+const providerArguments = requested.filter((argument) => !argument.startsWith("--backend="));
+const providers = providerArguments.length === 0 ? Object.keys(matrix) : providerArguments;
 const unknown = providers.filter((provider) => !(provider in matrix));
 if (unknown.length > 0) {
   process.stderr.write(
@@ -46,7 +53,10 @@ if (unknown.length > 0) {
 const files = [...new Set([...sharedFiles, ...providers.flatMap((provider) => matrix[provider])])];
 const child = spawn(process.execPath, [vitePlus, "test", "run", ...files, "--reporter=dot"], {
   cwd: repositoryRoot,
-  env: process.env,
+  env: {
+    ...process.env,
+    ...(backend === undefined ? {} : { T3CODE_RUNTIME_BACKEND: backend }),
+  },
   stdio: "inherit",
   windowsHide: true,
 });
