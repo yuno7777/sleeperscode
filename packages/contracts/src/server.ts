@@ -213,6 +213,67 @@ export type ServerProviders = typeof ServerProviders.Type;
 export const isProviderAvailable = (snapshot: ServerProvider): boolean =>
   snapshot.availability !== "unavailable";
 
+/**
+ * Reasons an otherwise-integrated agent must not receive automatically routed
+ * work. Reported as a list so a caller can explain every missing precondition
+ * at once instead of surfacing them one repair at a time.
+ */
+export const AgentRoutingBlocker = Schema.Literals([
+  "driver_unavailable",
+  "not_installed",
+  "provider_error",
+  "disabled",
+  "unauthenticated",
+]);
+export type AgentRoutingBlocker = typeof AgentRoutingBlocker.Type;
+
+/**
+ * Integration and routing readiness, which are deliberately not the same thing.
+ *
+ *  - `integrated` — this build can talk to the agent: its driver ships, it is
+ *    installed, and it is not reporting an error.
+ *  - `routable` — the orchestrator may assign work to it without being asked.
+ *    Requires `integrated` plus being enabled and authenticated.
+ *
+ * An agent that is installed and integrated but disabled, or whose auth state is
+ * merely unknown, is a valid and expected state: it stays usable when a user
+ * picks it explicitly while staying out of automatic routing.
+ *
+ * A third level, whether Sleepers Code knows how to *install* an agent it has
+ * not got, is not derivable from a runtime snapshot and arrives with the agent
+ * manifest registry.
+ */
+export const AgentStatusLevels = Schema.Struct({
+  integrated: Schema.Boolean,
+  routable: Schema.Boolean,
+  routingBlockers: Schema.Array(AgentRoutingBlocker),
+});
+export type AgentStatusLevels = typeof AgentStatusLevels.Type;
+
+/**
+ * Derives the levels above from one provider snapshot.
+ *
+ * Unknown authentication counts as a blocker rather than a pass. The router must
+ * not pick an agent it cannot confirm is usable, and "unknown" is not a
+ * confirmation.
+ */
+export const deriveAgentStatusLevels = (snapshot: ServerProvider): AgentStatusLevels => {
+  const blockers: Array<AgentRoutingBlocker> = [];
+  if (!isProviderAvailable(snapshot)) blockers.push("driver_unavailable");
+  if (!snapshot.installed) blockers.push("not_installed");
+  if (snapshot.status === "error") blockers.push("provider_error");
+  if (!snapshot.enabled) blockers.push("disabled");
+  if (snapshot.auth.status !== "authenticated") blockers.push("unauthenticated");
+
+  const integrated =
+    isProviderAvailable(snapshot) && snapshot.installed && snapshot.status !== "error";
+  return {
+    integrated,
+    routable: blockers.length === 0,
+    routingBlockers: blockers,
+  };
+};
+
 export const ServerObservability = Schema.Struct({
   logsDirectoryPath: TrimmedNonEmptyString,
   localTracingEnabled: Schema.Boolean,

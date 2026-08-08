@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  deriveAgentStatusLevels,
   ServerConfig,
   ServerProvider,
   ServerProviders,
@@ -24,6 +25,62 @@ const baseProviderSnapshot = {
   checkedAt: "2026-04-10T00:00:00.000Z",
   models: [],
 };
+
+describe("deriveAgentStatusLevels", () => {
+  const levelsFor = (overrides: Record<string, unknown>) =>
+    deriveAgentStatusLevels(decodeServerProvider({ ...baseProviderSnapshot, ...overrides }));
+
+  it("routes an installed, enabled, authenticated provider", () => {
+    expect(levelsFor({})).toEqual({
+      integrated: true,
+      routable: true,
+      routingBlockers: [],
+    });
+  });
+
+  it("keeps a disabled provider integrated but not routable", () => {
+    expect(levelsFor({ enabled: false })).toEqual({
+      integrated: true,
+      routable: false,
+      routingBlockers: ["disabled"],
+    });
+  });
+
+  it("treats unknown authentication as a routing blocker", () => {
+    expect(levelsFor({ auth: { status: "unknown" } })).toEqual({
+      integrated: true,
+      routable: false,
+      routingBlockers: ["unauthenticated"],
+    });
+  });
+
+  it("is neither integrated nor routable when the provider reports an error", () => {
+    expect(levelsFor({ status: "error" })).toEqual({
+      integrated: false,
+      routable: false,
+      routingBlockers: ["provider_error"],
+    });
+  });
+
+  it("reports every blocker at once for an unavailable driver", () => {
+    expect(
+      levelsFor({
+        availability: "unavailable",
+        installed: false,
+        enabled: false,
+        auth: { status: "unknown" },
+      }),
+    ).toEqual({
+      integrated: false,
+      routable: false,
+      routingBlockers: ["driver_unavailable", "not_installed", "disabled", "unauthenticated"],
+    });
+  });
+
+  it("treats an absent availability field as available", () => {
+    expect(levelsFor({ availability: undefined }).integrated).toBe(true);
+  });
+});
 
 describe("ServerProvider", () => {
   it("defaults capability arrays when decoding provider snapshots", () => {
