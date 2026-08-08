@@ -14,12 +14,18 @@ retain its Job Object for the complete session.
 
 ## Decision
 
-Protocol version 2 adds four requests using the existing `requestId` as the process-handle key:
+Protocol version 2 adds four operations. `start.requestId` becomes the stable session identifier.
+Every later control carries that value as `sessionId` plus a unique `requestId` for receipt and error
+correlation:
 
 - `start`: spawn one contained process with piped stdin, stdout, and stderr;
 - `write`: enqueue a base64-encoded stdin byte chunk;
 - `closeStdin`: close the process input stream without stopping the process;
 - `stop`: terminate the owned process tree.
+
+Accepted `write` and `closeStdin` controls emit `controlAccepted` with both identifiers. Queue-full,
+invalid-input, and missing-session errors carry the control request ID, so concurrent writes cannot
+consume one another's result. `stop` completes through the session's terminal `processExited` event.
 
 Streaming output is emitted as `processOutput` events. Each event identifies stdout or stderr,
 carries a per-stream non-negative sequence number, and encodes the exact bytes as base64. A terminal
