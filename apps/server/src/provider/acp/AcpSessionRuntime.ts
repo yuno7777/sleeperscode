@@ -57,6 +57,7 @@ export type AcpSessionRuntimeEvent = AcpParsedSessionEvent | AcpSessionEventStre
 
 const defaultSessionLoadTimeout = Duration.seconds(90);
 const defaultSessionLoadReplayIdleGap = Duration.seconds(2);
+export const ACP_SESSION_EVENT_QUEUE_CAPACITY = 256;
 
 export interface AcpSpawnInput {
   readonly command: string;
@@ -292,7 +293,9 @@ export const make = (
       environment,
     });
     const runtimeScope = yield* Scope.Scope;
-    const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
+    const eventQueue = yield* Queue.bounded<AcpSessionRuntimeEvent>(
+      ACP_SESSION_EVENT_QUEUE_CAPACITY,
+    );
     const modeStateRef = yield* Ref.make<AcpSessionModeState | undefined>(undefined);
     const toolCallsRef = yield* Ref.make(new Map<string, AcpToolCallState>());
     const assistantItemRuntimeId = yield* crypto.randomUUIDv4.pipe(
