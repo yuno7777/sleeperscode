@@ -44,7 +44,6 @@ pub struct StreamingInput {
 pub enum StreamingCommand {
     Write(Vec<u8>),
     CloseStdin,
-    Stop,
 }
 
 #[derive(Debug)]
@@ -254,6 +253,7 @@ pub async fn run_streaming_process(
     input: StreamingInput,
     events: mpsc::Sender<RuntimeEvent>,
     mut commands: mpsc::Receiver<StreamingCommand>,
+    mut stop: oneshot::Receiver<()>,
 ) -> Result<(), RunError> {
     if let Some(cwd) = &input.cwd {
         let metadata =
@@ -312,8 +312,13 @@ pub async fn run_streaming_process(
         error_tx,
     ));
 
-    let (exit_code, stopped) = loop {
+    let (exit_code, stopped) = 'process: loop {
         tokio::select! {
+            biased;
+            _ = &mut stop => {
+                process_tree.terminate(&mut child).await;
+                break (None, true);
+            }
             status = child.wait() => {
                 let status = status.map_err(RunError::Wait)?;
                 process_tree.terminate_remaining();
@@ -329,17 +334,35 @@ pub async fn run_streaming_process(
                                 "stdin is closed",
                             )));
                         };
-                        if let Err(error) = child_stdin.write_all(&bytes).await {
-                            process_tree.terminate(&mut child).await;
-                            return Err(RunError::Stdin(error));
+                        tokio::select! {
+                            biased;
+                            _ = &mut stop => {
+                                process_tree.terminate(&mut child).await;
+                                break 'process (None, true);
+                            }
+                            result = child_stdin.write_all(&bytes) => {
+                                if let Err(error) = result {
+                                    process_tree.terminate(&mut child).await;
+                                    return Err(RunError::Stdin(error));
+                                }
+                            }
                         }
                     }
                     Some(StreamingCommand::CloseStdin) => {
                         if let Some(mut child_stdin) = stdin.take() {
-                            child_stdin.shutdown().await.map_err(RunError::Stdin)?;
+                            tokio::select! {
+                                biased;
+                                _ = &mut stop => {
+                                    process_tree.terminate(&mut child).await;
+                                    break 'process (None, true);
+                                }
+                                result = child_stdin.shutdown() => {
+                                    result.map_err(RunError::Stdin)?;
+                                }
+                            }
                         }
                     }
-                    Some(StreamingCommand::Stop) | None => {
+                    None => {
                         process_tree.terminate(&mut child).await;
                         break (None, true);
                     }

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use base64::Engine;
 use t3_runtime_protocol::{RuntimeEvent, RuntimeStream};
 use t3_runtime_sidecar::{StreamingCommand, StreamingInput, run_streaming_process};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 fn fixture() -> String {
     env!("CARGO_BIN_EXE_runtime-fixture").into()
@@ -28,10 +28,12 @@ fn input(args: &[&str]) -> StreamingInput {
 async fn streams_exact_stdin_and_stdout_bytes() {
     let (events_tx, mut events_rx) = mpsc::channel(16);
     let (commands_tx, commands_rx) = mpsc::channel(4);
+    let (_stop_tx, stop_rx) = oneshot::channel();
     let run = tokio::spawn(run_streaming_process(
         input(&["--echo-stdin"]),
         events_tx,
         commands_rx,
+        stop_rx,
     ));
 
     let expected = vec![0, 1, 2, 0xf0, 0x9f, 0x99, 0x82, 0xfe, 0xff];
@@ -80,19 +82,18 @@ async fn streams_exact_stdin_and_stdout_bytes() {
 #[tokio::test]
 async fn stop_terminates_a_streaming_process() {
     let (events_tx, mut events_rx) = mpsc::channel(16);
-    let (commands_tx, commands_rx) = mpsc::channel(4);
+    let (_commands_tx, commands_rx) = mpsc::channel(4);
+    let (stop_tx, stop_rx) = oneshot::channel();
     let run = tokio::spawn(run_streaming_process(
         input(&["--sleep-ms", "30000"]),
         events_tx,
         commands_rx,
+        stop_rx,
     ));
 
     let started = events_rx.recv().await.expect("receive process start");
     assert!(matches!(started, RuntimeEvent::ProcessStarted { pid, .. } if pid > 0));
-    commands_tx
-        .send(StreamingCommand::Stop)
-        .await
-        .expect("request stop");
+    stop_tx.send(()).expect("request stop");
     run.await
         .expect("join streaming process")
         .expect("stop succeeds");
