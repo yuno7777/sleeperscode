@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - integration tests exercise the real native process boundary.
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeFS from "node:fs/promises";
@@ -187,6 +188,7 @@ describe("NativeRuntimeClient", () => {
               .filter((event) => event.stream === "stdout")
               .map((event) => Buffer.from(event.bytes)),
           ).toString("utf8");
+          // @effect-diagnostics-next-line preferSchemaOverJson:off - fixed child-process fixture output.
           expect(JSON.parse(stdout)).toEqual([cwd, "välue-值"]);
         }).pipe(Effect.provide(TestLayer)),
       (root) =>
