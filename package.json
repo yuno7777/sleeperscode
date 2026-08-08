@@ -37,6 +37,7 @@
     "bench:server-startup": "node scripts/benchmark-server-startup.mjs",
     "bench:git-operations": "node scripts/benchmark-git-operations.mjs",
     "bench:workspace-scan": "node scripts/benchmark-workspace-scan.mjs",
+    "bench:content-index": "node scripts/benchmark-content-index.mjs",
     "test:desktop-smoke": "vp run --filter @t3tools/desktop smoke-test",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
