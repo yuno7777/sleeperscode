@@ -42,11 +42,18 @@ for (const candidate of backends) {
   }
 }
 const entryArgument = process.argv.slice(2).find((value) => value.startsWith("--entry="));
-const entryKind = entryArgument?.slice("--entry=".length) ?? "bundle";
-if (entryKind !== "bundle" && entryKind !== "source") {
-  throw new Error(`Unknown entry: ${entryKind}. Expected bundle or source.`);
+const entryKinds = (entryArgument?.slice("--entry=".length) ?? "bundle").split(",");
+for (const candidate of entryKinds) {
+  if (candidate !== "bundle" && candidate !== "source") {
+    throw new Error(`Unknown entry: ${candidate}. Expected bundle or source.`);
+  }
 }
-const serverEntry = entryKind === "bundle" ? bundledEntry : sourceEntry;
+const entryPath = (kind) => (kind === "bundle" ? bundledEntry : sourceEntry);
+// Every backend and entry combination is one variant, and all variants alternate
+// within an iteration so ambient load cannot favour one of them.
+const variants = backends.flatMap((backend) =>
+  entryKinds.map((entryKind) => ({ backend, entryKind, key: `${backend}/${entryKind}` })),
+);
 const repeat = numericArgument("repeat", 3);
 const idleSeconds = numericArgument("idle-seconds", 10);
 const sampleIntervalMs = numericArgument("sample-interval-ms", 250);
@@ -61,12 +68,14 @@ await access(monitorPath).catch(() => {
     `Resource monitor not found at ${monitorPath}. Run pnpm build:resource-monitor first.`,
   );
 });
-await access(serverEntry).catch(() => {
-  throw new Error(
-    `Server entry not found at ${serverEntry}. Run pnpm build:desktop first, or pass --entry=source ` +
-      `to measure the unbundled TypeScript path.`,
-  );
-});
+for (const kind of entryKinds) {
+  await access(entryPath(kind)).catch(() => {
+    throw new Error(
+      `Server entry not found at ${entryPath(kind)}. Run pnpm build:desktop first, or pass ` +
+        `--entry=source to measure the unbundled TypeScript path.`,
+    );
+  });
+}
 
 /** Reserves an ephemeral port and releases it so the server can bind it. */
 async function reservePort() {
@@ -172,16 +181,16 @@ async function sampleIdle(rootPid, seconds) {
  * One server lifecycle. `baseDir` is reused across runs to separate a cold first
  * start on an empty state directory from later warm starts.
  */
-async function measureRun(baseDir, backend) {
+async function measureRun(baseDir, variant) {
   const port = await reservePort();
   const stderr = [];
   const startedAt = performance.now();
   const server = spawn(
     process.execPath,
-    [serverEntry, "--port", String(port), "--base-dir", baseDir, "--no-browser"],
+    [entryPath(variant.entryKind), "--port", String(port), "--base-dir", baseDir, "--no-browser"],
     {
       cwd: repositoryRoot,
-      env: { ...process.env, T3CODE_RUNTIME_BACKEND: backend },
+      env: { ...process.env, T3CODE_RUNTIME_BACKEND: variant.backend },
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
     },
@@ -211,18 +220,22 @@ async function measureRun(baseDir, backend) {
 }
 
 const baseDirs = new Map();
-for (const backend of backends) {
-  baseDirs.set(backend, await mkdtemp(path.join(os.tmpdir(), `t3-startup-${backend}-`)));
+for (const variant of variants) {
+  baseDirs.set(
+    variant.key,
+    await mkdtemp(path.join(os.tmpdir(), `t3-startup-${variant.backend}-`)),
+  );
 }
 const runs = [];
 try {
   for (let iteration = 1; iteration <= repeat; iteration += 1) {
-    for (const backend of backends) {
+    for (const variant of variants) {
       runs.push({
         iteration,
-        backend,
+        backend: variant.backend,
+        entryKind: variant.entryKind,
         state: iteration === 1 ? "cold" : "warm",
-        ...(await measureRun(baseDirs.get(backend), backend)),
+        ...(await measureRun(baseDirs.get(variant.key), variant)),
       });
     }
   }
@@ -233,11 +246,14 @@ try {
 }
 
 const mean = (values) => values.reduce((total, value) => total + value, 0) / values.length;
-const summary = backends.map((backend) => {
-  const samples = runs.filter((run) => run.backend === backend);
+const summary = variants.map((variant) => {
+  const samples = runs.filter(
+    (run) => run.backend === variant.backend && run.entryKind === variant.entryKind,
+  );
   const warm = samples.filter((run) => run.state === "warm");
   return {
-    backend,
+    backend: variant.backend,
+    entryKind: variant.entryKind,
     coldSpawnToServeMs: samples[0].spawnToServeMs,
     warmRuns: warm.length,
     meanWarmSpawnToServeMs: warm.length > 0 ? mean(warm.map((run) => run.spawnToServeMs)) : null,
@@ -252,7 +268,7 @@ const summary = backends.map((backend) => {
 
 process.stdout.write(
   `${JSON.stringify(
-    { backends, entryKind, serverEntry, repeat, idleSeconds, monitorPath, runs, summary },
+    { backends, entryKinds, repeat, idleSeconds, monitorPath, runs, summary },
     null,
     2,
   )}\n`,
