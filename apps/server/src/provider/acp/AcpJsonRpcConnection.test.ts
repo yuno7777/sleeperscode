@@ -116,6 +116,52 @@ describe("AcpSessionRuntime", () => {
     ),
   );
 
+  it.effect("preserves a one MiB incremental stream losslessly", () => {
+    const chunkCount = 16;
+    const chunkBytes = 64 * 1024;
+    return Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      const eventsFiber = yield* runtime
+        .getEvents()
+        .pipe(Stream.take(chunkCount + 2), Stream.runCollect, Effect.forkChild);
+
+      const result = yield* runtime.prompt({
+        prompt: [{ type: "text", text: "stream a large response" }],
+      });
+      expect(result.stopReason).toBe("end_turn");
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      expect(events[0]?._tag).toBe("AssistantItemStarted");
+      expect(events.at(-1)?._tag).toBe("AssistantItemCompleted");
+      const deltas = events.filter((event) => event._tag === "ContentDelta");
+      expect(deltas).toHaveLength(chunkCount);
+      expect(
+        deltas.reduce(
+          (total, event) => total + (event._tag === "ContentDelta" ? event.text.length : 0),
+          0,
+        ),
+      ).toBe(chunkCount * chunkBytes);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: {
+              T3_ACP_STREAM_CHUNK_COUNT: String(chunkCount),
+              T3_ACP_STREAM_CHUNK_BYTES: String(chunkBytes),
+            },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "t3-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
   it.effect("keeps assistant item IDs unique when a provider session restarts", () => {
     const collectFirstAssistantItemId = Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
