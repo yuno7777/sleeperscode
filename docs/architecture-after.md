@@ -1,4 +1,4 @@
-# Architecture after the first migration slice
+# Architecture after the finite and ACP migration slices
 
 This document describes the implemented state after phase 1, not the final Tauri target.
 
@@ -7,19 +7,20 @@ Web / mobile / Electron clients (unchanged)
                   |
         typed WebSocket Effect RPC
                   |
-   Node orchestration and provider adapters (unchanged)
+   Node orchestration and provider adapters
                   |
-       ProcessRunner compatibility boundary
+ ProcessRunner + shared ACP runtime boundaries
           |                         |
- opt-in supported call        automatic fallback
+ opt-in finite / ACP call      default or wrapper fallback
           |                         |
- Rust runtime sidecar          Node child spawner
+ Rust runtime sidecar            Node child spawner
 ```
 
-The Rust sidecar is lazy: it starts only when native finite-process execution is enabled and first
-used. A protocol or binary failure does not prevent the server/UI from starting. Provider sessions,
-terminal PTYs, filesystem search, persistence, WebSocket transport, and Electron remain unchanged in
-this slice.
+The Rust sidecar is lazy: it starts only when native finite-process or ACP execution is enabled and
+first used. A protocol or binary failure does not prevent the server/UI from starting. Cursor and
+Grok share the opt-in ACP transport; their adapters remain protocol-focused and do not handle native
+process details. Claude, Codex, OpenCode, terminal PTYs, filesystem search, persistence, WebSocket
+transport, and Electron retain their existing runtime paths.
 
 Fallback is deliberately limited to failures before the requested process starts. Once Rust emits
 `processStarted`, the adapter maps any error back into the existing `ProcessRunner` error contract
@@ -34,5 +35,7 @@ stage the selected-platform binary as an external resource and pass its path to 
 backend through `T3CODE_RUNTIME_SIDECAR_PATH`. Run `pnpm test:runtime-sidecar` for the Rust suite and
 `pnpm bench:runtime-sidecar -- <sidecar-path> <iterations>` for the paired benchmark.
 
-Later phases may move long-lived provider process handles behind the same compatibility boundary.
-No provider adapter or frontend component should need to know whether Node or Rust owns a process.
+The native ACP path preserves JSON-RPC bytes through bounded start/write/output/stop sessions. Shell
+wrappers remain on Node, which preserves Windows `.cmd` and `.bat` behavior. Later phases may move
+the remaining long-lived provider processes behind similarly narrow boundaries. No frontend
+component needs to know whether Node or Rust owns a process.
