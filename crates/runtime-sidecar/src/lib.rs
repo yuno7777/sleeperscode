@@ -8,7 +8,7 @@ use base64::Engine;
 use t3_runtime_protocol::{OutputMode, PROTOCOL_VERSION, RuntimeEvent, RuntimeStream};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time;
 
@@ -60,6 +60,8 @@ pub enum RunError {
     InvalidWorkingDirectory(String),
     #[error("failed to spawn process: {0}")]
     Spawn(#[source] std::io::Error),
+    #[error("process launch task failed: {0}")]
+    SpawnTask(#[source] tokio::task::JoinError),
     #[error("failed to wait for process: {0}")]
     Wait(#[source] std::io::Error),
     #[error("failed to read {stream}: {source}")]
@@ -85,6 +87,7 @@ impl RunError {
         match self {
             Self::InvalidWorkingDirectory(_) => "INVALID_WORKING_DIRECTORY",
             Self::Spawn(_) => "PROCESS_SPAWN_FAILED",
+            Self::SpawnTask(_) => "PROCESS_SPAWN_FAILED",
             Self::Wait(_) => "PROCESS_WAIT_FAILED",
             Self::Read { .. } => "PROCESS_OUTPUT_READ_FAILED",
             Self::Stdin(_) => "PROCESS_STDIN_FAILED",
@@ -97,12 +100,38 @@ impl RunError {
         match self {
             Self::InvalidWorkingDirectory(_) => "The process working directory is invalid.",
             Self::Spawn(_) => "The process could not be started.",
+            Self::SpawnTask(_) => "The process could not be started.",
             Self::Wait(_) => "The process exit status could not be read.",
             Self::Read { .. } => "The process output could not be read.",
             Self::Stdin(_) => "Input could not be sent to the process.",
             Self::ProcessTree(_) => "The process tree could not be safely contained.",
             Self::OutputLimit { .. } => "The process produced more output than allowed.",
         }
+    }
+}
+
+async fn spawn_contained_process(mut command: Command) -> Result<(ProcessTree, Child), RunError> {
+    #[cfg(windows)]
+    {
+        tokio::task::spawn_blocking(move || {
+            let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
+            let child = command.spawn().map_err(RunError::Spawn)?;
+            process_tree
+                .attach_and_start(&child)
+                .map_err(RunError::ProcessTree)?;
+            Ok((process_tree, child))
+        })
+        .await
+        .map_err(RunError::SpawnTask)?
+    }
+    #[cfg(not(windows))]
+    {
+        let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
+        let child = command.spawn().map_err(RunError::Spawn)?;
+        process_tree
+            .attach_and_start(&child)
+            .map_err(RunError::ProcessTree)?;
+        Ok((process_tree, child))
     }
 }
 
@@ -118,12 +147,7 @@ pub async fn run_inherited_process(
         .stderr(Stdio::inherit())
         .kill_on_drop(true);
 
-    let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
-    let mut child = command.spawn().map_err(RunError::Spawn)?;
-    if let Err(error) = process_tree.attach_and_start(&child) {
-        process_tree.terminate(&mut child).await;
-        return Err(RunError::ProcessTree(error));
-    }
+    let (process_tree, mut child) = spawn_contained_process(command).await?;
     if let (Some(path), Some(pid)) = (&input.child_pid_log_path, child.id()) {
         let mut log = std::fs::OpenOptions::new()
             .create(true)
@@ -277,12 +301,7 @@ pub async fn run_streaming_process(
         command.envs(env);
     }
 
-    let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
-    let mut child = command.spawn().map_err(RunError::Spawn)?;
-    if let Err(error) = process_tree.attach_and_start(&child) {
-        process_tree.terminate(&mut child).await;
-        return Err(RunError::ProcessTree(error));
-    }
+    let (process_tree, mut child) = spawn_contained_process(command).await?;
     let pid = child.id().unwrap_or_default();
     events
         .send(RuntimeEvent::ProcessStarted {
@@ -431,12 +450,7 @@ pub async fn run_process(
         command.envs(env);
     }
 
-    let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
-    let mut child = command.spawn().map_err(RunError::Spawn)?;
-    if let Err(error) = process_tree.attach_and_start(&child) {
-        process_tree.terminate(&mut child).await;
-        return Err(RunError::ProcessTree(error));
-    }
+    let (process_tree, mut child) = spawn_contained_process(command).await?;
     let pid = child.id().unwrap_or_default();
     events
         .send(RuntimeEvent::ProcessStarted {
