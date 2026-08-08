@@ -29,9 +29,10 @@ Set persisted server setting `runtimeBackend` to `node`, `rust`, or `auto`. Node
 and `auto` currently resolves to Node until packaged-sidecar and whole-application differential tests
 qualify Rust for automatic selection. `T3CODE_RUNTIME_BACKEND` overrides the persisted setting for
 debugging; the legacy `T3CODE_RUST_RUNTIME=1` flag remains compatible. Development builds discover
-`target/debug/t3-runtime-sidecar`; packaged builds can set `T3CODE_RUNTIME_SIDECAR_PATH` to an
-explicit artifact until desktop packaging is wired. Run `pnpm test:runtime-sidecar` for the Rust
-suite and `pnpm bench:runtime-sidecar -- <sidecar-path> <iterations>` for the paired benchmark.
+`target/release/t3-runtime-sidecar` and then `target/debug/t3-runtime-sidecar`. Desktop artifacts
+stage the selected-platform binary as an external resource and pass its path to the Windows primary
+backend through `T3CODE_RUNTIME_SIDECAR_PATH`. Run `pnpm test:runtime-sidecar` for the Rust suite and
+`pnpm bench:runtime-sidecar -- <sidecar-path> <iterations>` for the paired benchmark.
 
 Later phases may move long-lived provider process handles behind the same compatibility boundary.
 No provider adapter or frontend component should need to know whether Node or Rust owns a process.
