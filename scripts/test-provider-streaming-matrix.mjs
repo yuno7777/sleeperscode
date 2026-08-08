@@ -4,6 +4,7 @@ import path from "node:path";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const vitePlus = path.join(repositoryRoot, "node_modules", "vite-plus", "dist", "bin.js");
+const sharedFiles = ["apps/server/src/provider/acp/ProviderStreamingStress.test.ts"];
 
 const matrix = {
   claude: ["apps/server/src/provider/Layers/ClaudeAdapter.test.ts"],
@@ -42,7 +43,7 @@ if (unknown.length > 0) {
   process.exit(2);
 }
 
-const files = [...new Set(providers.flatMap((provider) => matrix[provider]))];
+const files = [...new Set([...sharedFiles, ...providers.flatMap((provider) => matrix[provider])])];
 const child = spawn(process.execPath, [vitePlus, "test", "run", ...files, "--reporter=dot"], {
   cwd: repositoryRoot,
   env: process.env,
