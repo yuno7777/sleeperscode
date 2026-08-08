@@ -104,6 +104,25 @@ therefore exposes a contention or head-of-line-blocking gate that must be diagno
 selection. Two repetitions are still too few for stable ranking, background load was not isolated,
 and CPU samples are omitted because their variance was extreme.
 
+### Focused 10-session repetition
+
+The 10-session level was then repeated five times per backend:
+
+```text
+pnpm bench:provider-concurrency -- --backend=node --levels=10 --repeat=5
+pnpm bench:provider-concurrency -- --backend=rust --levels=10 --repeat=5
+```
+
+| Backend | Runs | Mean elapsed | Elapsed range | Mean peak RSS | Maximum peak RSS | Maximum processes |
+| :------ | ---: | -----------: | ------------: | ------------: | ---------------: | ----------------: |
+| Node    |    5 |      5.869 s | 5.594-6.011 s |  1,866.92 MiB |     1,910.97 MiB |                34 |
+| Rust    |    5 |      8.353 s | 7.383-9.853 s |  1,341.42 MiB |     1,540.31 MiB |                15 |
+
+In this focused sample the shared Rust sidecar used 28.1% less mean peak tree RSS and 19 fewer
+processes at the maximum, but elapsed time was 42.3% worse. The result confirms the contention gate
+at this workload; it does not identify whether the bottleneck is the sidecar event channel, the
+single TypeScript NDJSON reader, queue scheduling, or another shared resource.
+
 ## Windows process-tree cancellation
 
 Command:
