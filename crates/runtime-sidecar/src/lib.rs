@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::io::Write;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -26,6 +28,14 @@ pub struct RunInput {
     pub max_output_bytes: usize,
     pub output_mode: OutputMode,
     pub truncated_marker: String,
+}
+
+#[derive(Debug)]
+pub struct InheritedProcessInput {
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+    pub child_pid_log_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -78,6 +88,37 @@ impl RunError {
             Self::OutputLimit { .. } => "The process produced more output than allowed.",
         }
     }
+}
+
+pub async fn run_inherited_process(
+    input: InheritedProcessInput,
+) -> Result<std::process::ExitStatus, RunError> {
+    let mut command = Command::new(&input.command);
+    command
+        .args(&input.args)
+        .envs(&input.env)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true);
+
+    let process_tree = ProcessTree::prepare(&mut command).map_err(RunError::ProcessTree)?;
+    let mut child = command.spawn().map_err(RunError::Spawn)?;
+    if let Err(error) = process_tree.attach_and_start(&child) {
+        process_tree.terminate(&mut child).await;
+        return Err(RunError::ProcessTree(error));
+    }
+    if let (Some(path), Some(pid)) = (&input.child_pid_log_path, child.id()) {
+        let mut log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(RunError::Wait)?;
+        writeln!(log, "{pid}").map_err(RunError::Wait)?;
+    }
+    let status = child.wait().await.map_err(RunError::Wait)?;
+    process_tree.terminate_remaining();
+    Ok(status)
 }
 
 #[derive(Debug)]

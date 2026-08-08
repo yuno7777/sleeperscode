@@ -241,6 +241,7 @@ dependencies = [
 name = "t3-runtime-sidecar"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "t3-runtime-protocol",
  "thiserror",
