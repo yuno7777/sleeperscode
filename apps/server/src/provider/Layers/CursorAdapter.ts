@@ -43,6 +43,8 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import * as NativeRuntimeBinary from "../../nativeRuntime/NativeRuntimeBinary.ts";
+import * as NativeRuntimeClient from "../../nativeRuntime/NativeRuntimeClient.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
@@ -319,6 +321,9 @@ export function makeCursorAdapter(
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const nativeRuntime = yield* NativeRuntimeClient.make().pipe(
+      Effect.provide(NativeRuntimeBinary.layer),
+    );
     const serverConfig = yield* Effect.service(ServerConfig);
     const crypto = yield* Crypto.Crypto;
     const nativeEventLogger =
@@ -534,6 +539,7 @@ export function makeCursorAdapter(
           const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings: effectiveCursorSettings,
+            nativeRuntime,
             ...(options?.environment ? { environment: options.environment } : {}),
             childProcessSpawner,
             cwd,
