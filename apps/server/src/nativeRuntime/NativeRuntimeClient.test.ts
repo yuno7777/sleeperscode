@@ -85,6 +85,42 @@ describe("NativeRuntimeClient", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
+  it.live("isolates concurrent streaming sessions on one sidecar", () =>
+    Effect.gen(function* () {
+      const runtime = yield* NativeRuntimeClient;
+      const runSession = (value: string, delayMs: number) =>
+        Effect.gen(function* () {
+          const session = yield* runtime.startStreaming({
+            command: process.execPath,
+            args: [
+              "-e",
+              `const chunks=[];process.stdin.on('data',c=>chunks.push(c));process.stdin.on('end',()=>setTimeout(()=>process.stdout.write(Buffer.concat(chunks)),${delayMs}))`,
+            ],
+          });
+          const outputFiber = yield* Effect.forkChild(Stream.runCollect(session.output), {
+            startImmediately: true,
+          });
+          yield* session.write(Buffer.from(value));
+          yield* session.closeStdin;
+          const exit = yield* session.exit;
+          const output = Buffer.concat(
+            Array.from(yield* Fiber.join(outputFiber))
+              .filter((event) => event.stream === "stdout")
+              .map((event) => Buffer.from(event.bytes)),
+          ).toString("utf8");
+          return { exit, output };
+        });
+
+      const [first, second] = yield* Effect.all(
+        [runSession("first-session", 100), runSession("second-session", 10)],
+        { concurrency: "unbounded" },
+      );
+
+      expect(first).toEqual({ exit: { exitCode: 0, stopped: false }, output: "first-session" });
+      expect(second).toEqual({ exit: { exitCode: 0, stopped: false }, output: "second-session" });
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.live("acknowledges stop before reporting a stopped streaming exit", () =>
     Effect.gen(function* () {
       const runtime = yield* NativeRuntimeClient;
