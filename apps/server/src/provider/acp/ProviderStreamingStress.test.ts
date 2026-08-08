@@ -9,18 +9,13 @@ import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
-import * as NativeRuntimeBinary from "../../nativeRuntime/NativeRuntimeBinary.ts";
-import * as NativeRuntimeClient from "../../nativeRuntime/NativeRuntimeClient.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.ts");
 const concurrencyLevels = [1, 3, 5, 10] as const;
 
-const runMockSession = (
-  index: number,
-  nativeRuntime: NativeRuntimeClient.NativeRuntimeClient["Service"],
-) =>
+const runMockSession = (index: number) =>
   Effect.gen(function* () {
     const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
     const started = yield* runtime.start();
@@ -43,7 +38,6 @@ const runMockSession = (
   }).pipe(
     Effect.provide(
       AcpSessionRuntime.layer({
-        nativeRuntime,
         spawn: {
           command: process.execPath,
           args: ["--experimental-strip-types", mockAgentPath],
@@ -60,11 +54,8 @@ describe("provider streaming concurrency", () => {
   for (const concurrency of concurrencyLevels) {
     it.effect(`runs ${concurrency} isolated ACP session${concurrency === 1 ? "" : "s"}`, () =>
       Effect.gen(function* () {
-        const nativeRuntime = yield* NativeRuntimeClient.make().pipe(
-          Effect.provide(NativeRuntimeBinary.layer),
-        );
         yield* Effect.all(
-          Array.from({ length: concurrency }, (_, index) => runMockSession(index, nativeRuntime)),
+          Array.from({ length: concurrency }, (_, index) => runMockSession(index)),
           { concurrency: "unbounded", discard: true },
         );
       }).pipe(Effect.provide(NodeServices.layer)),
