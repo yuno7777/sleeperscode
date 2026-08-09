@@ -1,4 +1,7 @@
 import {
+  type AgentInstallation,
+  AgentInstallerError,
+  type AgentInstallProgressEvent,
   type EnvironmentId,
   type ServerConfig,
   type ServerConfigStreamEvent,
@@ -40,7 +43,7 @@ import {
   subscribe,
   type EnvironmentRpcInput,
 } from "../rpc/client.ts";
-import { followStreamInEnvironment } from "./runtime.ts";
+import { followStreamInEnvironment, runStreamInEnvironment } from "./runtime.ts";
 
 export type ServerUpdateStage = "downloading" | "installing" | "resuming";
 
@@ -63,6 +66,40 @@ export type ServerUpdateState =
 export interface ServerUpdateTarget {
   readonly environmentId: EnvironmentId;
   readonly input: EnvironmentRpcInput<typeof WS_METHODS.serverUpdateServer>;
+}
+
+export interface AgentInstallTarget {
+  readonly environmentId: EnvironmentId;
+  readonly input: EnvironmentRpcInput<typeof WS_METHODS.serverInstallAgent>;
+}
+
+export type AgentInstallCommandState =
+  | { readonly status: "idle" }
+  | {
+      readonly status: "running";
+      readonly agentId: string;
+      readonly event: AgentInstallProgressEvent;
+    }
+  | {
+      readonly status: "complete";
+      readonly agentId: string;
+      readonly installation: AgentInstallation;
+    };
+
+const IDLE_AGENT_INSTALL_STATE: AgentInstallCommandState = { status: "idle" };
+const agentInstallStateAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make<AgentInstallCommandState>(IDLE_AGENT_INSTALL_STATE).pipe(
+    Atom.withLabel(`environment-data:server:agent-install-state:${environmentId}`),
+  ),
+);
+
+export function agentInstallStateForEvent(
+  agentId: string,
+  event: AgentInstallProgressEvent,
+): AgentInstallCommandState {
+  return event.type === "complete"
+    ? { status: "complete", agentId, installation: event.installation }
+    : { status: "running", agentId, event };
 }
 
 const IDLE_SERVER_UPDATE_STATE: ServerUpdateState = { status: "idle" };
@@ -471,6 +508,57 @@ export function createServerEnvironmentAtoms<R, E>(
     mode: "serial" as const,
     key: ({ environmentId }: { readonly environmentId: string }) => environmentId,
   };
+  const agentInstallConcurrency = {
+    mode: "singleFlight" as const,
+    key: ({ environmentId }: AgentInstallTarget) => environmentId,
+  };
+  const installAgent = createRuntimeCommand(runtime, {
+    label: "environment-data:server:install-agent",
+    concurrency: agentInstallConcurrency,
+    execute: (target: AgentInstallTarget, atomRegistry) => {
+      const stateAtom = agentInstallStateAtom(target.environmentId);
+      atomRegistry.set(stateAtom, {
+        status: "running",
+        agentId: target.input.agentId,
+        event: { type: "progress", stage: "revalidating" },
+      });
+
+      return runStreamInEnvironment(
+        target.environmentId,
+        runStream(WS_METHODS.serverInstallAgent, target.input),
+      ).pipe(
+        Stream.tap((event) =>
+          Effect.sync(() => {
+            atomRegistry.set(stateAtom, agentInstallStateForEvent(target.input.agentId, event));
+          }),
+        ),
+        Stream.runLast,
+        Effect.flatMap(
+          Option.match({
+            onNone: () =>
+              Effect.fail(
+                new AgentInstallerError({
+                  reason: "activation_failed",
+                  detail: "The installation stream ended without a result.",
+                }),
+              ),
+            onSome: (event) =>
+              event.type === "complete"
+                ? Effect.succeed(event.installation)
+                : Effect.fail(
+                    new AgentInstallerError({
+                      reason: "activation_failed",
+                      detail: "The installation stream ended before activation completed.",
+                    }),
+                  ),
+          }),
+        ),
+        Effect.tapCause(() =>
+          Effect.sync(() => atomRegistry.set(stateAtom, IDLE_AGENT_INSTALL_STATE)),
+        ),
+      );
+    },
+  });
   const configProjectionFamily = Atom.family((environmentId: EnvironmentId) =>
     runtime
       .atom(serverConfigStateChanges(environmentId))
@@ -718,6 +806,34 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:agent-catalog",
       tag: WS_METHODS.serverGetAgentCatalog,
       staleTimeMs: 15 * 60_000,
+    }),
+    agentInstallPlan: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:agent-install-plan",
+      tag: WS_METHODS.serverGetAgentInstallPlan,
+      staleTimeMs: 0,
+    }),
+    prepareAgentInstall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:prepare-agent-install",
+      tag: WS_METHODS.serverGetAgentInstallPlan,
+      concurrency: {
+        mode: "latest",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
+    agentInstallations: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:agent-installations",
+      tag: WS_METHODS.serverGetAgentInstallations,
+      staleTimeMs: 0,
+    }),
+    agentInstallStateAtom,
+    installAgent,
+    uninstallAgent: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:uninstall-agent",
+      tag: WS_METHODS.serverUninstallAgent,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId }) => environmentId,
+      },
     }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {

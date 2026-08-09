@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   agentHubSummary,
+  agentInstallProgressLabel,
   catalogDistributionLabel,
   catalogExternalUrl,
   filterAgentCatalog,
+  findAgentInstallation,
   providerReadinessLabel,
 } from "./agentHub.js";
 
@@ -133,5 +135,36 @@ describe("Agent Hub logic", () => {
     expect(providerReadinessLabel(provider())).toBe("Routable");
     expect(providerReadinessLabel(provider({ enabled: false }))).toBe("Integrated");
     expect(providerReadinessLabel(provider({ installed: false }))).toBe("Not detected");
+  });
+
+  it("presents secure installation progress without overstating completion", () => {
+    expect(agentInstallProgressLabel({ type: "progress", stage: "verifying" })).toBe(
+      "Verifying checksum",
+    );
+    expect(
+      agentInstallProgressLabel({
+        type: "progress",
+        stage: "downloading",
+        bytesDownloaded: 25,
+        totalBytes: 100,
+      }),
+    ).toBe("Downloading 25%");
+  });
+
+  it("matches installations by registry identity", () => {
+    const installation = {
+      agentId: "native-binary",
+      displayName: "Native Binary",
+      version: "1.0.0",
+      platformTriple: "windows-x86_64",
+      installedAt: "2026-08-09T00:00:00.000Z",
+      trust: "registry-unverified" as const,
+      sourceUrl: "https://example.com/agent.zip",
+      sha256: "a".repeat(64),
+      command: "agent.exe",
+      args: [],
+    };
+    expect(findAgentInstallation([installation], "native-binary")).toBe(installation);
+    expect(findAgentInstallation([installation], "missing")).toBeUndefined();
   });
 });

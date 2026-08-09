@@ -1,22 +1,34 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   agentHubSummary,
+  agentInstallProgressLabel,
   catalogDistributionLabel,
   filterAgentCatalog,
+  findAgentInstallation,
   providerReadinessLabel,
   type AgentHubCatalogFilter,
 } from "@t3tools/client-runtime/agent-hub";
 import {
+  type AtomCommandResult,
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import type { AgentInstallCommandState } from "@t3tools/client-runtime/state/server";
+import {
   deriveAgentStatusLevels,
   type AgentCatalogEntry,
   type AgentCatalogUnavailableReason,
+  type AgentInstallation,
+  type AgentInstallPlan,
   type EnvironmentId,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { useNavigation } from "@react-navigation/native";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   type ColorValue,
+  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -32,8 +44,10 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { type EnvironmentPresentation, useEnvironments } from "../../state/environments";
+import { appAtomRegistry } from "../../state/atom-registry";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 
 const FILTERS: ReadonlyArray<{
   readonly value: AgentHubCatalogFilter;
@@ -111,6 +125,20 @@ function ConnectedAgentHub(props: {
       input: { refresh: true },
     }),
   );
+  const installationsAtom = serverEnvironment.agentInstallations({
+    environmentId: props.environmentId,
+    input: {},
+  });
+  const installationsQuery = useEnvironmentQuery(installationsAtom);
+  const installations = installationsQuery.data?.installations ?? [];
+  const installState = useAtomValue(serverEnvironment.agentInstallStateAtom(props.environmentId));
+  const prepareAgentInstall = useAtomCommand(serverEnvironment.prepareAgentInstall, {
+    reportFailure: false,
+  });
+  const installAgent = useAtomCommand(serverEnvironment.installAgent, { reportFailure: false });
+  const uninstallAgent = useAtomCommand(serverEnvironment.uninstallAgent, {
+    reportFailure: false,
+  });
   const snapshot = catalogQuery.data;
   const catalog = snapshot?.agents ?? [];
   const filteredCatalog = useMemo(
@@ -119,11 +147,98 @@ function ConnectedAgentHub(props: {
   );
   const summary = useMemo(() => agentHubSummary(providers, catalog), [catalog, providers]);
 
+  const showCommandFailure = (title: string, result: AtomCommandResult<unknown, unknown>) => {
+    if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+    const error = squashAtomCommandFailure(result);
+    Alert.alert(title, error instanceof Error ? error.message : "The Agent Hub operation failed.");
+  };
+
+  const runInstall = async (plan: AgentInstallPlan, acknowledged: boolean) => {
+    const result = await installAgent({
+      environmentId: props.environmentId,
+      input: {
+        agentId: plan.agentId,
+        planId: plan.planId,
+        acknowledgeUnverifiedPublisher: acknowledged,
+      },
+    });
+    if (AsyncResult.isSuccess(result)) {
+      appAtomRegistry.refresh(installationsAtom);
+      return;
+    }
+    showCommandFailure("Installation failed", result);
+  };
+
+  const reviewInstall = async (entry: AgentCatalogEntry) => {
+    const result = await prepareAgentInstall({
+      environmentId: props.environmentId,
+      input: { agentId: entry.agent.id },
+    });
+    if (!AsyncResult.isSuccess(result)) {
+      showCommandFailure("Could not prepare installation", result);
+      return;
+    }
+    const plan = result.value;
+    const checksum = plan.sha256 ?? "Not provided";
+    const blockers = plan.blockers.length > 0 ? `\n\nBlocked: ${plan.blockers.join(", ")}` : "";
+    Alert.alert(
+      `Install ${plan.displayName}?`,
+      `Publisher: ${plan.publisher}\nVersion: ${plan.version}\nHost: ${plan.archiveHost}\nCommand: ${[plan.command, ...plan.args].join(" ")}\nSHA-256: ${checksum}\n\nRegistry membership does not verify or endorse this publisher.${blockers}`,
+      plan.canInstall
+        ? [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: plan.requiresPublisherAcknowledgement
+                ? "I understand & install"
+                : "Verify & install",
+              onPress: () => void runInstall(plan, plan.requiresPublisherAcknowledgement),
+              style: "default",
+            },
+          ]
+        : [{ text: "Close", style: "cancel" }],
+    );
+  };
+
+  const confirmUninstall = (installation: AgentInstallation) => {
+    Alert.alert(
+      `Uninstall ${installation.displayName}?`,
+      "This removes the Agent Hub provider and its app-managed files. External tools and repositories are not touched.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Uninstall",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              const result = await uninstallAgent({
+                environmentId: props.environmentId,
+                input: { agentId: installation.agentId, confirm: true },
+              });
+              if (AsyncResult.isSuccess(result)) {
+                appAtomRegistry.refresh(installationsAtom);
+                return;
+              }
+              showCommandFailure("Uninstall failed", result);
+            })();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <FlatList
       data={filteredCatalog}
       keyExtractor={(entry) => entry.agent.id}
-      renderItem={({ item }) => <RegistryAgentCard entry={item} />}
+      renderItem={({ item }) => (
+        <RegistryAgentCard
+          entry={item}
+          installation={findAgentInstallation(installations, item.agent.id)}
+          installState={installState}
+          onInstall={() => void reviewInstall(item)}
+          onUninstall={confirmUninstall}
+        />
+      )}
       ItemSeparatorComponent={AgentCardGap}
       className="flex-1"
       contentInsetAdjustmentBehavior="automatic"
@@ -133,8 +248,11 @@ function ConnectedAgentHub(props: {
       keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl
-          refreshing={catalogQuery.isPending && snapshot !== null}
-          onRefresh={catalogQuery.refresh}
+          refreshing={(catalogQuery.isPending && snapshot !== null) || installationsQuery.isPending}
+          onRefresh={() => {
+            catalogQuery.refresh();
+            installationsQuery.refresh();
+          }}
         />
       }
       ListHeaderComponent={
@@ -227,8 +345,8 @@ function ConnectedAgentHub(props: {
       ListFooterComponent={
         snapshot?.status === "ready" || snapshot?.status === "stale" ? (
           <Text className="px-2 pb-2 pt-4 text-xs uppercase tracking-wider text-foreground-tertiary">
-            Registry {snapshot.registryVersion} · {snapshot.platformTriple} · install execution
-            gated
+            Registry {snapshot.registryVersion} · {snapshot.platformTriple} · secure binary installs
+            only
           </Text>
         ) : null
       }
@@ -256,8 +374,8 @@ function ControlPlaneCard(props: { readonly summary: ReturnType<typeof agentHubS
           Every coding agent in reach.
         </Text>
         <Text className="text-sm leading-5 text-foreground-muted">
-          Discovery is live. Installation stays gated until trust, consent, verification, and
-          rollback are enforced end to end.
+          Discovery and verified binary installation are live. Every install is revalidated,
+          checksum-checked, staged, and activated as an explicit provider instance.
         </Text>
       </View>
       <View className="flex-row flex-wrap">
@@ -327,7 +445,7 @@ function BuiltInProviders(props: { readonly providers: ReadonlyArray<ServerProvi
   return (
     <View className="gap-2">
       <View className="gap-1 px-2">
-        <Text className="text-sm font-t3-medium text-foreground-muted">Built-in providers</Text>
+        <Text className="text-sm font-t3-medium text-foreground-muted">Provider instances</Text>
         <Text className="text-xs leading-5 text-foreground-tertiary">
           Installed, integrated, and routable are intentionally separate states.
         </Text>
@@ -418,8 +536,19 @@ function ReadinessState(props: {
   );
 }
 
-function RegistryAgentCard({ entry }: { readonly entry: AgentCatalogEntry }) {
+function RegistryAgentCard(props: {
+  readonly entry: AgentCatalogEntry;
+  readonly installation: AgentInstallation | undefined;
+  readonly installState: AgentInstallCommandState;
+  readonly onInstall: () => void;
+  readonly onUninstall: (installation: AgentInstallation) => void;
+}) {
+  const { entry } = props;
+  const installation = props.installation;
   const verifiable = entry.installSafety.checksumVerifiable;
+  const installable = entry.selectedDistribution.kind === "binary" && verifiable;
+  const installing =
+    props.installState.status === "running" && props.installState.agentId === entry.agent.id;
   return (
     <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
       <View className="flex-row items-start justify-between gap-3">
@@ -462,14 +591,47 @@ function RegistryAgentCard({ entry }: { readonly entry: AgentCatalogEntry }) {
           </View>
         ))}
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: true }}
-        disabled
-        className="items-center rounded-2xl border border-border-subtle bg-subtle py-3 opacity-60"
-      >
-        <Text className="text-sm font-t3-medium text-foreground-muted">Install gated</Text>
-      </Pressable>
+      {installation ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: props.installState.status === "running" }}
+          disabled={props.installState.status === "running"}
+          onPress={() => props.onUninstall(installation)}
+          className="items-center rounded-2xl border border-border-subtle bg-subtle py-3"
+        >
+          <Text className="text-sm font-t3-medium text-foreground">
+            Uninstall v{installation.version}
+          </Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{
+            disabled: !installable || props.installState.status === "running",
+          }}
+          disabled={!installable || props.installState.status === "running"}
+          onPress={props.onInstall}
+          className={
+            installable
+              ? "items-center rounded-2xl bg-foreground py-3"
+              : "items-center rounded-2xl border border-border-subtle bg-subtle py-3 opacity-60"
+          }
+        >
+          <Text
+            className={
+              installable
+                ? "text-sm font-t3-medium text-background"
+                : "text-sm font-t3-medium text-foreground-muted"
+            }
+          >
+            {installing
+              ? agentInstallProgressLabel(props.installState.event)
+              : installable
+                ? "Review secure install"
+                : "No secure binary"}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }

@@ -1,16 +1,25 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   agentHubSummary,
+  agentInstallProgressLabel,
   catalogDistributionLabel,
   catalogExternalUrl,
   filterAgentCatalog,
+  findAgentInstallation,
   providerReadinessLabel,
   type AgentHubCatalogFilter,
 } from "@t3tools/client-runtime/agent-hub";
 import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import type { AgentInstallCommandState } from "@t3tools/client-runtime/state/server";
+import {
   deriveAgentStatusLevels,
   type AgentCatalogEntry,
   type AgentCatalogUnavailableReason,
+  type AgentInstallation,
+  type AgentInstallPlan,
   type EnvironmentId,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -23,12 +32,13 @@ import {
   BotIcon,
   CheckCircle2Icon,
   CircleAlertIcon,
-  LockKeyholeIcon,
+  DownloadIcon,
   MoonStarIcon,
   RefreshCwIcon,
   SearchIcon,
   ShieldCheckIcon,
   SparklesIcon,
+  Trash2Icon,
   WaypointsIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -36,9 +46,29 @@ import { useMemo, useState, type ReactNode } from "react";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 const FILTERS: ReadonlyArray<{ readonly value: AgentHubCatalogFilter; readonly label: string }> = [
@@ -82,11 +112,28 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
   const providers = useAtomValue(primaryServerProvidersAtom);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AgentHubCatalogFilter>("all");
+  const [installPlan, setInstallPlan] = useState<AgentInstallPlan | null>(null);
+  const [uninstallTarget, setUninstallTarget] = useState<AgentInstallation | null>(null);
+  const [publisherAcknowledged, setPublisherAcknowledged] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const catalogAtom = serverEnvironment.agentCatalog({
     environmentId,
     input: { refresh: true },
   });
   const catalogResult = useAtomValue(catalogAtom);
+  const installationsAtom = serverEnvironment.agentInstallations({
+    environmentId,
+    input: {},
+  });
+  const installationsResult = useAtomValue(installationsAtom);
+  const installationsSnapshot = Option.getOrNull(AsyncResult.value(installationsResult));
+  const installations = installationsSnapshot?.installations ?? [];
+  const installState = useAtomValue(serverEnvironment.agentInstallStateAtom(environmentId));
+  const prepareAgentInstall = useAtomCommand(serverEnvironment.prepareAgentInstall, {
+    reportFailure: false,
+  });
+  const installAgent = useAtomCommand(serverEnvironment.installAgent, { reportFailure: false });
+  const uninstallAgent = useAtomCommand(serverEnvironment.uninstallAgent, { reportFailure: false });
   const snapshot = Option.getOrNull(AsyncResult.value(catalogResult));
   const catalog = snapshot?.agents ?? [];
   const filteredCatalog = useMemo(
@@ -96,6 +143,57 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
   const summary = useMemo(() => agentHubSummary(providers, catalog), [catalog, providers]);
   const isPending = snapshot === null && catalogResult.waiting;
   const failed = snapshot === null && catalogResult._tag === "Failure";
+
+  const describeCommandFailure = (result: Parameters<typeof squashAtomCommandFailure>[0]) => {
+    const error = squashAtomCommandFailure(result);
+    return error instanceof Error ? error.message : "The Agent Hub operation failed.";
+  };
+
+  const reviewInstall = async (agentId: string) => {
+    setActionError(null);
+    setPublisherAcknowledged(false);
+    const result = await prepareAgentInstall({ environmentId, input: { agentId } });
+    if (AsyncResult.isSuccess(result)) {
+      setInstallPlan(result.value);
+      return;
+    }
+    if (!isAtomCommandInterrupted(result)) setActionError(describeCommandFailure(result));
+  };
+
+  const confirmInstall = async () => {
+    if (installPlan === null) return;
+    setActionError(null);
+    const result = await installAgent({
+      environmentId,
+      input: {
+        agentId: installPlan.agentId,
+        planId: installPlan.planId,
+        acknowledgeUnverifiedPublisher: publisherAcknowledged,
+      },
+    });
+    if (AsyncResult.isSuccess(result)) {
+      setInstallPlan(null);
+      setPublisherAcknowledged(false);
+      appAtomRegistry.refresh(installationsAtom);
+      return;
+    }
+    if (!isAtomCommandInterrupted(result)) setActionError(describeCommandFailure(result));
+  };
+
+  const confirmUninstall = async () => {
+    if (uninstallTarget === null) return;
+    setActionError(null);
+    const result = await uninstallAgent({
+      environmentId,
+      input: { agentId: uninstallTarget.agentId, confirm: true },
+    });
+    if (AsyncResult.isSuccess(result)) {
+      setUninstallTarget(null);
+      appAtomRegistry.refresh(installationsAtom);
+      return;
+    }
+    if (!isAtomCommandInterrupted(result)) setActionError(describeCommandFailure(result));
+  };
 
   const goBack = () => {
     if (canGoBack) {
@@ -150,8 +248,8 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
                 One clear map of every coding agent in reach.
               </h2>
               <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-                Discovery is live. Installation stays intentionally gated until publisher trust,
-                consent, checksum verification, and rollback are enforced end to end.
+                Discovery and verified binary installation are live. Every install is revalidated,
+                checksum-checked, staged, and activated as an explicit provider instance.
               </p>
             </div>
             <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/70 bg-background/70">
@@ -170,8 +268,8 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
         <section className="flex flex-col gap-4">
           <SectionHeading
             eyebrow="Local fleet"
-            title="Built-in providers"
-            detail="These adapters ship with Sleepers Code. Installed, integrated, and routable are separate states."
+            title="Provider instances"
+            detail="Built-in and Agent Hub providers share one runtime. Installed, integrated, and routable remain separate states."
           />
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {providers.map((provider) => (
@@ -241,13 +339,21 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
                 : "The catalog request could not be completed."}
             </CatalogNotice>
           ) : null}
+          {actionError ? <CatalogNotice tone="error">{actionError}</CatalogNotice> : null}
 
           {isPending ? (
             <CatalogSkeleton />
           ) : filteredCatalog.length > 0 ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {filteredCatalog.map((entry) => (
-                <RegistryAgentCard key={entry.agent.id} entry={entry} />
+                <RegistryAgentCard
+                  key={entry.agent.id}
+                  entry={entry}
+                  installation={findAgentInstallation(installations, entry.agent.id)}
+                  installState={installState}
+                  onReviewInstall={() => void reviewInstall(entry.agent.id)}
+                  onUninstall={setUninstallTarget}
+                />
               ))}
             </div>
           ) : snapshot?.status !== "unavailable" && !failed ? (
@@ -262,11 +368,47 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
           {snapshot?.status !== "unavailable" ? (
             <p className="font-mono text-[10px] tracking-wide text-muted-foreground/70 uppercase">
               {snapshot?.registryVersion ? `Registry ${snapshot.registryVersion} · ` : ""}
-              {snapshot?.platformTriple ?? `${snapshot?.platform ?? "unknown"} platform`} · install
-              execution disabled in alpha
+              {snapshot?.platformTriple ?? `${snapshot?.platform ?? "unknown"} platform`} · secure
+              binary installs only
             </p>
           ) : null}
         </section>
+        <AgentInstallDialog
+          plan={installPlan}
+          installState={installState}
+          acknowledged={publisherAcknowledged}
+          error={actionError}
+          onAcknowledgedChange={setPublisherAcknowledged}
+          onClose={() => {
+            if (installState.status !== "running") setInstallPlan(null);
+          }}
+          onConfirm={() => void confirmInstall()}
+        />
+        <AlertDialog
+          open={uninstallTarget !== null}
+          onOpenChange={(open) => !open && setUninstallTarget(null)}
+        >
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Uninstall {uninstallTarget?.displayName}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the Agent Hub provider and its app-managed files. External tools and
+                repositories are not touched.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              <Button
+                disabled={installState.status === "running"}
+                onClick={() => void confirmUninstall()}
+                variant="destructive"
+              >
+                <Trash2Icon />
+                Uninstall
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
       </main>
     </ScrollArea>
   );
@@ -375,10 +517,24 @@ function ReadinessCell({ label, ready }: { readonly label: string; readonly read
   );
 }
 
-function RegistryAgentCard({ entry }: { readonly entry: AgentCatalogEntry }) {
+function RegistryAgentCard({
+  entry,
+  installation,
+  installState,
+  onReviewInstall,
+  onUninstall,
+}: {
+  readonly entry: AgentCatalogEntry;
+  readonly installation: AgentInstallation | undefined;
+  readonly installState: AgentInstallCommandState;
+  readonly onReviewInstall: () => void;
+  readonly onUninstall: (installation: AgentInstallation) => void;
+}) {
   const href = catalogExternalUrl(entry);
   const distribution = catalogDistributionLabel(entry);
   const safe = entry.installSafety.checksumVerifiable;
+  const installing = installState.status === "running" && installState.agentId === entry.agent.id;
+  const installable = entry.selectedDistribution.kind === "binary" && safe;
 
   return (
     <article className="flex min-w-0 flex-col gap-4 rounded-xl border border-border/65 bg-card/45 p-4 hover:border-border hover:bg-card/75">
@@ -421,11 +577,153 @@ function RegistryAgentCard({ entry }: { readonly entry: AgentCatalogEntry }) {
           </Badge>
         ))}
       </div>
-      <Button disabled className="mt-auto w-full" size="sm" variant="outline">
-        <LockKeyholeIcon />
-        Install gated
-      </Button>
+      {installation ? (
+        <Button
+          className="mt-auto w-full"
+          disabled={installState.status === "running"}
+          onClick={() => onUninstall(installation)}
+          size="sm"
+          variant="outline"
+        >
+          <Trash2Icon />
+          Uninstall v{installation.version}
+        </Button>
+      ) : (
+        <Button
+          className="mt-auto w-full"
+          disabled={!installable || installState.status === "running"}
+          onClick={onReviewInstall}
+          size="sm"
+          variant="outline"
+        >
+          <DownloadIcon />
+          {installing
+            ? agentInstallProgressLabel(installState.event)
+            : installable
+              ? "Review secure install"
+              : "No secure binary"}
+        </Button>
+      )}
     </article>
+  );
+}
+
+function installBlockerLabel(blocker: AgentInstallPlan["blockers"][number]): string {
+  switch (blocker) {
+    case "distribution_not_binary":
+      return "Only isolated binary distributions are enabled.";
+    case "archive_not_https":
+      return "The download is not HTTPS.";
+    case "checksum_unavailable":
+      return "The publisher did not provide a SHA-256 checksum.";
+    case "archive_format_unsupported":
+      return "The archive format is not supported.";
+    case "command_path_unsafe":
+      return "The declared command path is unsafe.";
+  }
+}
+
+function AgentInstallDialog(props: {
+  readonly plan: AgentInstallPlan | null;
+  readonly installState: AgentInstallCommandState;
+  readonly acknowledged: boolean;
+  readonly error: string | null;
+  readonly onAcknowledgedChange: (value: boolean) => void;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}) {
+  const plan = props.plan;
+  const installing =
+    plan !== null &&
+    props.installState.status === "running" &&
+    props.installState.agentId === plan.agentId;
+  const acknowledged = !plan?.requiresPublisherAcknowledgement || props.acknowledged;
+
+  return (
+    <Dialog open={plan !== null} onOpenChange={(open) => !open && props.onClose()}>
+      <DialogPopup>
+        {plan ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Install {plan.displayName}</DialogTitle>
+              <DialogDescription>
+                Review the exact artifact Sleepers Code will download and activate.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel className="space-y-4">
+              <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/25 p-3 text-xs">
+                <InstallDetail label="Publisher" value={plan.publisher} />
+                <InstallDetail label="Version" value={plan.version} />
+                <InstallDetail label="Download host" value={plan.archiveHost} />
+                <InstallDetail label="Command" value={[plan.command, ...plan.args].join(" ")} />
+                <InstallDetail label="SHA-256" value={plan.sha256 ?? "Not provided"} mono />
+              </div>
+              <CatalogNotice tone="warning">
+                Registry membership does not verify or endorse this publisher. Sleepers Code
+                verifies the downloaded bytes against the checksum supplied by that publisher.
+              </CatalogNotice>
+              {plan.blockers.length > 0 ? (
+                <ul className="space-y-1 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-xs text-destructive-foreground">
+                  {plan.blockers.map((blocker) => (
+                    <li key={blocker}>- {installBlockerLabel(blocker)}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {plan.requiresPublisherAcknowledgement ? (
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/70 p-3 text-xs leading-5 text-muted-foreground">
+                  <Checkbox
+                    checked={props.acknowledged}
+                    disabled={installing}
+                    onCheckedChange={(checked) => props.onAcknowledgedChange(Boolean(checked))}
+                  />
+                  <span>
+                    I understand that this registry entry and publisher are not independently
+                    verified by Sleepers Code.
+                  </span>
+                </label>
+              ) : null}
+              {installing ? (
+                <div className="rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs text-primary">
+                  {agentInstallProgressLabel(props.installState.event)}
+                </div>
+              ) : null}
+              {props.error ? <CatalogNotice tone="error">{props.error}</CatalogNotice> : null}
+            </DialogPanel>
+            <DialogFooter>
+              <Button disabled={installing} onClick={props.onClose} variant="outline">
+                Cancel
+              </Button>
+              <Button
+                disabled={!plan.canInstall || !acknowledged || installing}
+                onClick={props.onConfirm}
+              >
+                <ShieldCheckIcon />
+                {installing ? "Installing securely" : "Verify and install"}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : null}
+      </DialogPopup>
+    </Dialog>
+  );
+}
+
+function InstallDetail({
+  label,
+  value,
+  mono = false,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly mono?: boolean;
+}) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("break-all text-foreground", mono && "font-mono text-[10px]")}>
+        {value}
+      </span>
+    </div>
   );
 }
 

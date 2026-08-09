@@ -1,6 +1,8 @@
 import {
   deriveAgentStatusLevels,
   type AgentCatalogEntry,
+  type AgentInstallation,
+  type AgentInstallProgressEvent,
   type ServerProvider,
 } from "@t3tools/contracts";
 
@@ -93,4 +95,30 @@ export function providerReadinessLabel(provider: ServerProvider): string {
   if (!provider.installed) return "Not detected";
   if (provider.availability === "unavailable") return "Driver unavailable";
   return "Needs attention";
+}
+
+export function findAgentInstallation(
+  installations: ReadonlyArray<AgentInstallation>,
+  agentId: string,
+): AgentInstallation | undefined {
+  return installations.find((installation) => installation.agentId === agentId);
+}
+
+export function agentInstallProgressLabel(event: AgentInstallProgressEvent): string {
+  if (event.type === "complete") return "Installed";
+  switch (event.stage) {
+    case "revalidating":
+      return "Revalidating registry";
+    case "downloading":
+      if (event.totalBytes && event.bytesDownloaded !== undefined) {
+        return `Downloading ${Math.min(100, Math.round((event.bytesDownloaded / event.totalBytes) * 100))}%`;
+      }
+      return "Downloading";
+    case "verifying":
+      return "Verifying checksum";
+    case "extracting":
+      return "Extracting safely";
+    case "activating":
+      return "Activating provider";
+  }
 }

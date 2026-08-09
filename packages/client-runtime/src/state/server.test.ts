@@ -30,6 +30,7 @@ import * as Persistence from "../platform/persistence.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import {
+  agentInstallStateForEvent,
   applyServerConfigProjection,
   makeEnvironmentServerConfigState,
   isLegacyUpdateHandoffLoss,
@@ -127,6 +128,26 @@ describe("update restart reconnect nudges", () => {
 });
 
 describe("server state projection", () => {
+  it("projects agent installer progress without losing agent identity", () => {
+    expect(
+      agentInstallStateForEvent("fixture-agent", {
+        type: "progress",
+        stage: "downloading",
+        bytesDownloaded: 64,
+        totalBytes: 128,
+      }),
+    ).toEqual({
+      status: "running",
+      agentId: "fixture-agent",
+      event: {
+        type: "progress",
+        stage: "downloading",
+        bytesDownloaded: 64,
+        totalBytes: 128,
+      },
+    });
+  });
+
   it("only treats a legacy transport interruption as an unacknowledged handoff", () => {
     expect(isLegacyUpdateHandoffLoss(Cause.interrupt(1))).toBe(true);
     expect(
