@@ -76,9 +76,9 @@ checkpoint design discarding Git's stat cache on every turn. A Rust reimplementa
 the worktree every turn would be equally slow; one that maintained its own stat cache would be
 reinventing the index Git already has.
 
-**The fix is a persistent checkpoint index.** Keep one index file per worktree instead of a fresh
-one per capture, and re-seed it with `read-tree HEAD` only when it is missing or stale, rather than
-unconditionally.
+**The fix is a persistent checkpoint index.** Keep one index file per capture root instead of a
+fresh one per capture, and re-seed it with `read-tree HEAD` only when it is missing or stale, rather
+than unconditionally. The capture root matters because a nested T3 project stages only its subtree.
 
 This cannot be applied as-is, because `read-tree HEAD` is load-bearing for correctness, not just
 seeding. Conditions the implementation has to satisfy before it can replace the current behavior:
@@ -100,8 +100,9 @@ ignored files, a HEAD change between captures, and an empty repository with no H
 ## Implemented
 
 `GitVcsDriver.checkpoints.captureCheckpoint` now keeps a cached index at
-`<git-common-dir>/t3-checkpoint-index-cache`, alongside a `.head` file recording the HEAD it was
-built against.
+`<git-common-dir>/t3-checkpoint-index-cache-<root-hash>`, alongside a `.head` file recording the HEAD
+it was built against. Hashing the resolved capture root prevents a repository-root project and a
+nested project from sharing staged entries outside the nested project's scope.
 
 The cache is treated as a hint and never as a source of truth:
 
@@ -118,8 +119,9 @@ The cache is treated as a hint and never as a source of truth:
 
 `apps/server/src/vcs/GitCheckpointCapture.test.ts` asserts the captured tree oid equals the uncached
 sequence across repeated captures with edits, additions and deletions; a new commit; a branch switch;
-ignored files; a repository with no commits; and a deliberately corrupted cache. All five pass, and
-the surrounding VCS and checkpoint suites show no new failures.
+ignored files; a repository with no commits; a deliberately corrupted cache; and cross-project
+contamination between a repository root and a nested project. All six pass, and the surrounding VCS
+and checkpoint suites show no new failures.
 
 The measured mechanism is the benchmark's equivalent sequence: 10x faster at 5,000 files and 59x at
 15,000. The production path adds the HEAD stamp and the retry, so a first capture after a HEAD move

@@ -197,14 +197,26 @@ async function measureRun(baseDir, variant) {
   );
   server.stderr.on("data", (chunk) => stderr.push(chunk));
   let exited = false;
-  server.once("exit", () => {
-    exited = true;
+  const exitPromise = once(server, "exit");
+  exitPromise.then(
+    () => {
+      exited = true;
+    },
+    () => {
+      exited = true;
+    },
+  );
+  const unexpectedExit = exitPromise.then(([code, signal]) => {
+    throw new Error(`Server exited before measurement completed (${signal ?? code}).`);
   });
 
   try {
-    await waitUntilServing(`http://127.0.0.1:${port}${readinessPath}`, 60_000);
+    await Promise.race([
+      waitUntilServing(`http://127.0.0.1:${port}${readinessPath}`, 60_000),
+      unexpectedExit,
+    ]);
     const spawnToServeMs = performance.now() - startedAt;
-    const idle = await sampleIdle(server.pid, idleSeconds);
+    const idle = await Promise.race([sampleIdle(server.pid, idleSeconds), unexpectedExit]);
     return { port, spawnToServeMs, idle };
   } catch (error) {
     throw new Error(`${error.message}\n${Buffer.concat(stderr).toString("utf8")}`);
@@ -213,7 +225,7 @@ async function measureRun(baseDir, variant) {
     if (!exited) {
       const shutdownAt = performance.now();
       server.kill();
-      await once(server, "exit");
+      await exitPromise;
       process.stderr.write(`shutdown took ${(performance.now() - shutdownAt).toFixed(1)} ms\n`);
     }
   }

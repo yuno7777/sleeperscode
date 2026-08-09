@@ -212,7 +212,7 @@ export const deriveAcpInstallSafety = (choice: AcpDistributionChoice): AcpInstal
   if (choice.kind === "unavailable") {
     return { checksumVerifiable: false, risks: ["no_distribution"] };
   }
-  if (choice.kind === "npx" || choice.kind === "uvx") {
+  if (choice.kind !== "binary") {
     return { checksumVerifiable: false, risks: ["package_manager_install"] };
   }
 

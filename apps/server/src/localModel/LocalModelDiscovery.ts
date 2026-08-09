@@ -61,6 +61,16 @@ export class LocalModelDiscovery extends Context.Service<
   }
 >()("t3/localModel/LocalModelDiscovery") {}
 
+const normalizeHttpBaseUrl = (value: string): string | undefined => {
+  const baseUrl = value.trim();
+  try {
+    const protocol = new URL(baseUrl).protocol;
+    return protocol === "http:" || protocol === "https:" ? baseUrl : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 export const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
 
@@ -76,23 +86,12 @@ export const make = Effect.gen(function* () {
         } as const;
       }
 
-      const baseUrl = configuredBaseUrl.trim();
-      let protocol: string;
-      try {
-        protocol = new URL(baseUrl).protocol;
-      } catch {
+      const baseUrl = normalizeHttpBaseUrl(configuredBaseUrl);
+      if (baseUrl === undefined) {
         return {
           status: "unreachable",
           runtime: input.runtime,
-          baseUrl,
-          reason: "invalid_base_url",
-        } as const;
-      }
-      if (protocol !== "http:" && protocol !== "https:") {
-        return {
-          status: "unreachable",
-          runtime: input.runtime,
-          baseUrl,
+          baseUrl: configuredBaseUrl.trim(),
           reason: "invalid_base_url",
         } as const;
       }
