@@ -107,7 +107,8 @@ targets.push({ label: "this monorepo", path: repositoryRoot });
 const samples = new Map(targets.map((target) => [target.label, []]));
 try {
   for (let iteration = 0; iteration < repeat; iteration += 1) {
-    for (const target of targets) {
+    const orderedTargets = iteration % 2 === 0 ? targets : [...targets].reverse();
+    for (const target of orderedTargets) {
       const { stdout } = await runChild(process.execPath, [selfPath, `--only=${target.path}`], {
         maxBuffer: 16 * 1024 * 1024,
       });

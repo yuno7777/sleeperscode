@@ -147,7 +147,8 @@ async function measureLevel(concurrency, backend) {
 const results = [];
 for (let iteration = 1; iteration <= repeat; iteration += 1) {
   for (const level of levels) {
-    for (const backend of backends) {
+    const orderedBackends = iteration % 2 === 1 ? backends : [...backends].reverse();
+    for (const backend of orderedBackends) {
       results.push({ iteration, ...(await measureLevel(level, backend)) });
     }
   }

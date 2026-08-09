@@ -144,7 +144,8 @@ const counts = {};
 // Scenarios still alternate across iterations so ambient load cannot favour
 // whichever one happened to run first.
 for (let iteration = 0; iteration < repeat; iteration += 1) {
-  for (const scenario of scenarios) {
+  const orderedScenarios = iteration % 2 === 0 ? scenarios : [...scenarios].reverse();
+  for (const scenario of orderedScenarios) {
     const { stdout } = await runChild(
       process.execPath,
       [selfPath, `--path=${target}`, `--only=${scenario.name}`],

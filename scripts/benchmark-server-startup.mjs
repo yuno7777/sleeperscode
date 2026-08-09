@@ -229,7 +229,8 @@ for (const variant of variants) {
 const runs = [];
 try {
   for (let iteration = 1; iteration <= repeat; iteration += 1) {
-    for (const variant of variants) {
+    const orderedVariants = iteration % 2 === 1 ? variants : [...variants].reverse();
+    for (const variant of orderedVariants) {
       runs.push({
         iteration,
         backend: variant.backend,

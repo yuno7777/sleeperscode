@@ -58,19 +58,16 @@ async function makeRepository(fileCount) {
 
 async function timed(cwd, args, env) {
   const startedAt = performance.now();
-  await run(args, { cwd, env }).catch((error) => {
-    if (error.code === "ENOENT") throw error;
-  });
+  await run(args, { cwd, env });
   return performance.now() - startedAt;
 }
 
 /**
  * Mirrors GitVcsDriver.checkpoints.captureCheckpoint step for step.
  *
- * `indexPath` and `skipReadTree` exist to test why the staging step is so
- * expensive. Production allocates a fresh index per capture and always seeds it
- * with `read-tree HEAD`, which leaves Git no stat cache to trust, so every
- * capture must re-hash the whole worktree rather than only what changed.
+ * `indexPath` and `skipReadTree` isolate the cost of seeding and reusing an
+ * index. The production implementation can then be compared with the variant
+ * that matches its current strategy.
  */
 async function captureCheckpoint(root, { indexPath, skipReadTree = false } = {}) {
   const checkpointRef = `refs/t3-benchmark/${randomUUID()}`;
@@ -123,28 +120,43 @@ const results = [];
 
 for (const size of sizes) {
   const root = await makeRepository(size);
-  const persistentIndex = path.join(root, ".git", "t3-checkpoint-index-persistent");
   const variants = [
-    { name: "production: fresh index, read-tree", options: () => ({}) },
+    { name: "fresh index, read-tree", launches: 7, options: () => ({}) },
     {
       name: "reused index, read-tree each time",
-      options: () => ({ indexPath: persistentIndex }),
+      launches: 7,
+      indexPath: path.join(root, ".git", "t3-checkpoint-index-read-tree"),
+      options() {
+        return { indexPath: this.indexPath };
+      },
     },
     {
       name: "reused index, no read-tree",
-      options: (iteration) => ({ indexPath: persistentIndex, skipReadTree: iteration > 0 }),
+      launches: 6,
+      indexPath: path.join(root, ".git", "t3-checkpoint-index-no-read-tree"),
+      options(iteration) {
+        return { indexPath: this.indexPath, skipReadTree: iteration > 0 };
+      },
     },
   ];
   try {
+    const runsByVariant = new Map(variants.map((variant) => [variant.name, []]));
     for (const variant of variants) {
-      await rm(persistentIndex, { force: true }).catch(() => undefined);
+      if (variant.indexPath) await rm(variant.indexPath, { force: true }).catch(() => undefined);
       // One warmup so first-touch costs are not counted, and so the reused-index
       // variants have an index to reuse.
       await captureCheckpoint(root, variant.options(0));
-      const runs = [];
-      for (let iteration = 0; iteration < repeat; iteration += 1) {
-        runs.push(await captureCheckpoint(root, variant.options(iteration + 1)));
+    }
+    for (let iteration = 0; iteration < repeat; iteration += 1) {
+      const ordered = iteration % 2 === 0 ? variants : [...variants].reverse();
+      for (const variant of ordered) {
+        runsByVariant
+          .get(variant.name)
+          .push(await captureCheckpoint(root, variant.options(iteration + 1)));
       }
+    }
+    for (const variant of variants) {
+      const runs = runsByVariant.get(variant.name);
       const steps = stepOrder.map((step) => ({
         step,
         meanMs: mean(runs.map((entry) => entry[step])),
@@ -152,7 +164,7 @@ for (const size of sizes) {
       results.push({
         files: size,
         variant: variant.name,
-        launches: stepOrder.length,
+        launches: variant.launches,
         steps,
         totalMeanMs: steps.reduce((total, entry) => total + entry.meanMs, 0),
       });
