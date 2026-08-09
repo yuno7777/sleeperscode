@@ -8,7 +8,18 @@ import {
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
 } from "./auth.ts";
-import { AgentCatalogRequest, AgentCatalogSnapshot } from "./agentRegistry.ts";
+import {
+  AgentCatalogRequest,
+  AgentCatalogSnapshot,
+  AgentInstallPlan,
+  AgentInstallPlanRequest,
+  AgentInstallProgressEvent,
+  AgentInstallRequest,
+  AgentInstallationsSnapshot,
+  AgentInstallerError,
+  AgentUninstallRequest,
+  AgentUninstallResult,
+} from "./agentRegistry.ts";
 import {
   BackgroundPolicySnapshot,
   ClientActivityReportInput,
@@ -229,6 +240,10 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverGetAgentCatalog: "server.getAgentCatalog",
+  serverGetAgentInstallPlan: "server.getAgentInstallPlan",
+  serverGetAgentInstallations: "server.getAgentInstallations",
+  serverInstallAgent: "server.installAgent",
+  serverUninstallAgent: "server.uninstallAgent",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
   serverUpdateServer: "server.updateServer",
@@ -299,6 +314,31 @@ export const WsServerGetAgentCatalogRpc = Rpc.make(WS_METHODS.serverGetAgentCata
   payload: AgentCatalogRequest,
   success: AgentCatalogSnapshot,
   error: EnvironmentAuthorizationError,
+});
+
+export const WsServerGetAgentInstallPlanRpc = Rpc.make(WS_METHODS.serverGetAgentInstallPlan, {
+  payload: AgentInstallPlanRequest,
+  success: AgentInstallPlan,
+  error: Schema.Union([AgentInstallerError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerGetAgentInstallationsRpc = Rpc.make(WS_METHODS.serverGetAgentInstallations, {
+  payload: Schema.Struct({}),
+  success: AgentInstallationsSnapshot,
+  error: Schema.Union([AgentInstallerError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerInstallAgentRpc = Rpc.make(WS_METHODS.serverInstallAgent, {
+  payload: AgentInstallRequest,
+  success: AgentInstallProgressEvent,
+  error: Schema.Union([AgentInstallerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsServerUninstallAgentRpc = Rpc.make(WS_METHODS.serverUninstallAgent, {
+  payload: AgentUninstallRequest,
+  success: AgentUninstallResult,
+  error: Schema.Union([AgentInstallerError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -822,6 +862,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerGetAgentCatalogRpc,
+  WsServerGetAgentInstallPlanRpc,
+  WsServerGetAgentInstallationsRpc,
+  WsServerInstallAgentRpc,
+  WsServerUninstallAgentRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsServerUpdateServerRpc,

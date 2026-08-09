@@ -272,6 +272,176 @@ export const AgentCatalogEntry = Schema.Struct({
 });
 export type AgentCatalogEntry = typeof AgentCatalogEntry.Type;
 
+/**
+ * Trust is deliberately independent from checksum verifiability. The public ACP
+ * registry does not currently publish an endorsement signal, so remote entries
+ * remain `registry-unverified` until a separately reviewed Sleepers Code trust
+ * policy says otherwise.
+ */
+export const AgentRegistryTrust = Schema.Literals([
+  "official-built-in",
+  "verified-community",
+  "community",
+  "registry-unverified",
+  "custom",
+]);
+export type AgentRegistryTrust = typeof AgentRegistryTrust.Type;
+
+export const AgentInstallArchiveFormat = Schema.Literals([
+  "zip",
+  "tar-gz",
+  "executable",
+  "unsupported",
+]);
+export type AgentInstallArchiveFormat = typeof AgentInstallArchiveFormat.Type;
+
+/** Formats the first secure installer slice can unpack without invoking a shell. */
+export const resolveAgentInstallArchiveFormat = (archiveUrl: string): AgentInstallArchiveFormat => {
+  let pathname: string;
+  try {
+    pathname = new URL(archiveUrl).pathname.toLowerCase();
+  } catch {
+    return "unsupported";
+  }
+  if (pathname.endsWith(".tar.gz") || pathname.endsWith(".tgz")) return "tar-gz";
+  if (pathname.endsWith(".zip")) return "zip";
+  if (pathname.endsWith(".exe")) return "executable";
+  return "unsupported";
+};
+
+export const AgentInstallBlocker = Schema.Literals([
+  "distribution_not_binary",
+  "archive_not_https",
+  "checksum_unavailable",
+  "archive_format_unsupported",
+  "command_path_unsafe",
+]);
+export type AgentInstallBlocker = typeof AgentInstallBlocker.Type;
+
+export const AgentInstallPlanRequest = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+});
+export type AgentInstallPlanRequest = typeof AgentInstallPlanRequest.Type;
+
+/**
+ * Immutable preview of the exact bytes and command an install request will use.
+ * `planId` fingerprints every security-relevant field; the server recomputes it
+ * from a forced registry refresh before downloading anything.
+ */
+export const AgentInstallPlan = Schema.Struct({
+  planId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  displayName: TrimmedNonEmptyString,
+  version: TrimmedNonEmptyString,
+  publisher: TrimmedNonEmptyString,
+  repository: Schema.optional(TrimmedNonEmptyString),
+  trust: AgentRegistryTrust,
+  registryVersion: TrimmedNonEmptyString,
+  platformTriple: TrimmedNonEmptyString,
+  archiveUrl: TrimmedNonEmptyString,
+  archiveHost: TrimmedNonEmptyString,
+  archiveFormat: AgentInstallArchiveFormat,
+  sha256: Schema.optional(TrimmedNonEmptyString),
+  command: TrimmedNonEmptyString,
+  args: Schema.Array(Schema.String),
+  environmentVariables: Schema.Array(TrimmedNonEmptyString),
+  prerequisites: Schema.Array(AcpPrerequisite),
+  blockers: Schema.Array(AgentInstallBlocker),
+  canInstall: Schema.Boolean,
+  requiresPublisherAcknowledgement: Schema.Boolean,
+});
+export type AgentInstallPlan = typeof AgentInstallPlan.Type;
+
+export const AgentInstallRequest = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+  planId: TrimmedNonEmptyString,
+  /** Required for every registry entry until a reviewed trust policy promotes it. */
+  acknowledgeUnverifiedPublisher: Schema.Boolean,
+});
+export type AgentInstallRequest = typeof AgentInstallRequest.Type;
+
+export const AgentInstallation = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+  displayName: TrimmedNonEmptyString,
+  version: TrimmedNonEmptyString,
+  platformTriple: TrimmedNonEmptyString,
+  installedAt: TrimmedNonEmptyString,
+  trust: AgentRegistryTrust,
+  sourceUrl: TrimmedNonEmptyString,
+  sha256: TrimmedNonEmptyString,
+  command: TrimmedNonEmptyString,
+  args: Schema.Array(Schema.String),
+});
+export type AgentInstallation = typeof AgentInstallation.Type;
+
+export const AgentInstallProgressStage = Schema.Literals([
+  "revalidating",
+  "downloading",
+  "verifying",
+  "extracting",
+  "activating",
+]);
+export type AgentInstallProgressStage = typeof AgentInstallProgressStage.Type;
+
+export const AgentInstallProgressEvent = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("progress"),
+    stage: AgentInstallProgressStage,
+    bytesDownloaded: Schema.optional(Schema.Number),
+    totalBytes: Schema.optional(Schema.Number),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("complete"),
+    installation: AgentInstallation,
+  }),
+]);
+export type AgentInstallProgressEvent = typeof AgentInstallProgressEvent.Type;
+
+export const AgentInstallationsSnapshot = Schema.Struct({
+  installations: Schema.Array(AgentInstallation),
+});
+export type AgentInstallationsSnapshot = typeof AgentInstallationsSnapshot.Type;
+
+export const AgentUninstallRequest = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+  confirm: Schema.Boolean,
+});
+export type AgentUninstallRequest = typeof AgentUninstallRequest.Type;
+
+export const AgentUninstallResult = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+  removed: Schema.Boolean,
+});
+export type AgentUninstallResult = typeof AgentUninstallResult.Type;
+
+export const AgentInstallerErrorReason = Schema.Literals([
+  "catalog_unavailable",
+  "agent_not_found",
+  "distribution_unsupported",
+  "unsafe_distribution",
+  "unsupported_archive",
+  "stale_plan",
+  "consent_required",
+  "download_failed",
+  "download_too_large",
+  "checksum_mismatch",
+  "archive_invalid",
+  "command_invalid",
+  "activation_failed",
+  "install_in_progress",
+  "not_installed",
+  "uninstall_failed",
+]);
+export type AgentInstallerErrorReason = typeof AgentInstallerErrorReason.Type;
+
+export class AgentInstallerError extends Schema.TaggedErrorClass<AgentInstallerError>()(
+  "AgentInstallerError",
+  {
+    reason: AgentInstallerErrorReason,
+    detail: TrimmedNonEmptyString,
+  },
+) {}
+
 export const AgentCatalogUnavailableReason = Schema.Literals([
   "request_failed",
   "bad_status",

@@ -7,6 +7,7 @@ import {
   acpPlatformTriple,
   acpPrerequisitesFor,
   deriveAcpInstallSafety,
+  resolveAgentInstallArchiveFormat,
   selectAcpDistribution,
 } from "./agentRegistry.ts";
 
@@ -294,5 +295,21 @@ describe("deriveAcpInstallSafety", () => {
       checksumVerifiable: false,
       risks: ["no_distribution"],
     });
+  });
+});
+
+describe("resolveAgentInstallArchiveFormat", () => {
+  it("recognizes the archive formats shipped for current Windows ACP agents", () => {
+    expect(resolveAgentInstallArchiveFormat("https://example.test/agent.zip")).toBe("zip");
+    expect(resolveAgentInstallArchiveFormat("https://example.test/agent.tar.gz?download=1")).toBe(
+      "tar-gz",
+    );
+    expect(resolveAgentInstallArchiveFormat("https://example.test/agent.tgz")).toBe("tar-gz");
+    expect(resolveAgentInstallArchiveFormat("https://example.test/agent.exe")).toBe("executable");
+  });
+
+  it("does not guess from an unknown or invalid URL", () => {
+    expect(resolveAgentInstallArchiveFormat("https://example.test/agent.bin")).toBe("unsupported");
+    expect(resolveAgentInstallArchiveFormat("not a URL")).toBe("unsupported");
   });
 });

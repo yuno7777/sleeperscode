@@ -15,6 +15,8 @@ import {
   type AuthAccessStreamEvent,
   type AuthEnvironmentScope,
   AuthSessionId,
+  type AgentInstallProgressEvent,
+  AgentInstallerError,
   CommandId,
   type DiscoveredLocalServerList,
   EventId,
@@ -64,6 +66,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as AgentCatalog from "./agentCatalog/AgentCatalog.ts";
+import * as AgentInstaller from "./agentInstaller/AgentInstaller.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -352,6 +355,7 @@ const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   agentCatalog: AgentCatalog.AgentCatalog["Service"],
+  agentInstaller: AgentInstaller.AgentInstaller["Service"],
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -1442,6 +1446,36 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetAgentCatalog, agentCatalog.get(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverGetAgentInstallPlan]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetAgentInstallPlan,
+            agentInstaller.getPlan(input.agentId),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverGetAgentInstallations]: (_input) =>
+          observeRpcEffect(WS_METHODS.serverGetAgentInstallations, agentInstaller.list, {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.serverInstallAgent]: (input) =>
+          observeRpcStream(
+            WS_METHODS.serverInstallAgent,
+            Stream.callback<AgentInstallProgressEvent, AgentInstallerError>((queue) =>
+              agentInstaller
+                .install(input, (event) => Queue.offer(queue, event).pipe(Effect.asVoid))
+                .pipe(
+                  Effect.catchTags({
+                    AgentInstallerError: (error) => Queue.fail(queue, error),
+                  }),
+                  Effect.andThen(Queue.end(queue)),
+                  Effect.forkScoped,
+                ),
+            ),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverUninstallAgent]: (input) =>
+          observeRpcEffect(WS_METHODS.serverUninstallAgent, agentInstaller.uninstall(input), {
+            "rpc.aggregate": "server",
+          }),
         [WS_METHODS.serverRefreshProviders]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverRefreshProviders,
@@ -2205,6 +2239,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
     const agentCatalog = yield* AgentCatalog.AgentCatalog;
+    const agentInstaller = yield* AgentInstaller.AgentInstaller;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     return HttpRouter.add(
       "GET",
@@ -2225,7 +2260,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           disableTracing: true,
         }).pipe(
           Effect.provide(
-            makeWsRpcLayer(session, previewAutomationBroker, agentCatalog).pipe(
+            makeWsRpcLayer(session, previewAutomationBroker, agentCatalog, agentInstaller).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(ProviderMaintenanceRunner.layer),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
