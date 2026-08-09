@@ -7,6 +7,7 @@
  * index, then `add -A`). A wrong tree here is silent data loss at restore time.
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -62,6 +63,14 @@ const makeRepository = (cwd: string) =>
     yield* git(cwd, ["config", "core.autocrlf", "false"]);
   });
 
+const checkpointCacheIndexName = (cwd: string) => {
+  const cacheScope = NodeCrypto.createHash("sha256")
+    .update(globalThis.process.platform === "win32" ? cwd.toLowerCase() : cwd)
+    .digest("hex")
+    .slice(0, 16);
+  return `t3-checkpoint-index-cache-${cacheScope}`;
+};
+
 let referenceIndexCounter = 0;
 
 /** The tree the current uncached sequence would produce, computed in isolation. */
@@ -70,7 +79,12 @@ const referenceTreeOid = (cwd: string) =>
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     referenceIndexCounter += 1;
-    const indexPath = path.join(cwd, ".git", `reference-index-${referenceIndexCounter}`);
+    const commonDirResult = yield* git(cwd, ["rev-parse", "--git-common-dir"]);
+    const rawCommonDir = commonDirResult.stdout.trim();
+    const commonDir = path.isAbsolute(rawCommonDir)
+      ? rawCommonDir
+      : path.resolve(cwd, rawCommonDir);
+    const indexPath = path.join(commonDir, `reference-index-${referenceIndexCounter}`);
     const env = { ...process.env, GIT_INDEX_FILE: indexPath };
     const head = yield* git(cwd, ["rev-parse", "--verify", "HEAD"], env).pipe(
       Effect.map((result) => result.stdout.trim()),
@@ -176,6 +190,29 @@ describe("checkpoint capture stays equivalent when the index cache is reused", (
     ).pipe(Effect.provide(TestLayer)),
   );
 
+  it.effect("does not share cached indexes between nested project roots", () =>
+    withRepository((cwd) =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        yield* makeRepository(cwd);
+        yield* write(cwd, "root.ts", "export const root = 1;\n");
+        yield* write(cwd, "nested/file.ts", "export const nested = 1;\n");
+        yield* git(cwd, ["add", "-A"]);
+        yield* git(cwd, ["commit", "--quiet", "-m", "base"]);
+
+        // Seed the repository-root cache with a root-only modification.
+        yield* write(cwd, "root.ts", "export const root = 2;\n");
+        yield* assertCaptureMatchesReference(cwd, "root-project");
+
+        // A nested project stages only its own path. Reusing the root cache would
+        // silently carry the unrelated root.ts modification into this checkpoint.
+        const nestedCwd = path.join(cwd, "nested");
+        yield* write(cwd, "nested/file.ts", "export const nested = 2;\n");
+        yield* assertCaptureMatchesReference(nestedCwd, "nested-project");
+      }),
+    ).pipe(Effect.provide(TestLayer)),
+  );
+
   it.effect("captures in a repository with no commits", () =>
     withRepository((cwd) =>
       Effect.gen(function* () {
@@ -197,8 +234,13 @@ describe("checkpoint capture stays equivalent when the index cache is reused", (
         yield* git(cwd, ["commit", "--quiet", "-m", "base"]);
         yield* assertCaptureMatchesReference(cwd, "before-corruption");
 
+        const commonDirResult = yield* git(cwd, ["rev-parse", "--git-common-dir"]);
+        const rawCommonDir = commonDirResult.stdout.trim();
+        const commonDir = path.isAbsolute(rawCommonDir)
+          ? rawCommonDir
+          : path.resolve(cwd, rawCommonDir);
         yield* fileSystem.writeFileString(
-          path.join(cwd, ".git", "t3-checkpoint-index-cache"),
+          path.join(commonDir, checkpointCacheIndexName(path.resolve(cwd))),
           "not an index file",
         );
         yield* write(cwd, "src/a.ts", "export const a = 5;\n");

@@ -692,13 +692,25 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       // 20.4 s of a 24.6 s capture on a 15,000 file repository. Carrying the
       // previous capture's index forward makes that step incremental.
       //
-      // The cache is a hint, never a source of truth. It is reused only when its
+      // The cache is a hint, never a source of truth. It is scoped to the capture
+      // root because `git add -A -- .` only stages paths below `input.cwd`; sharing
+      // an index between a repository root and a nested T3 project would retain
+      // out-of-scope entries from the earlier capture. It is reused only when its
       // recorded HEAD matches the current one, and a cache that cannot be read,
       // copied, or staged against is discarded and re-seeded from HEAD. A bad
       // cache therefore costs time and never produces a different tree.
       // Concurrent captures still get their own index and can only race on
       // refreshing the cache, where the loser leaves the next capture to re-seed.
-      const cacheIndexPath = path.join(gitCommonDir, "t3-checkpoint-index-cache");
+      const resolvedCaptureRoot = path.resolve(input.cwd);
+      const normalizedCaptureRoot =
+        globalThis.process.platform === "win32"
+          ? resolvedCaptureRoot.toLowerCase()
+          : resolvedCaptureRoot;
+      const cacheScope = NodeCrypto.createHash("sha256")
+        .update(normalizedCaptureRoot)
+        .digest("hex")
+        .slice(0, 16);
+      const cacheIndexPath = path.join(gitCommonDir, `t3-checkpoint-index-cache-${cacheScope}`);
       const cacheHeadPath = `${cacheIndexPath}.head`;
 
       const seedFromCache = (headOid: string) =>
