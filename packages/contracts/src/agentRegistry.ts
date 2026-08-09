@@ -25,6 +25,9 @@ import * as Schema from "effect/Schema";
 
 import { ForwardCompatibleArray, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
+export const ACP_REGISTRY_URL =
+  "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
+
 const EnvironmentRecord = Schema.Record(Schema.String, Schema.String);
 const CommandArguments = Schema.Array(Schema.String);
 
@@ -154,20 +157,22 @@ export const acpPlatformTriple = (platform: string, architecture: string): strin
   }
 };
 
-export type AcpDistributionChoice =
-  | {
-      readonly kind: "binary";
-      readonly triple: string;
-      readonly artifact: AcpRegistryBinaryArtifact;
-    }
-  | {
-      readonly kind: "npx" | "uvx";
-      readonly distribution: AcpRegistryPackageDistribution;
-    }
-  | {
-      readonly kind: "unavailable";
-      readonly reason: "unsupported_platform" | "no_distribution_for_platform";
-    };
+export const AcpDistributionChoice = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("binary"),
+    triple: TrimmedNonEmptyString,
+    artifact: AcpRegistryBinaryArtifact,
+  }),
+  Schema.Struct({
+    kind: Schema.Literals(["npx", "uvx"]),
+    distribution: AcpRegistryPackageDistribution,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("unavailable"),
+    reason: Schema.Literals(["unsupported_platform", "no_distribution_for_platform"]),
+  }),
+]);
+export type AcpDistributionChoice = typeof AcpDistributionChoice.Type;
 
 /**
  * Picks how to obtain an agent on one platform, following the Phase 22 ordering.
@@ -255,3 +260,58 @@ export const acpPrerequisitesFor = (
       return [];
   }
 };
+
+/** One registry entry prepared for display on the server's current platform. */
+export const AgentCatalogEntry = Schema.Struct({
+  agent: AcpRegistryAgent,
+  selectedDistribution: AcpDistributionChoice,
+  installSafety: AcpInstallSafety,
+  prerequisites: Schema.Array(AcpPrerequisite),
+  /** Registry membership proves ACP compatibility, not vendor endorsement. */
+  trust: Schema.Literal("registry-unverified"),
+});
+export type AgentCatalogEntry = typeof AgentCatalogEntry.Type;
+
+export const AgentCatalogUnavailableReason = Schema.Literals([
+  "request_failed",
+  "bad_status",
+  "invalid_payload",
+]);
+export type AgentCatalogUnavailableReason = typeof AgentCatalogUnavailableReason.Type;
+
+const AgentCatalogPlatform = {
+  platform: TrimmedNonEmptyString,
+  architecture: TrimmedNonEmptyString,
+  platformTriple: Schema.optional(TrimmedNonEmptyString),
+} as const;
+
+export const AgentCatalogAvailable = Schema.Struct({
+  status: Schema.Literals(["ready", "stale"]),
+  sourceUrl: Schema.Literal(ACP_REGISTRY_URL),
+  registryVersion: TrimmedNonEmptyString,
+  fetchedAt: TrimmedNonEmptyString,
+  agents: Schema.Array(AgentCatalogEntry),
+  ...AgentCatalogPlatform,
+  /** Present only when a refresh failed and cached data is being served. */
+  reason: Schema.optional(AgentCatalogUnavailableReason),
+});
+export type AgentCatalogAvailable = typeof AgentCatalogAvailable.Type;
+
+export const AgentCatalogUnavailable = Schema.Struct({
+  status: Schema.Literal("unavailable"),
+  sourceUrl: Schema.Literal(ACP_REGISTRY_URL),
+  agents: Schema.Array(AgentCatalogEntry),
+  reason: AgentCatalogUnavailableReason,
+  ...AgentCatalogPlatform,
+});
+export type AgentCatalogUnavailable = typeof AgentCatalogUnavailable.Type;
+
+/** Read-only Agent Hub catalog. Installation is a separate, explicit RPC. */
+export const AgentCatalogSnapshot = Schema.Union([AgentCatalogAvailable, AgentCatalogUnavailable]);
+export type AgentCatalogSnapshot = typeof AgentCatalogSnapshot.Type;
+
+export const AgentCatalogRequest = Schema.Struct({
+  /** Bypasses the server TTL while preserving the last-good fallback. */
+  refresh: Schema.optional(Schema.Boolean),
+});
+export type AgentCatalogRequest = typeof AgentCatalogRequest.Type;

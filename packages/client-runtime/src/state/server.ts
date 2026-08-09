@@ -714,6 +714,11 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
     }),
+    agentCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:agent-catalog",
+      tag: WS_METHODS.serverGetAgentCatalog,
+      staleTimeMs: 15 * 60_000,
+    }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:welcome",
