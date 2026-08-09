@@ -80,6 +80,7 @@ function initRepoWithCommit(
     yield* git(cwd, ["init"]);
     yield* git(cwd, ["config", "user.email", "test@test.com"]);
     yield* git(cwd, ["config", "user.name", "Test"]);
+    yield* git(cwd, ["config", "core.autocrlf", "false"]);
     yield* writeTextFile(NodePath.join(cwd, "README.md"), "# test\n");
     yield* git(cwd, ["add", "."]);
     yield* git(cwd, ["commit", "-m", "initial commit"]);
@@ -110,6 +111,117 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
         const checkpointStore = yield* CheckpointStore.CheckpointStore;
 
         expect(yield* checkpointStore.isGitRepository(tmp)).toBe(true);
+      }),
+    );
+  });
+
+  describe("restoreCheckpoint", () => {
+    it.effect("restores modified, deleted, and new files without deleting ignored files", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const checkpointStore = yield* CheckpointStore.CheckpointStore;
+        const checkpointRef = checkpointRefForThreadTurn(
+          ThreadId.make("thread-checkpoint-restore"),
+          1,
+        );
+        const readmePath = NodePath.join(tmp, "README.md");
+        const trackedPath = NodePath.join(tmp, "tracked.txt");
+        const newPath = NodePath.join(tmp, "new.txt");
+        const ignoredPath = NodePath.join(tmp, "ignored.txt");
+        const throwawayPath = NodePath.join(tmp, "throwaway.txt");
+
+        yield* writeTextFile(NodePath.join(tmp, ".gitignore"), "ignored.txt\n");
+        yield* writeTextFile(trackedPath, "tracked at HEAD\n");
+        yield* git(tmp, ["add", ".gitignore", "tracked.txt"]);
+        yield* git(tmp, ["commit", "-m", "checkpoint fixture"]);
+
+        yield* writeTextFile(readmePath, "# checkpoint\n");
+        yield* fileSystem.remove(trackedPath);
+        yield* writeTextFile(newPath, "new at checkpoint\n");
+        yield* checkpointStore.captureCheckpoint({ cwd: tmp, checkpointRef });
+
+        yield* writeTextFile(readmePath, "# later\n");
+        yield* writeTextFile(trackedPath, "recreated later\n");
+        yield* writeTextFile(newPath, "changed later\n");
+        yield* writeTextFile(ignoredPath, "keep ignored data\n");
+        yield* writeTextFile(throwawayPath, "remove untracked data\n");
+        yield* git(tmp, ["add", "README.md"]);
+
+        expect(yield* checkpointStore.restoreCheckpoint({ cwd: tmp, checkpointRef })).toBe(true);
+        expect(yield* fileSystem.readFileString(readmePath)).toBe("# checkpoint\n");
+        expect(yield* fileSystem.exists(trackedPath)).toBe(false);
+        expect(yield* fileSystem.readFileString(newPath)).toBe("new at checkpoint\n");
+        expect(yield* fileSystem.readFileString(ignoredPath)).toBe("keep ignored data\n");
+        expect(yield* fileSystem.exists(throwawayPath)).toBe(false);
+        expect(yield* git(tmp, ["diff", "--cached", "--name-only"])).toBe("");
+        expect(
+          (yield* git(tmp, ["status", "--porcelain=v1", "--untracked-files=all"])).split("\n"),
+        ).toEqual(["M README.md", " D tracked.txt", "?? new.txt"]);
+      }),
+    );
+
+    it.effect("keeps restore operations inside a nested project root", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const checkpointStore = yield* CheckpointStore.CheckpointStore;
+        const nested = NodePath.join(tmp, "nested");
+        const rootPath = NodePath.join(tmp, "root.txt");
+        const nestedPath = NodePath.join(nested, "file.txt");
+        const nestedThrowawayPath = NodePath.join(nested, "throwaway.txt");
+        const checkpointRef = checkpointRefForThreadTurn(
+          ThreadId.make("thread-nested-checkpoint-restore"),
+          1,
+        );
+
+        yield* fileSystem.makeDirectory(nested, { recursive: true });
+        yield* writeTextFile(rootPath, "root at HEAD\n");
+        yield* writeTextFile(nestedPath, "nested at HEAD\n");
+        yield* git(tmp, ["add", "root.txt", "nested/file.txt"]);
+        yield* git(tmp, ["commit", "-m", "nested fixture"]);
+
+        yield* writeTextFile(nestedPath, "nested checkpoint\n");
+        yield* checkpointStore.captureCheckpoint({ cwd: nested, checkpointRef });
+        yield* writeTextFile(rootPath, "root later\n");
+        yield* writeTextFile(nestedPath, "nested later\n");
+        yield* writeTextFile(nestedThrowawayPath, "remove me\n");
+
+        expect(yield* checkpointStore.restoreCheckpoint({ cwd: nested, checkpointRef })).toBe(true);
+        expect(yield* fileSystem.readFileString(rootPath)).toBe("root later\n");
+        expect(yield* fileSystem.readFileString(nestedPath)).toBe("nested checkpoint\n");
+        expect(yield* fileSystem.exists(nestedThrowawayPath)).toBe(false);
+      }),
+    );
+
+    it.effect("returns false for a missing ref and restores HEAD only when requested", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const checkpointStore = yield* CheckpointStore.CheckpointStore;
+        const missingRef = checkpointRefForThreadTurn(
+          ThreadId.make("thread-missing-checkpoint-restore"),
+          99,
+        );
+        const readmePath = NodePath.join(tmp, "README.md");
+
+        yield* writeTextFile(readmePath, "# keep when missing\n");
+        expect(
+          yield* checkpointStore.restoreCheckpoint({ cwd: tmp, checkpointRef: missingRef }),
+        ).toBe(false);
+        expect(yield* fileSystem.readFileString(readmePath)).toBe("# keep when missing\n");
+
+        expect(
+          yield* checkpointStore.restoreCheckpoint({
+            cwd: tmp,
+            checkpointRef: missingRef,
+            fallbackToHead: true,
+          }),
+        ).toBe(true);
+        expect(yield* fileSystem.readFileString(readmePath)).toBe("# test\n");
       }),
     );
   });
