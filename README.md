@@ -45,6 +45,9 @@ runtime bottlenecks move behind small Rust components.
   through isolated staging, register the resulting ACP provider, support app-managed uninstall, and
   report whether package runtimes are available on the connected environment. Package-manager
   installs and automatic routing remain gated.
+- **Explainable routing foundation** — every new turn receives a bounded, deterministic task profile
+  with domain, complexity, tool, testing, security, and collaboration signals. It stores no prompt
+  excerpts and does not override the provider or model selected by the user.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 

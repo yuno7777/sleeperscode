@@ -43,6 +43,10 @@
       "types": "./src/shell.ts",
       "import": "./src/shell.ts"
     },
+    "./taskProfile": {
+      "types": "./src/taskProfile.ts",
+      "import": "./src/taskProfile.ts"
+    },
     "./semver": {
       "types": "./src/semver.ts",
       "import": "./src/semver.ts"

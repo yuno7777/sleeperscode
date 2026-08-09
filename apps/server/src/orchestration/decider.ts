@@ -4,6 +4,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
+import { classifyTaskProfile } from "@t3tools/shared/taskProfile";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -961,6 +962,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           updatedAt: command.createdAt,
         },
       };
+      const taskProfile = classifyTaskProfile({
+        text: command.message.text,
+        attachmentTypes: command.message.attachments.map((attachment) => attachment.type),
+      });
       const turnStartRequestedEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -973,6 +978,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           messageId: command.message.messageId,
+          taskProfile,
           ...(command.modelSelection !== undefined
             ? { modelSelection: command.modelSelection }
             : {}),
