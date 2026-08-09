@@ -56,10 +56,12 @@ because they do not yet have an equally auditable execution policy.
 
 An installed catalog agent receives a bounded ACP protocol health check. The probe performs only the
 `initialize` handshake: it does not authenticate, create a session, send a prompt, or inspect
-credentials. Authentication therefore remains unknown. The agent can appear as installed,
-integrated, and protocol-ready, but it is not eligible for automatic routing until a provider-safe
-authentication signal exists. Authenticate through the agent's own supported flow when needed;
-never paste credentials into Agent Hub metadata.
+credentials. Authentication therefore remains unknown until a real, manually selected ACP session
+starts successfully. That success records non-secret, in-memory evidence that the current agent can
+operate, after which it becomes eligible for routing. A later failed session startup clears the
+evidence back to unknown. The evidence intentionally resets when the server restarts and never
+claims an account identity. Authenticate through the agent's own supported flow when needed; never
+paste credentials into Agent Hub metadata.
 
 ## Troubleshooting
 

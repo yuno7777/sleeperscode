@@ -55,6 +55,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   generation behavior fails honestly instead of borrowing Cursor identity.
 - `8d8a956fb` adds a bounded, managed ACP protocol health probe. It sends only `initialize`, never
   authenticates or creates a session, and preserves `unknown` auth even when the handshake passes.
+- `2f57689c8` records in-memory authentication evidence only after a real manually selected ACP
+  session starts. A failed later startup clears the evidence; no credential or account identity is
+  stored.
 - Web/desktop and mobile now expose exact-plan review, streamed progress, installed state, and
   uninstall. Package-manager execution remains intentionally disabled.
 
@@ -123,12 +126,12 @@ the user asked for fewer than six releases, not for speculative releases during 
 
 1. Qualify Agent Hub install, progress, cancellation, and uninstall in a real web/desktop client and
    on a mobile device after explicit browser/device permission.
-2. Add a provider-safe authentication probe for generic ACP agents before exposing any automatic
-   route action. Preserve `unknown` when an agent offers no reliable signal.
-3. Design the human-reviewed publisher allowlist/signature policy required for stronger registry
+2. Design the human-reviewed publisher allowlist/signature policy required for stronger registry
    trust levels. Do not infer endorsement from the ACP feed.
-4. Add live prerequisite detection before considering package-manager execution; keep `npx` and
+3. Add live prerequisite detection before considering package-manager execution; keep `npx` and
    `uvx` gated until an equally auditable policy exists.
+4. Decide whether successful-session auth evidence should persist, expire, or remain deliberately
+   process-local before enabling unattended routing.
 5. Reconcile the usage ledger with routing phases without inventing quality scores.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
 
