@@ -1,0 +1,29 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sleepers-bg" x1="18" y1="12" x2="110" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10172E" />
+      <stop offset="0.52" stop-color="#182451" />
+      <stop offset="1" stop-color="#35236A" />
+    </linearGradient>
+    <linearGradient id="sleepers-moon" x1="32" y1="25" x2="91" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF" />
+      <stop offset="1" stop-color="#B8C4FF" />
+    </linearGradient>
+    <filter id="sleepers-glow" x="14" y="10" width="100" height="108" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="5" />
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#sleepers-bg)" />
+  <path
+    d="M83 27C65.5 31.1 52.5 46.8 52.5 65.5C52.5 84.8 66.4 100.8 84.8 104.1C77.7 108.5 69.4 111 60.5 111C34.8 111 14 90.2 14 64.5C14 38.8 34.8 18 60.5 18C68.7 18 76.4 20.1 83 23.8V27Z"
+    fill="#8B9BFF"
+    fill-opacity="0.28"
+    filter="url(#sleepers-glow)"
+  />
+  <path
+    d="M83 27C65.5 31.1 52.5 46.8 52.5 65.5C52.5 84.8 66.4 100.8 84.8 104.1C77.7 108.5 69.4 111 60.5 111C34.8 111 14 90.2 14 64.5C14 38.8 34.8 18 60.5 18C68.7 18 76.4 20.1 83 23.8V27Z"
+    fill="url(#sleepers-moon)"
+  />
+  <path d="M93 39L96.2 46.8L104 50L96.2 53.2L93 61L89.8 53.2L82 50L89.8 46.8L93 39Z" fill="#A78BFA" />
+  <path d="M101 69L102.8 73.2L107 75L102.8 76.8L101 81L99.2 76.8L95 75L99.2 73.2L101 69Z" fill="#D8B4FE" />
+</svg>

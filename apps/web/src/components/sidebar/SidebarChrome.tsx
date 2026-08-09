@@ -79,7 +79,8 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <T3Wordmark />
+      <SleepersMark />
+      <span className="truncate text-sm font-semibold tracking-[-0.02em]">Sleepers</span>
       <span
         className={cn(
           "truncate text-sm font-medium tracking-tight",
@@ -92,16 +93,17 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-function T3Wordmark() {
+function SleepersMark() {
   return (
     <svg
-      aria-label="T3"
-      className="h-2.5 w-auto shrink-0"
-      viewBox="15.5309 37 94.3941 56.96"
+      aria-hidden="true"
+      className="h-3.5 w-3.5 shrink-0"
+      viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
     >
+      <path d="M15.6 3.2A8.8 8.8 0 1 0 20.8 16a7.6 7.6 0 0 1-5.2-12.8Z" fill="currentColor" />
       <path
-        d="M33.4509 93V47.56H15.5309V37H64.3309V47.56H46.4109V93H33.4509ZM86.7253 93.96C82.832 93.96 78.9653 93.4533 75.1253 92.44C71.2853 91.3733 68.032 89.88 65.3653 87.96L70.4053 78.04C72.5386 79.5867 75.0186 80.8133 77.8453 81.72C80.672 82.6267 83.5253 83.08 86.4053 83.08C89.6586 83.08 92.2186 82.44 94.0853 81.16C95.952 79.88 96.8853 78.12 96.8853 75.88C96.8853 73.7467 96.0586 72.0667 94.4053 70.84C92.752 69.6133 90.0853 69 86.4053 69H80.4853V60.44L96.0853 42.76L97.5253 47.4H68.1653V37H107.365V45.4L91.8453 63.08L85.2853 59.32H89.0453C95.9253 59.32 101.125 60.8667 104.645 63.96C108.165 67.0533 109.925 71.0267 109.925 75.88C109.925 79.0267 109.099 81.9867 107.445 84.76C105.792 87.48 103.259 89.6933 99.8453 91.4C96.432 93.1067 92.0586 93.96 86.7253 93.96Z"
+        d="m18.7 5 .65 1.55L21 7.2l-1.65.65-.65 1.55-.65-1.55-1.65-.65 1.65-.65L18.7 5Z"
         fill="currentColor"
       />
     </svg>

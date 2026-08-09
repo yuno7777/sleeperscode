@@ -6,7 +6,7 @@ import type {
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "./AppText";
-import { T3Wordmark } from "./T3Wordmark";
+import { SleepersMark } from "./SleepersMark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useThemeColor } from "../lib/useThemeColor";
@@ -45,7 +45,7 @@ export function CompactBrandTitle(
   return (
     <View
       aria-level={1}
-      accessibilityLabel="T3 Code, Threads"
+      accessibilityLabel="Sleepers Code, Threads"
       accessible
       role="heading"
       style={{
@@ -55,12 +55,22 @@ export function CompactBrandTitle(
         marginLeft: titleOffset,
       }}
     >
-      <T3Wordmark color={iconColor} height={15} />
+      <SleepersMark color={iconColor} height={17} />
+      <Text
+        style={{
+          color: iconColor,
+          fontFamily: "DMSans-Bold",
+          fontSize: 18,
+          letterSpacing: -0.6,
+        }}
+      >
+        Sleepers
+      </Text>
       <Text
         style={{
           color: mutedColor,
           fontFamily: "DMSans-Medium",
-          fontSize: 21,
+          fontSize: 18,
           letterSpacing: -0.5,
         }}
       >
