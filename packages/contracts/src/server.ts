@@ -262,7 +262,7 @@ export const deriveAgentStatusLevels = (snapshot: ServerProvider): AgentStatusLe
   if (!isProviderAvailable(snapshot)) blockers.push("driver_unavailable");
   if (!snapshot.installed) blockers.push("not_installed");
   if (snapshot.status === "error") blockers.push("provider_error");
-  if (!snapshot.enabled) blockers.push("disabled");
+  if (!snapshot.enabled || snapshot.status === "disabled") blockers.push("disabled");
   if (snapshot.auth.status !== "authenticated") blockers.push("unauthenticated");
 
   const integrated =

@@ -48,6 +48,14 @@ describe("deriveAgentStatusLevels", () => {
     });
   });
 
+  it("does not route a provider whose runtime status is disabled", () => {
+    expect(levelsFor({ enabled: true, status: "disabled" })).toEqual({
+      integrated: true,
+      routable: false,
+      routingBlockers: ["disabled"],
+    });
+  });
+
   it("treats unknown authentication as a routing blocker", () => {
     expect(levelsFor({ auth: { status: "unknown" } })).toEqual({
       integrated: true,
