@@ -55,6 +55,7 @@ const StageWorkspaceConfig = Schema.Struct({
     cpu: Schema.Array(Schema.String),
     libc: Schema.optional(Schema.Array(Schema.String)),
   }),
+  ignoredOptionalDependencies: Schema.Array(Schema.String),
   // pnpm 11 only reads these from pnpm-workspace.yaml (not package.json#pnpm).
   // Without allowBuilds the staged `vp install --prod` fails with
   // ERR_PNPM_IGNORED_BUILDS for packages that have lifecycle scripts.
@@ -70,6 +71,9 @@ const RepoRoot = Effect.service(Path.Path).pipe(
 const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeWorkspaceConfig = Schema.decodeEffect(fromYaml(WorkspaceConfig));
 const decodeNodePtyManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
+);
+const decodeInstalledPackageManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
 );
 const encodeStageWorkspaceConfig = Schema.encodeEffect(fromYaml(StageWorkspaceConfig));
@@ -348,11 +352,13 @@ const dependencyResolutionDescriptions = {
   "server-production": "production dependencies",
   "workspace-overrides": "overrides",
   "desktop-runtime": "desktop runtime dependencies",
+  "installed-package": "installed package version",
 } as const;
 const DependencyResolutionKind = Schema.Literals([
   "server-production",
   "workspace-overrides",
   "desktop-runtime",
+  "installed-package",
 ]);
 
 export class DesktopBuildDependencyResolutionError extends Schema.TaggedErrorClass<DesktopBuildDependencyResolutionError>()(
@@ -645,6 +651,7 @@ interface StagePackageJson {
 
 export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
 export const DESKTOP_ELECTRON_LANGUAGES = ["en-US"] as const;
+export const STAGE_IGNORED_OPTIONAL_DEPENDENCIES = ["@anthropic-ai/claude-agent-sdk-*"] as const;
 export const DESKTOP_FILE_EXCLUSIONS = [
   // Sleepers Code always passes the user's installed Claude executable to the SDK,
   // so the SDK's optional platform packages (each a ~200MB bundled executable)
@@ -1007,6 +1014,7 @@ export function createStageWorkspaceConfig(input: {
 
   return {
     supportedArchitectures,
+    ignoredOptionalDependencies: [...STAGE_IGNORED_OPTIONAL_DEPENDENCIES],
     ...(allowBuilds && Object.keys(allowBuilds).length > 0 ? { allowBuilds } : {}),
     ...(patchedDependencies && Object.keys(patchedDependencies).length > 0
       ? { patchedDependencies }
@@ -1014,6 +1022,55 @@ export function createStageWorkspaceConfig(input: {
     ...(overrides && Object.keys(overrides).length > 0 ? { overrides } : {}),
   };
 }
+
+export function pinStageDirectDependencies(
+  dependencies: Record<string, string>,
+  installedVersions: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.keys(dependencies).map((dependencyName) => {
+      const installedVersion = installedVersions[dependencyName];
+      if (!installedVersion) {
+        throw new Error(`Missing installed version for ${dependencyName}.`);
+      }
+      return [dependencyName, installedVersion];
+    }),
+  );
+}
+
+const readInstalledDependencyVersions = Effect.fn("readInstalledDependencyVersions")(
+  function* (input: {
+    readonly dependencies: Record<string, string>;
+    readonly workspaceDir: string;
+  }) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const installedVersions: Record<string, string> = {};
+
+    for (const dependencyName of Object.keys(input.dependencies)) {
+      const manifestPath = path.join(
+        input.workspaceDir,
+        "node_modules",
+        dependencyName,
+        "package.json",
+      );
+      const manifest = yield* fs.readFileString(manifestPath).pipe(
+        Effect.flatMap(decodeInstalledPackageManifest),
+        Effect.mapError(
+          (cause) =>
+            new DesktopBuildDependencyResolutionError({
+              kind: "installed-package",
+              manifestPath,
+              cause,
+            }),
+        ),
+      );
+      installedVersions[dependencyName] = manifest.version;
+    }
+
+    return installedVersions;
+  },
+);
 
 export function createStagePatchedDependencies(
   patchedDependencies: Record<string, string>,
@@ -1865,6 +1922,22 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
         cause,
       }),
   });
+  const installedServerDependencyVersions = yield* readInstalledDependencyVersions({
+    dependencies: resolvedServerDependencies,
+    workspaceDir: path.join(repoRoot, "apps/server"),
+  });
+  const installedDesktopDependencyVersions = yield* readInstalledDependencyVersions({
+    dependencies: resolvedDesktopRuntimeDependencies,
+    workspaceDir: path.join(repoRoot, "apps/desktop"),
+  });
+  const pinnedServerDependencies = pinStageDirectDependencies(
+    resolvedServerDependencies,
+    installedServerDependencyVersions,
+  );
+  const pinnedDesktopRuntimeDependencies = pinStageDirectDependencies(
+    resolvedDesktopRuntimeDependencies,
+    installedDesktopDependencyVersions,
+  );
 
   const appVersion = options.version ?? serverPackageJson.version;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
@@ -1987,8 +2060,8 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   }
 
   const stageDependencies = {
-    ...resolvedServerDependencies,
-    ...resolvedDesktopRuntimeDependencies,
+    ...pinnedServerDependencies,
+    ...pinnedDesktopRuntimeDependencies,
     ...resolveFffNativeDependencies(
       options.platform,
       options.arch,

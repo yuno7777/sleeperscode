@@ -26,6 +26,7 @@ import {
   LinuxIconResizeError,
   MacPasskeySigningConfigurationResolutionError,
   MissingMacPasskeyProvisioningProfileError,
+  pinStageDirectDependencies,
   renderMacPasskeyEntitlements,
   resolveClerkPasskeyNativeArtifacts,
   resolveMacPasskeySigningConfiguration,
@@ -46,6 +47,7 @@ import {
   stageLinuxIconSize,
   stageRuntimeSidecar,
   STAGE_INSTALL_ARGS,
+  STAGE_IGNORED_OPTIONAL_DEPENDENCIES,
   WINDOWS_ASAR_UNPACK,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
@@ -222,11 +224,15 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
   it("installs optional native dependencies for the target desktop architecture", () => {
     assert.deepStrictEqual(STAGE_INSTALL_ARGS, ["install", "--prod"]);
+    assert.deepStrictEqual(STAGE_IGNORED_OPTIONAL_DEPENDENCIES, [
+      "@anthropic-ai/claude-agent-sdk-*",
+    ]);
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "mac", arch: "x64" }), {
       supportedArchitectures: {
         os: ["darwin"],
         cpu: ["x64"],
       },
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     });
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "linux", arch: "x64" }), {
       supportedArchitectures: {
@@ -234,6 +240,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         cpu: ["x64"],
         libc: ["glibc"],
       },
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     });
     // Windows artifacts also bundle the same-architecture WSL (Linux, glibc) backend, so the
     // staged install must fetch its native optional deps (e.g. ffi-rs) too.
@@ -243,6 +250,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         cpu: ["x64"],
         libc: ["glibc"],
       },
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     });
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "win", arch: "arm64" }), {
       supportedArchitectures: {
@@ -250,13 +258,38 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         cpu: ["arm64"],
         libc: ["glibc"],
       },
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     });
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "mac", arch: "universal" }), {
       supportedArchitectures: {
         os: ["darwin"],
         cpu: ["arm64", "x64"],
       },
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     });
+  });
+
+  it("pins staged direct dependencies to the versions installed from the workspace lock", () => {
+    assert.deepStrictEqual(
+      pinStageDirectDependencies(
+        {
+          "@anthropic-ai/claude-agent-sdk": "^0.3.170",
+          "@opencode-ai/sdk": "^1.3.15",
+        },
+        {
+          "@anthropic-ai/claude-agent-sdk": "0.3.170",
+          "@opencode-ai/sdk": "1.15.13",
+        },
+      ),
+      {
+        "@anthropic-ai/claude-agent-sdk": "0.3.170",
+        "@opencode-ai/sdk": "1.15.13",
+      },
+    );
+    assert.throws(
+      () => pinStageDirectDependencies({ effect: "4.0.0" }, {}),
+      /Missing installed version for effect/u,
+    );
   });
 
   it("stages pnpm 11 allowBuilds and patchedDependencies in the workspace yaml", () => {
@@ -282,6 +315,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           cpu: ["x64"],
           libc: ["glibc"],
         },
+        ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
         allowBuilds: {
           electron: true,
           "node-pty": true,
@@ -312,6 +346,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           os: ["darwin"],
           cpu: ["arm64"],
         },
+        ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
       },
     );
   });
