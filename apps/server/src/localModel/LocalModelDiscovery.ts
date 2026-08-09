@@ -46,7 +46,12 @@ export type LocalModelProbeResult =
       readonly runtime: LocalModelRuntime;
       readonly baseUrl: string;
       /** Short, loggable reason. Never carries response bodies. */
-      readonly reason: "no_base_url" | "request_failed" | "bad_status" | "unreadable_payload";
+      readonly reason:
+        | "no_base_url"
+        | "invalid_base_url"
+        | "request_failed"
+        | "bad_status"
+        | "unreadable_payload";
     };
 
 export class LocalModelDiscovery extends Context.Service<
@@ -61,13 +66,34 @@ export const make = Effect.gen(function* () {
 
   const probe: LocalModelDiscovery["Service"]["probe"] = (input) =>
     Effect.gen(function* () {
-      const baseUrl = input.baseUrl ?? LOCAL_MODEL_DEFAULT_BASE_URL[input.runtime];
-      if (baseUrl === undefined || baseUrl.trim().length === 0) {
+      const configuredBaseUrl = input.baseUrl ?? LOCAL_MODEL_DEFAULT_BASE_URL[input.runtime];
+      if (configuredBaseUrl === undefined || configuredBaseUrl.trim().length === 0) {
         return {
           status: "unreachable",
           runtime: input.runtime,
           baseUrl: "",
           reason: "no_base_url",
+        } as const;
+      }
+
+      const baseUrl = configuredBaseUrl.trim();
+      let protocol: string;
+      try {
+        protocol = new URL(baseUrl).protocol;
+      } catch {
+        return {
+          status: "unreachable",
+          runtime: input.runtime,
+          baseUrl,
+          reason: "invalid_base_url",
+        } as const;
+      }
+      if (protocol !== "http:" && protocol !== "https:") {
+        return {
+          status: "unreachable",
+          runtime: input.runtime,
+          baseUrl,
+          reason: "invalid_base_url",
         } as const;
       }
 

@@ -165,6 +165,43 @@ describe("LocalModelDiscovery", () => {
     );
   });
 
+  it.effect("reports a malformed base URL without failing the effect", () => {
+    const requested: Array<string> = [];
+    return run(
+      Effect.gen(function* () {
+        const discovery = yield* LocalModelDiscovery.LocalModelDiscovery;
+        const result = yield* discovery.probe({
+          runtime: "openai-compatible",
+          baseUrl: "not a URL",
+        });
+        expect(result).toEqual({
+          status: "unreachable",
+          runtime: "openai-compatible",
+          baseUrl: "not a URL",
+          reason: "invalid_base_url",
+        });
+        expect(requested).toEqual([]);
+      }),
+      stubHttp(() => json({ data: [] }), requested),
+    );
+  });
+
+  it.effect("rejects non-HTTP local model URLs before creating a request", () => {
+    const requested: Array<string> = [];
+    return run(
+      Effect.gen(function* () {
+        const discovery = yield* LocalModelDiscovery.LocalModelDiscovery;
+        const result = yield* discovery.probe({
+          runtime: "openai-compatible",
+          baseUrl: "file:///tmp/models",
+        });
+        expect(result.status === "unreachable" && result.reason).toBe("invalid_base_url");
+        expect(requested).toEqual([]);
+      }),
+      stubHttp(() => json({ data: [] }), requested),
+    );
+  });
+
   it.effect("reports a reachable runtime holding no models", () =>
     run(
       Effect.gen(function* () {
