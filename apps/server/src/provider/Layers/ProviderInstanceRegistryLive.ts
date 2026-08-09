@@ -60,6 +60,11 @@ import {
   ProviderInstanceRegistryMutator,
   type ProviderInstanceRegistryMutatorShape,
 } from "../Services/ProviderInstanceRegistryMutator.ts";
+import {
+  makeProviderProbeScheduler,
+  ProviderProbeScheduler,
+  type ProviderProbeSchedulerShape,
+} from "../Services/ProviderProbeScheduler.ts";
 import type { AnyProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
 
 /**
@@ -112,6 +117,7 @@ const buildEntry = <R>(input: {
   readonly instanceId: ProviderInstanceId;
   readonly rawInstanceId: string;
   readonly entry: ProviderInstanceConfig;
+  readonly providerProbeScheduler: ProviderProbeSchedulerShape;
 }): Effect.Effect<
   | { readonly kind: "live"; readonly live: LiveEntry }
   | { readonly kind: "unavailable"; readonly snapshot: ServerProvider },
@@ -119,7 +125,8 @@ const buildEntry = <R>(input: {
   R
 > =>
   Effect.gen(function* () {
-    const { driversById, parentScope, instanceId, rawInstanceId, entry } = input;
+    const { driversById, parentScope, instanceId, rawInstanceId, entry, providerProbeScheduler } =
+      input;
     const driver = driversById.get(entry.driver);
     if (!driver) {
       return {
@@ -174,7 +181,11 @@ const buildEntry = <R>(input: {
         enabled: entry.enabled ?? decodedConfigEnabled(typedConfig) ?? true,
         config: typedConfig,
       })
-      .pipe(Effect.provideService(Scope.Scope, childScope), Effect.result);
+      .pipe(
+        Effect.provideService(Scope.Scope, childScope),
+        Effect.provideService(ProviderProbeScheduler, providerProbeScheduler),
+        Effect.result,
+      );
     if (createResult._tag === "Failure") {
       yield* Effect.logError("Failed to create provider instance", {
         instanceId: rawInstanceId,
@@ -212,8 +223,9 @@ const makeReconcile = <R>(input: {
   readonly state: RegistryState;
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
   readonly parentScope: Scope.Scope;
+  readonly providerProbeScheduler: ProviderProbeSchedulerShape;
 }): ((configMap: ProviderInstanceConfigMap) => Effect.Effect<void, never, R>) => {
-  const { state, driversById, parentScope } = input;
+  const { state, driversById, parentScope, providerProbeScheduler } = input;
   return (configMap: ProviderInstanceConfigMap) =>
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
@@ -270,6 +282,7 @@ const makeReconcile = <R>(input: {
           instanceId,
           rawInstanceId,
           entry,
+          providerProbeScheduler,
         });
         if (result.kind === "live") {
           builtEntries.set(instanceId, result.live);
@@ -348,6 +361,7 @@ export const makeProviderInstanceRegistry = <R>(input: {
     // called later (e.g. from the hydration layer) would attach child
     // scopes to the *caller's* scope instead of the registry's.
     const parentScope = yield* Scope.Scope;
+    const providerProbeScheduler = yield* makeProviderProbeScheduler();
 
     // Capture the driver R context at construction time so `reconcile`
     // can be invoked later without re-providing driver dependencies.
@@ -361,7 +375,12 @@ export const makeProviderInstanceRegistry = <R>(input: {
     yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
 
     const state: RegistryState = { entries, unavailable, changes };
-    const reconcileWithR = makeReconcile({ state, driversById, parentScope });
+    const reconcileWithR = makeReconcile({
+      state,
+      driversById,
+      parentScope,
+      providerProbeScheduler,
+    });
     const reconcile: ProviderInstanceRegistryMutatorShape["reconcile"] = (configMap) =>
       reconcileWithR(configMap).pipe(Effect.provideContext(driverContext));
 

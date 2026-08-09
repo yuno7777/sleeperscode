@@ -99,7 +99,8 @@ the user asked for fewer than six releases, not for speculative releases during 
 1. Integrate the fetched upstream after the first push; it includes the usage ledger and several
    server lifecycle fixes.
 2. Reconcile the usage ledger with routing phases without inventing quality scores.
-3. Bound concurrent provider probes, which remain the measured startup-memory spike.
+3. Keep the new one-at-a-time provider probe scheduler; its paired measurement reduced peak startup
+   RSS by 28.9%. OpenCode's two internal discovery commands are the remaining large transient.
 4. Add a deterministic event-queue saturation receipt before making any backpressure-capacity claim.
 5. Add custom provider executable paths across all five providers.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.

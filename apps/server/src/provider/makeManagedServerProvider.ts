@@ -14,9 +14,11 @@ import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
+import * as Option from "effect/Option";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { ProviderProbeScheduler } from "./Services/ProviderProbeScheduler.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
 
 interface ProviderSnapshotState {
@@ -47,6 +49,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 > {
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
   const serverSettings = yield* ServerSettingsService;
+  const providerProbeScheduler = yield* Effect.serviceOption(ProviderProbeScheduler);
   const refreshSemaphore = yield* Semaphore.make(1);
   const changesPubSub = yield* Effect.acquireRelease(
     PubSub.unbounded<ServerProvider>(),
@@ -121,7 +124,10 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
     }
 
-    const nextSnapshot = yield* input.checkProvider;
+    const nextSnapshot = yield* Option.match(providerProbeScheduler, {
+      onNone: () => input.checkProvider,
+      onSome: (scheduler) => scheduler.run(input.checkProvider),
+    });
     const nextGeneration = yield* Ref.modify(snapshotStateRef, (state) => {
       const generation = input.enrichSnapshot
         ? state.enrichmentGeneration + 1

@@ -269,6 +269,35 @@ with more installed agents would peak higher. It also means peak startup memory 
 provider discovery rather than of the runtime backend, which is consistent with Node and Rust being
 indistinguishable above.
 
+### Serialized provider probes
+
+The provider-instance registry now gives every managed provider one shared probe scheduler. The
+first candidate allowed two provider probes at once. A four-run bundled Node measurement rejected
+that setting: Claude still overlapped with OpenCode, whose discovery probe itself launches `models
+--verbose` and `agent list` concurrently, and peak process-tree RSS reached 1,161.8 MiB.
+
+The production scheduler therefore admits one provider probe at a time. Rebuilding the same bundle
+and immediately repeating the same four-run, 20-second command produced:
+
+```text
+node scripts/benchmark-server-startup.mjs --entry=bundle --backend=node --repeat=4 --idle-seconds=20
+```
+
+| Probe limit | Cold spawn to serve | Mean warm spawn to serve | Peak window RSS | Settled RSS | Settled CPU | Max processes |
+| ----------: | ------------------: | -----------------------: | --------------: | ----------: | ----------: | ------------: |
+|           2 |          4,009.1 ms |               2,639.2 ms |     1,161.8 MiB |   173.6 MiB |       0.99% |            15 |
+|           1 |          2,881.7 ms |               3,182.0 ms |       825.6 MiB |   172.9 MiB |       0.47% |            10 |
+
+Serializing providers reduced the directly paired peak by 28.9% without changing settled memory.
+The earlier recorded Node baseline peaked at 1,074.2 MiB, so the new peak is also 23.1% below that
+independent four-run result. Startup timing is not claimed as an improvement: the two candidates
+move in opposite directions between cold and warm figures, within the greater-than-one-second host
+drift already established above.
+
+OpenCode remains the largest single probe because its two discovery commands intentionally run in
+parallel. The scheduler removes cross-provider amplification; reducing OpenCode's internal peak is a
+separate optimization and needs its own latency/resource tradeoff measurement.
+
 ### Bundled against unbundled entry
 
 The harness treats each backend and entry combination as a variant and alternates all of them within
