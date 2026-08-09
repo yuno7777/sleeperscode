@@ -237,6 +237,24 @@ describe("ServerSettingsPatch.providerInstances", () => {
 });
 
 describe("ServerSettingsPatch string normalization", () => {
+  it("persists executable overrides for every built-in provider", () => {
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        codex: { binaryPath: "  C:\\Tools\\codex.cmd  " },
+        claudeAgent: { binaryPath: "  C:\\Tools\\claude.exe  " },
+        cursor: { binaryPath: "  C:\\Tools\\cursor-agent.cmd  " },
+        grok: { binaryPath: "  C:\\Tools\\grok.exe  " },
+        opencode: { binaryPath: "  C:\\Tools\\opencode.cmd  " },
+      },
+    });
+
+    expect(patch.providers?.codex?.binaryPath).toBe("C:\\Tools\\codex.cmd");
+    expect(patch.providers?.claudeAgent?.binaryPath).toBe("C:\\Tools\\claude.exe");
+    expect(patch.providers?.cursor?.binaryPath).toBe("C:\\Tools\\cursor-agent.cmd");
+    expect(patch.providers?.grok?.binaryPath).toBe("C:\\Tools\\grok.exe");
+    expect(patch.providers?.opencode?.binaryPath).toBe("C:\\Tools\\opencode.cmd");
+  });
+
   it("trims string settings while decoding patches", () => {
     const patch = decodeServerSettingsPatch({
       addProjectBaseDirectory: "  ~/Development  ",

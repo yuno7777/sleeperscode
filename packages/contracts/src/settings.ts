@@ -274,7 +274,7 @@ export const CodexSettings = makeProviderSettingsSchema(
     binaryPath: makeBinaryPathSetting("codex").pipe(
       Schema.annotateKey({
         title: "Binary path",
-        description: "Path to the Codex binary used by this instance.",
+        description: "Command name or absolute server-side path to the Codex binary.",
         providerSettingsForm: { placeholder: "codex", clearWhenEmpty: "omit" },
       }),
     ),
@@ -328,7 +328,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     binaryPath: makeBinaryPathSetting("claude").pipe(
       Schema.annotateKey({
         title: "Binary path",
-        description: "Path to the Claude binary used by this instance.",
+        description: "Command name or absolute server-side path to the Claude binary.",
         providerSettingsForm: { placeholder: "claude", clearWhenEmpty: "omit" },
       }),
     ),
@@ -372,7 +372,7 @@ export const CursorSettings = makeProviderSettingsSchema(
     binaryPath: makeBinaryPathSetting("cursor-agent").pipe(
       Schema.annotateKey({
         title: "Binary path",
-        description: "Path to the Cursor agent binary.",
+        description: "Command name or absolute server-side path to the Cursor agent binary.",
         providerSettingsForm: { placeholder: "cursor-agent", clearWhenEmpty: "omit" },
       }),
     ),
@@ -407,7 +407,7 @@ export const GrokSettings = makeProviderSettingsSchema(
     binaryPath: makeBinaryPathSetting("grok").pipe(
       Schema.annotateKey({
         title: "Binary path",
-        description: "Path to the Grok CLI binary.",
+        description: "Command name or absolute server-side path to the Grok CLI binary.",
         providerSettingsForm: { placeholder: "grok", clearWhenEmpty: "omit" },
       }),
     ),
@@ -431,7 +431,7 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
     binaryPath: makeBinaryPathSetting("opencode").pipe(
       Schema.annotateKey({
         title: "Binary path",
-        description: "Path to the OpenCode binary.",
+        description: "Command name or absolute server-side path to the OpenCode binary.",
         providerSettingsForm: {
           placeholder: "opencode",
           clearWhenEmpty: "omit",

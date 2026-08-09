@@ -10,6 +10,23 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("exposes a server-side executable override for every built-in provider", () => {
+    const driverKinds = ["codex", "claudeAgent", "cursor", "grok", "opencode"] as const;
+
+    for (const driverKind of driverKinds) {
+      const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make(driverKind)];
+      const binaryPath = definition
+        ? deriveProviderSettingsFields(definition).find((field) => field.key === "binaryPath")
+        : undefined;
+
+      expect(binaryPath, driverKind).toMatchObject({
+        label: "Binary path",
+        clearWhenEmpty: "omit",
+      });
+      expect(binaryPath?.description, driverKind).toContain("server-side path");
+    }
+  });
+
   it("derives visible provider config fields from the client definition schema", () => {
     const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
 
