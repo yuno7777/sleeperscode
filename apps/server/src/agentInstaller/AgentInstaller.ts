@@ -11,6 +11,7 @@ import {
   type AgentInstallationsSnapshot,
   type AgentUninstallRequest,
   type AgentUninstallResult,
+  type ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -28,6 +29,11 @@ import type * as HttpClientResponse from "effect/unstable/http/HttpClientRespons
 import * as AgentCatalog from "../agentCatalog/AgentCatalog.ts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import * as ServerConfig from "../config.ts";
+import {
+  INSTALLED_ACP_DRIVER_KIND,
+  installedAcpInstanceId,
+} from "../provider/acp/InstalledAcpProviderConfig.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   AgentArchiveError,
   extractAgentArchive,
@@ -129,6 +135,7 @@ export const make = Effect.fn("agent_installer.make")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const rawHttpClient = yield* HttpClient.HttpClient;
+  const serverSettings = yield* ServerSettingsService;
   const inFlight = yield* Ref.make(false);
 
   const rootDir = path.join(config.baseDir, "agents");
@@ -161,6 +168,26 @@ export const make = Effect.fn("agent_installer.make")(function* () {
       manifest.versionKey,
       ...manifest.relativeCommand.replaceAll("\\", "/").split("/"),
     );
+
+  const providerInstanceFor = (manifest: ActiveAgentManifest): ProviderInstanceConfig => ({
+    driver: INSTALLED_ACP_DRIVER_KIND,
+    displayName: manifest.installation.displayName,
+    enabled: true,
+    config: {
+      agentId: manifest.installation.agentId,
+      version: manifest.installation.version,
+      commandPath: manifestCommandPath(manifest),
+      args: manifest.installation.args,
+      environment: manifest.environment,
+    },
+  });
+
+  const configBelongsToAgent = (config: ProviderInstanceConfig, agentId: string): boolean =>
+    config.driver === INSTALLED_ACP_DRIVER_KIND &&
+    typeof config.config === "object" &&
+    config.config !== null &&
+    "agentId" in config.config &&
+    config.config.agentId === agentId;
 
   const resolvePlanInternal = (agentId: string, refresh: boolean) =>
     Effect.gen(function* () {
@@ -381,6 +408,24 @@ export const make = Effect.fn("agent_installer.make")(function* () {
           return yield* fail("command_invalid", "The registry command path is unsafe.");
         }
 
+        const instanceId = installedAcpInstanceId(plan.agentId);
+        const settingsBefore = yield* serverSettings.getSettings.pipe(
+          Effect.mapError(() =>
+            fail("activation_failed", "Could not read provider settings before installation."),
+          ),
+        );
+        const existingProvider = settingsBefore.providerInstances[instanceId];
+        if (existingProvider && !configBelongsToAgent(existingProvider, plan.agentId)) {
+          return yield* fail(
+            "activation_failed",
+            `Provider instance '${instanceId}' is already owned by another configuration.`,
+          );
+        }
+        const activeFilePath = activeManifestPath(plan.agentId);
+        const previousActiveManifest = (yield* fs.exists(activeFilePath))
+          ? yield* fs.readFileString(activeFilePath).pipe(Effect.orElseSucceed(() => undefined))
+          : undefined;
+
         const storageKey = storageKeyFor(plan.agentId);
         const versionKey = versionKeyFor(plan.version, plan.sha256);
         const agentVersionsDir = path.join(versionsDir, storageKey);
@@ -553,7 +598,7 @@ export const make = Effect.fn("agent_installer.make")(function* () {
           ),
         );
         yield* writeFileStringAtomically({
-          filePath: activeManifestPath(plan.agentId),
+          filePath: activeFilePath,
           contents: `${encodedManifest}\n`,
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fs),
@@ -562,8 +607,38 @@ export const make = Effect.fn("agent_installer.make")(function* () {
             fail("activation_failed", "Could not activate the installed agent."),
           ),
         );
+        const nextProviderInstances = {
+          ...settingsBefore.providerInstances,
+          [instanceId]: providerInstanceFor(manifest),
+        };
+        yield* serverSettings.updateSettings({ providerInstances: nextProviderInstances }).pipe(
+          Effect.mapError(() =>
+            fail("activation_failed", "Could not register the installed agent as a provider."),
+          ),
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              yield* serverSettings
+                .updateSettings({ providerInstances: settingsBefore.providerInstances })
+                .pipe(Effect.ignore);
+              if (previousActiveManifest === undefined) {
+                yield* fs.remove(activeFilePath, { force: true }).pipe(Effect.ignore);
+              } else {
+                yield* writeFileStringAtomically({
+                  filePath: activeFilePath,
+                  contents: previousActiveManifest,
+                }).pipe(
+                  Effect.provideService(FileSystem.FileSystem, fs),
+                  Effect.provideService(Path.Path, path),
+                  Effect.ignore,
+                );
+              }
+              return yield* error;
+            }),
+          ),
+        );
         yield* Effect.logInfo("Agent installation activated.", {
           agentId: plan.agentId,
+          providerInstanceId: instanceId,
           version: plan.version,
           sha256: plan.sha256,
           archiveHost: plan.archiveHost,
@@ -594,22 +669,59 @@ export const make = Effect.fn("agent_installer.make")(function* () {
           return yield* fail("not_installed", `Agent '${input.agentId}' is not installed.`);
         }
         const manifest = yield* readManifest(filePath);
-        const agentVersionsDir = path.join(versionsDir, manifest.storageKey);
-        yield* fs
-          .remove(agentVersionsDir, { recursive: true, force: true })
-          .pipe(
-            Effect.mapError(() =>
-              fail("uninstall_failed", "Could not remove the installed agent files."),
-            ),
-          );
+        const instanceId = installedAcpInstanceId(input.agentId);
+        const settingsBefore = yield* serverSettings.getSettings.pipe(
+          Effect.mapError(() =>
+            fail("uninstall_failed", "Could not read provider settings before uninstalling."),
+          ),
+        );
+        const nextProviderInstances = { ...settingsBefore.providerInstances };
+        const existingProvider = nextProviderInstances[instanceId];
+        if (existingProvider && configBelongsToAgent(existingProvider, input.agentId)) {
+          delete nextProviderInstances[instanceId];
+        }
+
+        const encodedManifest = yield* encodeActiveAgentManifest(manifest).pipe(
+          Effect.mapError(() =>
+            fail("uninstall_failed", "Could not preserve agent activation metadata."),
+          ),
+        );
         yield* fs
           .remove(filePath, { force: true })
           .pipe(
             Effect.mapError(() =>
-              fail("uninstall_failed", "Could not remove agent activation metadata."),
+              fail("uninstall_failed", "Could not deactivate the installed agent."),
             ),
           );
-        yield* Effect.logInfo("Agent installation removed.", { agentId: input.agentId });
+        yield* serverSettings.updateSettings({ providerInstances: nextProviderInstances }).pipe(
+          Effect.mapError(() =>
+            fail("uninstall_failed", "Could not unregister the installed agent provider."),
+          ),
+          Effect.catch((error) =>
+            writeFileStringAtomically({
+              filePath,
+              contents: `${encodedManifest}\n`,
+            }).pipe(
+              Effect.provideService(FileSystem.FileSystem, fs),
+              Effect.provideService(Path.Path, path),
+              Effect.ignore,
+              Effect.andThen(Effect.fail(error)),
+            ),
+          ),
+        );
+        const agentVersionsDir = path.join(versionsDir, manifest.storageKey);
+        yield* fs.remove(agentVersionsDir, { recursive: true, force: true }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Could not remove inactive agent version files.", {
+              agentId: input.agentId,
+              cause,
+            }),
+          ),
+        );
+        yield* Effect.logInfo("Agent installation removed.", {
+          agentId: input.agentId,
+          providerInstanceId: instanceId,
+        });
         return { agentId: input.agentId, removed: true } satisfies AgentUninstallResult;
       }).pipe(
         Effect.mapError((error) =>

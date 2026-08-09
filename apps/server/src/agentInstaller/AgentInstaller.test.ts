@@ -16,6 +16,8 @@ import { describe, expect } from "vite-plus/test";
 
 import * as AgentCatalog from "../agentCatalog/AgentCatalog.ts";
 import * as ServerConfig from "../config.ts";
+import { installedAcpInstanceId } from "../provider/acp/InstalledAcpProviderConfig.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as AgentInstaller from "./AgentInstaller.ts";
 
 const executable = new Uint8Array([77, 90, 83, 76, 69, 69, 80, 69, 82, 83]);
@@ -90,11 +92,16 @@ const makeHttp = (body = executable, requests: string[] = []) =>
   );
 
 const run = <A>(input: {
-  readonly effect: Effect.Effect<A, AgentInstallerError, AgentInstaller.AgentInstaller>;
+  readonly effect: Effect.Effect<
+    A,
+    AgentInstallerError,
+    AgentInstaller.AgentInstaller | ServerSettings.ServerSettingsService
+  >;
   readonly catalog?: AgentCatalog.AgentCatalog["Service"];
   readonly http?: Layer.Layer<HttpClient.HttpClient>;
-}) =>
-  input.effect.pipe(
+}) => {
+  const settingsLayer = ServerSettings.layerTest();
+  return input.effect.pipe(
     Effect.provide(
       AgentInstaller.layer.pipe(
         Layer.provide(
@@ -103,9 +110,11 @@ const run = <A>(input: {
         Layer.provide(input.http ?? makeHttp()),
         Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "agent-installer-test-" })),
         Layer.provide(NodeServices.layer),
+        Layer.provideMerge(settingsLayer),
       ),
     ),
   );
+};
 
 describe("AgentInstaller", () => {
   it.effect("builds a byte-exact plan without promoting registry trust", () =>
@@ -156,6 +165,7 @@ describe("AgentInstaller", () => {
         http: makeHttp(executable, requests),
         effect: Effect.gen(function* () {
           const installer = yield* AgentInstaller.AgentInstaller;
+          const settings = yield* ServerSettings.ServerSettingsService;
           const plan = yield* installer.getPlan("fixture-agent");
           const installation = yield* installer.install(
             {
@@ -177,12 +187,29 @@ describe("AgentInstaller", () => {
             "activating",
           );
           expect(progress.at(-1)).toEqual({ type: "complete", installation });
+          const providerInstanceId = installedAcpInstanceId(plan.agentId);
+          expect(
+            (yield* settings.getSettings.pipe(Effect.orDie)).providerInstances[providerInstanceId],
+          ).toMatchObject({
+            driver: "acp",
+            displayName: "Fixture Agent",
+            enabled: true,
+            config: {
+              agentId: "fixture-agent",
+              version: "1.2.3",
+              args: ["acp"],
+              environment: { FIXTURE_MODE: "acp" },
+            },
+          });
 
           expect(yield* installer.uninstall({ agentId: plan.agentId, confirm: true })).toEqual({
             agentId: plan.agentId,
             removed: true,
           });
           expect((yield* installer.list).installations).toEqual([]);
+          expect(
+            (yield* settings.getSettings.pipe(Effect.orDie)).providerInstances[providerInstanceId],
+          ).toBeUndefined();
         }),
       });
     },
