@@ -63,6 +63,10 @@ authenticated.
 - `vp run lint:mobile`: Mobile native static analysis (`scripts/mobile-native-static-check.ts`).
 - `node apps/server/scripts/t3-sqlite-state.ts <query|exec> --base-dir <path> ...`: Inspects or seeds
   an isolated T3 SQLite database; writes create a private backup first.
+- `node scripts/benchmark-checkpoint-capture.mjs`: Measures checkpoint capture variants in synthetic
+  repositories.
+- `node scripts/benchmark-checkpoint-restore-diff.mjs`: Measures the production restore and diff Git
+  sequences in synthetic repositories and verifies every restored worktree.
 
 ## Desktop artifacts
 

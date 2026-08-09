@@ -127,10 +127,45 @@ The measured mechanism is the benchmark's equivalent sequence: 10x faster at 5,0
 15,000. The production path adds the HEAD stamp and the retry, so a first capture after a HEAD move
 still pays the full cost, by design.
 
+## Restore and diff
+
+Restore and diff use Git directly and do not share capture's discarded-index defect. This command
+measures the exact production command sequences after one warmup:
+
+```text
+node scripts/benchmark-checkpoint-restore-diff.mjs --sizes=1000,5000,15000 --repeat=5
+```
+
+Each synthetic checkpoint modifies 1% of the files and deletes one more. Every restore run begins
+with a staged modification, a recreated deletion, and an unrelated untracked file. The harness only
+records the run after asserting that the staged index and untracked set are empty and the expected
+checkpoint changes remain in the worktree.
+
+| Repository   | Changed files | Diff mean | Diff p95 | Diff output | Restore mean | Restore p95 |
+| :----------- | ------------: | --------: | -------: | ----------: | -----------: | ----------: |
+| 1,000 files  |            11 |   44.5 ms |  49.5 ms |     4.8 KiB |     203.7 ms |    222.3 ms |
+| 5,000 files  |            51 |   67.8 ms |  76.5 ms |    19.1 KiB |     299.4 ms |    357.2 ms |
+| 15,000 files |           151 |   97.6 ms | 108.9 ms |    55.5 KiB |     436.7 ms |    443.1 ms |
+
+At 15,000 files the restore mean splits into 34.5 ms resolving the checkpoint, 194.0 ms restoring
+the worktree and index, 57.9 ms cleaning untracked files, 27.8 ms resolving HEAD, and 122.5 ms
+resetting the index. That is five bounded native Git operations and remains below half a second; diff
+is one Git operation and remains below 0.1 seconds mean. Neither path justifies a Rust rewrite.
+
+Three direct live-Git tests cover the semantics the benchmark cannot reduce to timing: modified,
+deleted, and newly captured files restore byte-for-byte; ignored data survives while unrelated
+untracked data is removed; a nested project cannot alter the repository root; missing refs leave the
+worktree alone; and HEAD fallback only runs when explicitly requested.
+
+Checkpoint-ref deletion remains one `git update-ref -d` per ref. It is cleanup rather than a per-turn
+capture, diff, or restore cost, so batching it is deferred until cleanup latency is observed in a real
+profile.
+
 ## Limitations
 
-Synthetic repositories with uniform small text files, one host, four to five iterations per point.
-Real repositories have larger files and different directory shapes, which will change the constants
-though not the mechanism. Restore, diff, and delete paths were not measured; only capture. The 15,000
-file figure is not the ceiling: the cost grows superlinearly, so a larger repository is worse than
-proportionally worse.
+Synthetic repositories with uniform small text files, one Windows x64 host, and five measured
+iterations per point. Real repositories have larger files, binary content, and different directory
+shapes, which will change the constants though not the capture mechanism. Restore and diff output
+sizes depend on how much content changed. Delete was classified but not measured. The 15,000-file
+capture figure is not the ceiling: the uncached cost grows superlinearly, so a larger repository is
+worse than proportionally worse.

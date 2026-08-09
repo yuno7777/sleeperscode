@@ -40,6 +40,7 @@
     "bench:workspace-scan": "node scripts/benchmark-workspace-scan.mjs",
     "bench:content-index": "node scripts/benchmark-content-index.mjs",
     "bench:checkpoint-capture": "node scripts/benchmark-checkpoint-capture.mjs",
+    "bench:checkpoint-restore-diff": "node scripts/benchmark-checkpoint-restore-diff.mjs",
     "test:desktop-smoke": "vp run --filter @t3tools/desktop smoke-test",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
