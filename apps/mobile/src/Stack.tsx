@@ -49,6 +49,7 @@ import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnv
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
+import { AgentHubRouteScreen } from "./features/agent-hub/AgentHubRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { ShowcaseCaptureCoordinator } from "./features/showcase/ShowcaseCaptureCoordinator";
 import {
@@ -196,6 +197,13 @@ const SettingsSheetStack = createNativeStackNavigator({
       linking: "usage",
       options: {
         title: "Usage",
+      },
+    }),
+    SettingsAgentHub: createNativeStackScreen({
+      screen: AgentHubRouteScreen,
+      linking: "agents",
+      options: {
+        title: "Agent Hub",
       },
     }),
     SettingsAuth: createNativeStackScreen({

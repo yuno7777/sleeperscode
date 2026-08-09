@@ -1,0 +1,96 @@
+import {
+  deriveAgentStatusLevels,
+  type AgentCatalogEntry,
+  type ServerProvider,
+} from "@t3tools/contracts";
+
+export type AgentHubCatalogFilter = "all" | "compatible" | "verifiable" | "package";
+
+const searchableText = (entry: AgentCatalogEntry): string =>
+  [
+    entry.agent.name,
+    entry.agent.id,
+    entry.agent.description,
+    entry.agent.authors?.join(" "),
+    entry.agent.license,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLocaleLowerCase();
+
+export function filterAgentCatalog(
+  entries: ReadonlyArray<AgentCatalogEntry>,
+  query: string,
+  filter: AgentHubCatalogFilter,
+): ReadonlyArray<AgentCatalogEntry> {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return entries.filter((entry) => {
+    if (normalizedQuery.length > 0 && !searchableText(entry).includes(normalizedQuery)) {
+      return false;
+    }
+    switch (filter) {
+      case "all":
+        return true;
+      case "compatible":
+        return entry.selectedDistribution.kind !== "unavailable";
+      case "verifiable":
+        return entry.installSafety.checksumVerifiable;
+      case "package":
+        return (
+          entry.selectedDistribution.kind === "npx" || entry.selectedDistribution.kind === "uvx"
+        );
+    }
+  });
+}
+
+export function agentHubSummary(
+  providers: ReadonlyArray<ServerProvider>,
+  catalog: ReadonlyArray<AgentCatalogEntry>,
+) {
+  const levels = providers.map(deriveAgentStatusLevels);
+  return {
+    integrated: levels.filter((level) => level.integrated).length,
+    routable: levels.filter((level) => level.routable).length,
+    catalog: catalog.length,
+    checksumVerifiable: catalog.filter((entry) => entry.installSafety.checksumVerifiable).length,
+  };
+}
+
+export function catalogDistributionLabel(entry: AgentCatalogEntry): string {
+  switch (entry.selectedDistribution.kind) {
+    case "binary":
+      return entry.installSafety.checksumVerifiable
+        ? "Checksum available"
+        : "Binary not verifiable";
+    case "npx":
+      return "npm package";
+    case "uvx":
+      return "uv package";
+    case "unavailable":
+      return entry.selectedDistribution.reason === "unsupported_platform"
+        ? "Platform unsupported"
+        : "No compatible build";
+  }
+}
+
+export function catalogExternalUrl(entry: AgentCatalogEntry): string | null {
+  for (const candidate of [entry.agent.website, entry.agent.repository]) {
+    if (candidate === undefined) continue;
+    try {
+      const url = new URL(candidate);
+      if (url.protocol === "https:" || url.protocol === "http:") return candidate;
+    } catch {
+      // A malformed optional link must not hide the rest of an otherwise valid entry.
+    }
+  }
+  return null;
+}
+
+export function providerReadinessLabel(provider: ServerProvider): string {
+  const levels = deriveAgentStatusLevels(provider);
+  if (levels.routable) return "Routable";
+  if (levels.integrated) return "Integrated";
+  if (!provider.installed) return "Not detected";
+  if (provider.availability === "unavailable") return "Driver unavailable";
+  return "Needs attention";
+}

@@ -261,7 +261,7 @@ describe("deriveAcpInstallSafety", () => {
     ]);
   });
 
-  it("ignores an npx fallback when a verified binary is selected", () => {
+  it("ignores an npx fallback when a checksum-verifiable binary is selected", () => {
     const agent = decodeAgent({
       ...ampAcpEntry,
       distribution: {

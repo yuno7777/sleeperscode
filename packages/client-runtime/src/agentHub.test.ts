@@ -1,0 +1,137 @@
+import type { AgentCatalogEntry, ServerProvider } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  agentHubSummary,
+  catalogDistributionLabel,
+  catalogExternalUrl,
+  filterAgentCatalog,
+  providerReadinessLabel,
+} from "./agentHub.js";
+
+const entry = (
+  name: string,
+  selectedDistribution: AgentCatalogEntry["selectedDistribution"],
+  checksumVerifiable = false,
+): AgentCatalogEntry => ({
+  agent: {
+    id: name.toLowerCase().replaceAll(" ", "-"),
+    name,
+    version: "1.0.0",
+    description: `${name} coding agent`,
+    authors: ["Example Vendor"],
+    license: "MIT",
+    distribution: {},
+  },
+  selectedDistribution,
+  installSafety: {
+    checksumVerifiable,
+    risks: checksumVerifiable ? [] : ["package_manager_install"],
+  },
+  prerequisites: selectedDistribution.kind === "npx" ? ["node"] : [],
+  trust: "registry-unverified",
+});
+
+const provider = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
+  instanceId: "codex" as ServerProvider["instanceId"],
+  driver: "codex" as ServerProvider["driver"],
+  enabled: true,
+  installed: true,
+  version: "1.0.0",
+  status: "ready",
+  auth: { status: "authenticated" },
+  checkedAt: "2026-08-09T00:00:00.000Z",
+  models: [],
+  slashCommands: [],
+  skills: [],
+  ...overrides,
+});
+
+const entries = [
+  entry(
+    "Native Binary",
+    {
+      kind: "binary",
+      triple: "windows-x86_64",
+      artifact: {
+        archive: "https://example.com/agent.zip",
+        cmd: "agent.exe",
+        sha256: "a".repeat(64),
+      },
+    },
+    true,
+  ),
+  entry("Node Package", { kind: "npx", distribution: { package: "node-agent" } }),
+  entry("Other Platform", { kind: "unavailable", reason: "no_distribution_for_platform" }),
+];
+
+describe("Agent Hub logic", () => {
+  it("searches metadata without changing registry order", () => {
+    expect(
+      filterAgentCatalog(entries, "example vendor", "all").map((item) => item.agent.name),
+    ).toEqual(["Native Binary", "Node Package", "Other Platform"]);
+    expect(filterAgentCatalog(entries, "node", "all").map((item) => item.agent.name)).toEqual([
+      "Node Package",
+    ]);
+  });
+
+  it("filters compatible, verifiable, and package distributions independently", () => {
+    expect(filterAgentCatalog(entries, "", "compatible").map((item) => item.agent.name)).toEqual([
+      "Native Binary",
+      "Node Package",
+    ]);
+    expect(filterAgentCatalog(entries, "", "verifiable").map((item) => item.agent.name)).toEqual([
+      "Native Binary",
+    ]);
+    expect(filterAgentCatalog(entries, "", "package").map((item) => item.agent.name)).toEqual([
+      "Node Package",
+    ]);
+  });
+
+  it("keeps integrated and routable counts distinct", () => {
+    expect(
+      agentHubSummary(
+        [
+          provider(),
+          provider({ instanceId: "work" as ServerProvider["instanceId"], enabled: false }),
+        ],
+        entries,
+      ),
+    ).toEqual({ integrated: 2, routable: 1, catalog: 3, checksumVerifiable: 1 });
+  });
+
+  it("does not claim that an available checksum was already verified", () => {
+    expect(catalogDistributionLabel(entries[0]!)).toBe("Checksum available");
+    expect(catalogDistributionLabel(entries[1]!)).toBe("npm package");
+    expect(catalogDistributionLabel(entries[2]!)).toBe("No compatible build");
+  });
+
+  it("exposes only HTTP links from registry metadata", () => {
+    expect(
+      catalogExternalUrl({
+        ...entries[0]!,
+        agent: {
+          ...entries[0]!.agent,
+          website: "javascript:alert(1)",
+          repository: "https://github.com/example/agent",
+        },
+      }),
+    ).toBe("https://github.com/example/agent");
+    expect(
+      catalogExternalUrl({
+        ...entries[0]!,
+        agent: {
+          ...entries[0]!.agent,
+          website: "file:///tmp/agent",
+          repository: "not a url",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("reports built-in readiness without conflating integration and routing", () => {
+    expect(providerReadinessLabel(provider())).toBe("Routable");
+    expect(providerReadinessLabel(provider({ enabled: false }))).toBe("Integrated");
+    expect(providerReadinessLabel(provider({ installed: false }))).toBe("Not detected");
+  });
+});

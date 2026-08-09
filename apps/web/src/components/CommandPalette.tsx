@@ -29,6 +29,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
+  BotIcon,
   CornerLeftUpIcon,
   FileSearchIcon,
   FolderIcon,
@@ -1492,6 +1493,18 @@ function OpenCommandPaletteDialog(props: {
         themeHalves,
         initialAppearance: resolvedTheme,
       });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:agent-hub",
+    searchTerms: ["agents", "providers", "install", "catalog", "acp", "router"],
+    title: "Open Agent Hub",
+    description: "Discover and inspect coding agents",
+    icon: <BotIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/agents" });
     },
   });
 

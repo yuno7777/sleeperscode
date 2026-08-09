@@ -177,7 +177,7 @@ export type AcpDistributionChoice = typeof AcpDistributionChoice.Type;
 /**
  * Picks how to obtain an agent on one platform, following the Phase 22 ordering.
  *
- * That ordering prefers a verified standalone binary over a package manager, so
+ * That ordering prefers a platform-matched standalone binary over a package manager, so
  * a platform-matched `binary` artifact wins when one exists: it is the only form
  * that can carry a checksum, which is what makes a download verifiable before it
  * runs. `npx` is preferred over `uvx` only because Node is already a hard

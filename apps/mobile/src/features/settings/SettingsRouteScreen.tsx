@@ -532,6 +532,11 @@ function ConfiguredSettingsRouteScreen() {
 function GeneralSettingsSection() {
   return (
     <SettingsSection title="General">
+      <SettingsRow
+        icon={{ ios: "sparkles", android: "auto_awesome" }}
+        label="Agent Hub"
+        target="SettingsAgentHub"
+      />
       <SettingsRow icon="folder" label="Project Grouping" target="SettingsProjectGrouping" />
       <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
     </SettingsSection>
