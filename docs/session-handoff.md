@@ -1,129 +1,114 @@
 # Session handoff
 
-Written 2026-08-09 for the next agent picking up this repository.
+Audited 2026-08-09 after reviewing the Claude continuation that followed commit `8d69b87ba`.
 
 ## Git state
 
-- Branch `main`, worktree clean, **nothing pushed**, zero releases.
-- Base upstream commit: `45d9aa90baab8f2d6b13c7ae3cf2f97128edaf7b`
-- New substantive commits: **184** (this session added 50, from `8d69b87ba` to `2368fef95`)
-- Remotes: `origin` → `yuno7777/sleeperscode`, `upstream` → `pingdotgg/t3code`
-- **11 commits behind `upstream/main`, and the merge is currently clean** (`git merge-tree` exits 0).
+- Branch: `main`.
+- Fork base: `45d9aa90baab8f2d6b13c7ae3cf2f97128edaf7b`.
+- Expected count after committing this handoff: **195 commits from the fork base**, within the
+  requested 150-200 range.
+- `origin`: `https://github.com/yuno7777/sleeperscode.git`; currently has no branches or tags.
+- `upstream`: `https://github.com/pingdotgg/t3code.git`.
+- Latest fetched upstream: `1a003e383`; this branch is 31 upstream commits behind.
+- A `git merge-tree` preview found no textual conflicts. Upstream was deliberately not merged before
+  the first push because its 31 commits would take the branch beyond the requested 200-commit cap.
+- At audit time nothing had been pushed and no release had been created. Verify remote state rather
+  than assuming this remains true.
 
 ## Read first
 
-`AGENTS.md`, then `docs/sleepers-code-roadmap.md`. If touching Effect code, read
-`.repos/effect-smol/LLMS.md` completely.
+Read `AGENTS.md` and `docs/sleepers-code-roadmap.md`. Before changing Effect code, read
+`.repos/effect-smol/LLMS.md` completely. Use focused tests only; do not run repo-wide checks.
 
-## Toolchain
-
-Node 24 is required and is not the machine default. Prepend before any command:
+Node 24 is required. Prepend the repository bin plus the bundled runtime paths:
 
 ```powershell
 $repoBin=(Resolve-Path '.\node_modules\.bin').Path
 $runtimeBin='C:\Users\Abhishek Satarkar\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin'
-$env:PATH="$repoBin;$runtimeBin;$env:PATH"
+$runtimeOverride='C:\Users\Abhishek Satarkar\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\override'
+$runtimeFallback='C:\Users\Abhishek Satarkar\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback'
+$env:PATH="$repoBin;$runtimeBin;$runtimeOverride;$runtimeFallback;$env:PATH"
 ```
 
-Run benchmark scripts with `node scripts/<name>.mjs` directly. Do **not** use `pnpm bench:*` after
-editing `package.json`: the wrapper attempts a dependency refresh and times out on uncached optional
-Anthropic platform packages.
+Run benchmark scripts directly with `node scripts/<name>.mjs`. Do not invoke their package scripts
+when that would trigger an unnecessary dependency refresh.
 
-## What this session changed
+## What the Claude continuation added
 
-### Product code (5 changes)
+- A HEAD-stamped checkpoint index cache.
+- Provider integration-transport metadata.
+- Agent registry, distribution selection, and install-safety contracts.
+- Agent integration/routing status helpers.
+- Ollama, LM Studio, and OpenAI-compatible model discovery scaffolding.
+- ACP high-volume and late-consumer regressions.
+- Five benchmark harnesses and runtime audit documents.
 
-| Change                             | Files                                                                 | Note                                               |
-| :--------------------------------- | :-------------------------------------------------------------------- | :------------------------------------------------- |
-| Checkpoint index cache             | `apps/server/src/vcs/GitVcsDriver.ts`                                 | 59x faster capture at 15,000 files                 |
-| Integration transport per adapter  | `provider/Services/ProviderAdapter.ts` + all 5 adapters               | Required field, compiler-enforced                  |
-| Agent status levels                | `packages/contracts/src/server.ts`                                    | `deriveAgentStatusLevels`                          |
-| Agent health / routing eligibility | `packages/contracts/src/server.ts`                                    | `summariseAgentHealth`, `selectRoutableAgents`     |
-| Local model support                | `packages/contracts/src/localModel.ts`, `apps/server/src/localModel/` | Ollama, LM Studio, OpenAI-compatible               |
-| ACP agent registry                 | `packages/contracts/src/agentRegistry.ts`                             | Decoder + install-safety gate + platform selection |
+These are incremental scaffolding and optimizations. Agent routing, registry fetching/installing,
+local-model execution, and Agent Hub UI are not wired into product flows yet.
 
-### New tests
+## Confirmed Claude mistakes and corrections
 
-- `apps/server/src/vcs/GitCheckpointCapture.test.ts` — 5 tree-oid differential cases
-- `apps/server/src/localModel/LocalModelDiscovery.test.ts` — 8 cases
-- `packages/contracts/src/localModel.test.ts` — 14 cases
-- `packages/contracts/src/agentRegistry.test.ts` — 19 cases
-- `packages/contracts/src/server.test.ts` — +13 cases
-- `apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts` — +2 slow-consumer cases
+1. `package.json` carried a UTF-8 BOM and failed direct `JSON.parse`; removed in `a40b99d07`.
+2. The Git benchmark contained a literal NUL, swallowed Git failures, used a fixed order while
+   claiming alternation, and could report over 100% launch share; fixed in `2246d41ba`.
+3. Four other benchmark harnesses also claimed interleaving while always using a fixed order; fixed
+   in `a2b3f2526`. The checkpoint harness now reports the correct process-launch count per variant.
+4. The checkpoint cache was shared by every project root in one repository. A nested project could
+   silently inherit out-of-scope staged entries from a root project. A differential regression first
+   reproduced the unequal tree OIDs; the cache is now scoped by resolved project root in
+   `f420759f8`.
+5. The ACP “stalled consumer” test counted raw byte chunks, including startup traffic, and inferred
+   queue backpressure from an unfinished long prompt. It now makes only the valid late-consumer
+   losslessness claim, and the unmeasured saturation gate is explicit (`280df77cb`).
+6. ACP install safety was calculated across every platform and fallback instead of the selected
+   distribution. It now classifies only what would actually run (`135254380`).
+7. A provider with `enabled: true` but runtime `status: "disabled"` was considered routable. Both
+   disabled signals now block routing (`7f6e584b4`).
+8. Local-model discovery accepted malformed and non-HTTP URLs despite claiming a never-failing
+   effect. It now validates and returns `invalid_base_url` without issuing a request (`ba4312bd7`).
+9. The startup benchmark could wait 60 seconds after an early server exit and had a listener race
+   during cleanup. It now races readiness/idle sampling against the captured exit promise
+   (`8af1cf047`).
 
-### New benchmarks (`package.json` scripts added)
+## Verification
 
-`benchmark-server-startup.mjs`, `benchmark-git-operations.mjs`, `benchmark-workspace-scan.mjs`,
-`benchmark-content-index.mjs`, `benchmark-checkpoint-capture.mjs`. Existing
-`benchmark-provider-concurrency.mjs` gained interleaving.
+- Contracts typecheck: passed.
+- Server typecheck: passed. Only pre-existing Effect suggestions remain.
+- Focused release-candidate regression: **134 tests passed across 9 files**.
+- Checkpoint differential suite: **6 passed**, including nested-root contamination and corrupt-cache
+  fallback.
+- ACP file: Node and Rust coverage passed, including both late-consumer cases.
+- Four benchmark scripts plus the startup harness pass `node --check`; the checkpoint benchmark also
+  completed a minimal synthetic run.
+- No browser/computer-use validation was performed because permission was not requested.
+- No packaging run was performed in this audit.
 
-### New docs
+## Upstream and first-push rule
 
-`docs/git-runtime-audit.md`, `docs/filesystem-runtime-audit.md`, `docs/file-watcher-inventory.md`,
-`docs/checkpoint-engine-audit.md`, `docs/provider-abstraction-audit.md`,
-`docs/secret-handling-audit.md`, `docs/decisions/005-native-git-runtime-retained.md`,
-`docs/decisions/006-agent-catalog-from-acp-registry.md`.
+The first push should contain this audited 195-commit branch before upstream is integrated, otherwise
+the 31 newly fetched upstream commits take the history over the user's 200-commit ceiling. After the
+first push, integrate `upstream/main` normally with a merge commit (not a squash) to preserve future
+upstream compatibility, then run focused tests for overlapping server/provider/contracts files.
 
-## Findings that should change what you do next
+Do not create a release yet. A release still needs packaging evidence and a deliberate release note;
+the user asked for fewer than six releases, not for speculative releases during development.
 
-1. **Process launch is the dominant cost on this host, not any library.** `git --version` costs ~38 ms.
-   `rev-parse --git-common-dir` spends 0.95 ms of actual Git work inside a 38.77 ms call. Native Git
-   stays (ADR 005). The same logic blocks Phase 11.
-2. **ADR 005 is the governing rule**: migrate a component only once profiling implicates _that_
-   component.
-3. **Never compare two backends as two separate invocations.** That pattern manufactured a 1.2 s gap
-   that vanished on re-measurement. Both harnesses now interleave variants inside one run.
-4. **Checkpoint capture re-hashed the whole worktree every turn** because `read-tree HEAD` discards
-   Git's stat cache. Fixed with a HEAD-stamped index cache that falls back on any staleness or
-   corruption. Gated on tree-oid equality tests.
-5. **Server startup memory is provider CLI probing**, not the server: 606 MiB–1,070 MiB transient from
-   overlapping 200–320 MiB CLI probes, settling to 175–180 MiB.
-6. **There is no workspace file watcher at all** — Phase 8's storm protection has no target.
-7. **The ACP registry exists and is authoritative**
-   (`https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`), carries typed
-   distributions with sha256, and **mixes vendor and community publishers without labelling them**.
-   Trust tiers cannot be derived from it (ADR 006).
-8. **Upstream already built the usage ledger** (tokens, cost, day buckets) in the 11 commits we are
-   behind. That is the dataset the router phases need.
+## Best next engineering work
 
-## Verification state (all green at handoff)
-
-- Typechecks: contracts, server, web, desktop, mobile, shared, client-runtime — **7/7 clean**
-- New suites: **65 passed**; regression sweep: **64 passed**
-- Rust: `cargo fmt --check` clean, sidecar suite **25 passed**
-- Secret scan over all 184 commits: clean
-
-**Four tests fail on a clean checkout, pre-existing and unrelated to this work** (verified by
-stashing): `detects repository identity inside a repository and nested directories`, `backs off failed
-upstream refreshes across linked worktrees`, `preserves newline characters in worktree paths when
-listing refs`, and one `CheckpointReactor` revert test.
-
-## Recommended next steps, in order
-
-1. **Merge `upstream/main`** while it is still clean. Brings the usage ledger and unblocks Phases
-   32–38 and 60–70.
-2. **Phase 95** — custom provider executable paths. PATH machinery already exists in
-   `packages/shared/src/shell.ts`; the gap is persistence, and it touches all five providers.
-3. **Usage for Cursor, Grok, OpenCode** — upstream covers only claude and codex.
-4. **Bound concurrent provider probes** — the measured startup transient.
-5. **Git metadata without launching Git** — 7 call sites; edge cases enumerated in the Git audit
-   (detached HEAD, worktree `gitdir:` pointers, symbolic refs outside `refs/heads`). Needs
-   differential tests before replacing any call site.
-6. **Redaction tests at the six emitting boundaries** listed in `docs/secret-handling-audit.md`.
+1. Integrate the fetched upstream after the first push; it includes the usage ledger and several
+   server lifecycle fixes.
+2. Reconcile the usage ledger with routing phases without inventing quality scores.
+3. Bound concurrent provider probes, which remain the measured startup-memory spike.
+4. Add a deterministic event-queue saturation receipt before making any backpressure-capacity claim.
+5. Add custom provider executable paths across all five providers.
+6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
 
 ## Hard constraints
 
-- Do **not** push. Do **not** create a release. Do **not** open a PR unless asked.
-- Do not run repo-wide checks (`vp check`, `vp run -r test`). Focused only.
-- Never kill a process by name or pattern; only an exact PID you captured at spawn.
-- Do not point dev servers at `~/.t3/userdata`; use the repo's isolated `.t3`.
-- Do not set `VITE_HTTP_URL` or `VITE_WS_URL`.
-- Rust-only commits may need `--no-verify` because the hook runs `vp fmt` with no applicable target;
-  only after `cargo fmt --check` and the Rust tests pass.
-- Browser/computer use requires the user's explicit permission.
-
-## Phases that cannot progress in this environment
-
-Certificate (100), VM or Windows Sandbox (99), publishing rights (102), browser permission (28, 54,
-55), real provider credentials (3), Antigravity CLI (17–19), and the router block (32–38, 59–70)
-which needs a real task-outcome corpus rather than invented constants.
+- Never kill by name or pattern; only a PID captured at spawn.
+- Never run against the live `~/.t3/userdata`; use isolated worktree state.
+- Do not set `VITE_HTTP_URL` or `VITE_WS_URL` in development.
+- Do not delete TypeScript/Node fallbacks until replacements pass differential tests and benchmarks.
+- Browser/computer use requires explicit permission.
+- No release until packaging and release-specific validation are complete.
