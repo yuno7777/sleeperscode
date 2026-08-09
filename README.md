@@ -40,6 +40,9 @@ runtime bottlenecks move behind small Rust components.
 - **Provider discovery that respects the host** — Windows PATH repair, WinGet/npm/pnpm/user-local
   discovery, safe `.cmd` handling, WSL login-shell paths, and persisted overrides for every provider.
 - **Usage visibility** — shared web/mobile dashboards aggregate Claude and Codex token and cost data.
+- **Agent Hub discovery** — web, desktop, and mobile distinguish installed, integrated, and routable
+  providers while reading the ACP catalog through the connected environment. Installation remains
+  security-gated during alpha.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 
@@ -61,8 +64,8 @@ Tool broker <---------------+
 Verification -> checkpoint -> usage and outcome ledger
 ```
 
-The router, Agent Hub, broader task-outcome analytics, Tauri migration, and clean-machine release
-qualification are roadmap work—not finished features. See the
+The adaptive router, secure agent installation, broader task-outcome analytics, Tauri migration, and
+clean-machine release qualification are roadmap work—not finished features. See the
 [canonical engineering tracker](./docs/sleepers-code-roadmap.md) for evidence and blockers rather
 than aspirational checkmarks.
 
@@ -182,6 +185,7 @@ Start with the [internal architecture overview](./docs/internals/overview.md), t
 - [Permission modes](./docs/user/permission-modes.md)
 - [Keyboard shortcuts](./docs/user/keybindings.md)
 - [Source control integrations](./docs/user/source-control.md)
+- [Agent Hub](./docs/user/agent-hub.md)
 - [Sleepers Code roadmap](./docs/sleepers-code-roadmap.md)
 - [Architecture decisions](./docs/decisions/)
 

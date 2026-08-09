@@ -59,5 +59,5 @@ would let code make it.
 - Nothing installs anything yet. This is the contract and the gate; the installer that consumes them
   is still to be built, and must refuse any entry whose safety says it cannot be verified unless the
   user explicitly initiates that specific install.
-- The registry is a network dependency at runtime. Phase 25's "cache the last valid registry" applies:
-  a fetch failure must fall back to the last good copy rather than emptying the catalog.
+- The registry is a network dependency at runtime. The shared server service caches successful
+  snapshots for 15 minutes and falls back to the last good copy rather than emptying the catalog.

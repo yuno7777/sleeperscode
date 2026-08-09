@@ -6,13 +6,10 @@ Audited 2026-08-09 after reviewing the Claude continuation that followed commit 
 
 - Branch: `main`.
 - Fork base: `45d9aa90baab8f2d6b13c7ae3cf2f97128edaf7b`.
-- Expected count after committing this handoff: **195 commits from the fork base**, within the
-  requested 150-200 range.
-- `origin`: `https://github.com/yuno7777/sleeperscode.git`; currently has no branches or tags.
+- `origin`: `https://github.com/yuno7777/sleeperscode.git`; `origin/main` exists. Verify
+  divergence immediately before any push.
 - `upstream`: `https://github.com/pingdotgg/t3code.git`.
-- Latest fetched upstream: `1a003e383`; this branch is 31 upstream commits behind.
-- A `git merge-tree` preview found no textual conflicts. Upstream was deliberately not merged before
-  the first push because its 31 commits would take the branch beyond the requested 200-commit cap.
+- Latest fetched upstream in this handoff: `1a003e383`; it is already an ancestor of this branch.
 - At audit time nothing had been pushed and no release had been created. Verify remote state rather
   than assuming this remains true.
 
@@ -44,8 +41,9 @@ when that would trigger an unnecessary dependency refresh.
 - ACP high-volume and late-consumer regressions.
 - Five benchmark harnesses and runtime audit documents.
 
-These are incremental scaffolding and optimizations. Agent routing, registry fetching/installing,
-local-model execution, and Agent Hub UI are not wired into product flows yet.
+These began as incremental scaffolding and optimizations. Registry fetching and read-only Agent Hub
+surfaces are now wired into web, desktop, and mobile. Agent installation, adaptive routing, and
+local-model execution are not wired into product flows yet.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -70,6 +68,12 @@ local-model execution, and Agent Hub UI are not wired into product flows yet.
 9. The startup benchmark could wait 60 seconds after an early server exit and had a listener race
    during cleanup. It now races readiness/idle sampling against the captured exit promise
    (`8af1cf047`).
+10. The first Agent Hub UI called a checksum-providing binary "verified" and named host-compatible
+    filtering after Windows. Shared cross-client logic now says "checksum available" and filters by
+    the selected environment's compatible distribution without implying prior verification.
+11. Registry website and repository strings were passed directly to a browser link. Agent Hub now
+    exposes only well-formed HTTP or HTTPS URLs and safely falls back from an invalid website to the
+    repository.
 
 ## Verification
 
@@ -84,25 +88,26 @@ local-model execution, and Agent Hub UI are not wired into product flows yet.
 - No browser/computer-use validation was performed because permission was not requested.
 - No packaging run was performed in this audit.
 
-## Upstream and first-push rule
+## Upstream and push rule
 
-The first push should contain this audited 195-commit branch before upstream is integrated, otherwise
-the 31 newly fetched upstream commits take the history over the user's 200-commit ceiling. After the
-first push, integrate `upstream/main` normally with a merge commit (not a squash) to preserve future
-upstream compatibility, then run focused tests for overlapping server/provider/contracts files.
+Upstream has already been integrated. Do not manufacture commits to satisfy an old numeric target;
+create only substantive conventional commits. Before any push, verify focused tests, inspect staged
+content, scan it for secrets, and re-check the current remote divergence.
 
 Do not create a release yet. A release still needs packaging evidence and a deliberate release note;
 the user asked for fewer than six releases, not for speculative releases during development.
 
 ## Best next engineering work
 
-1. Integrate the fetched upstream after the first push; it includes the usage ledger and several
-   server lifecycle fixes.
-2. Reconcile the usage ledger with routing phases without inventing quality scores.
-3. Keep the new one-at-a-time provider probe scheduler; its paired measurement reduced peak startup
-   RSS by 28.9%. OpenCode's two internal discovery commands are the remaining large transient.
-4. Add a deterministic event-queue saturation receipt before making any backpressure-capacity claim.
-5. Add custom provider executable paths across all five providers.
+1. Qualify the read-only Agent Hub in a real web/desktop client and on a mobile device after explicit
+   browser/device permission.
+2. Design the human-reviewed publisher allowlist required for registry trust levels. Do not infer
+   endorsement from the ACP feed.
+3. Build the installer executor around explicit consent, prerequisite detection, isolated staging,
+   SHA-256 verification, atomic activation, and rollback. Keep package-manager execution gated until
+   an equally auditable policy exists.
+4. Add non-secret auth and health probes for catalog agents before exposing any route/start action.
+5. Reconcile the usage ledger with routing phases without inventing quality scores.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
 
 ## Hard constraints
