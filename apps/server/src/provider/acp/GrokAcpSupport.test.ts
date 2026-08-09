@@ -17,7 +17,7 @@ describe("resolveGrokAcpBaseModelId", () => {
 });
 
 describe("buildGrokAcpSpawnInput", () => {
-  it("passes the T3 Code referrer through Grok OAuth env", () => {
+  it("keeps the t3code compatibility referrer in the Grok OAuth environment", () => {
     const spawn = buildGrokAcpSpawnInput({ binaryPath: "/usr/local/bin/grok" }, "/tmp/project", {
       XAI_API_KEY: "secret",
       GROK_OAUTH2_REFERRER: "other-client",
