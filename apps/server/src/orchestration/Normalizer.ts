@@ -4,16 +4,19 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import {
+  type RouterContext,
   type ClientOrchestrationCommand,
   type IsoDateTime,
   type OrchestrationCommand,
   OrchestrationDispatchCommandError,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
+import { buildRouterContext } from "@t3tools/shared/router";
 
 import { createAttachmentId, resolveAttachmentPath } from "../attachmentStore.ts";
 import { ServerConfig } from "../config.ts";
 import { parseBase64DataUrl } from "../imageMime.ts";
+import type { ProviderRegistryShape } from "../provider/Services/ProviderRegistry.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as TaskRepositoryProfiler from "./TaskRepositoryProfiler.ts";
 import * as ProjectionSnapshotQuery from "./Services/ProjectionSnapshotQuery.ts";
@@ -87,7 +90,18 @@ export const resolveTurnRepositoryRoot = (
     return Option.isSome(project) ? project.value.workspaceRoot : undefined;
   });
 
-export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
+export const readRouterContext = (registry: Pick<ProviderRegistryShape, "getProviders">) =>
+  registry.getProviders.pipe(
+    Effect.map(buildRouterContext),
+    Effect.catchCause(() =>
+      Effect.succeed({ version: 1, candidates: [], limited: true } satisfies RouterContext),
+    ),
+  );
+
+export const normalizeDispatchCommand = (
+  command: ClientOrchestrationCommand,
+  options?: { readonly routerContext?: RouterContext },
+) =>
   Effect.gen(function* () {
     const receivedAt = DateTime.formatIso(yield* DateTime.now);
     const canonicalCommand = canonicalizeClientCommandTimestamps(command, receivedAt);
@@ -157,6 +171,11 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
       repositoryRoot === undefined
         ? undefined
         : yield* TaskRepositoryProfiler.getTaskRepositoryEvidence(repositoryRoot);
+    const routerContext = options?.routerContext ?? {
+      version: 1,
+      candidates: [],
+      limited: true,
+    };
 
     const normalizedAttachments = yield* Effect.forEach(
       canonicalCommand.message.attachments,
@@ -230,5 +249,6 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
         attachments: normalizedAttachments,
       },
       ...(repositoryEvidence === undefined ? {} : { repositoryEvidence }),
+      routerContext,
     } satisfies OrchestrationCommand;
   });

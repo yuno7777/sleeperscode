@@ -47,6 +47,10 @@
       "types": "./src/taskProfile.ts",
       "import": "./src/taskProfile.ts"
     },
+    "./router": {
+      "types": "./src/router.ts",
+      "import": "./src/router.ts"
+    },
     "./semver": {
       "types": "./src/semver.ts",
       "import": "./src/semver.ts"

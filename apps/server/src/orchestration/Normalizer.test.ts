@@ -12,7 +12,11 @@ import {
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 
-import { canonicalizeClientCommandTimestamps, resolveTurnRepositoryRoot } from "./Normalizer.ts";
+import {
+  canonicalizeClientCommandTimestamps,
+  readRouterContext,
+  resolveTurnRepositoryRoot,
+} from "./Normalizer.ts";
 
 const clientCreatedAt = "2031-01-01T00:00:00.000Z";
 const serverReceivedAt = "2026-07-18T00:00:00.000Z";
@@ -127,5 +131,15 @@ describe("resolveTurnRepositoryRoot", () => {
     );
 
     expect(root).toBe("C:\\repo\\project");
+  });
+});
+
+describe("readRouterContext", () => {
+  it("degrades provider snapshot failures to limited empty context", async () => {
+    const context = await Effect.runPromise(
+      readRouterContext({ getProviders: Effect.die("provider snapshot unavailable") }),
+    );
+
+    expect(context).toEqual({ version: 1, candidates: [], limited: true });
   });
 });

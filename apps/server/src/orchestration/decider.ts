@@ -5,6 +5,7 @@ import {
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import { classifyTaskProfile } from "@t3tools/shared/taskProfile";
+import { planRouterDecision } from "@t3tools/shared/router";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -969,6 +970,16 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ? { repositoryEvidence: command.repositoryEvidence }
           : {}),
       });
+      const effectiveSelection = command.modelSelection ?? targetThread.modelSelection;
+      const routerDecision =
+        command.routerContext === undefined
+          ? undefined
+          : planRouterDecision({
+              taskProfile,
+              context: command.routerContext,
+              effectiveSelection,
+              selectionSource: command.modelSelection === undefined ? "thread" : "turn-override",
+            });
       const turnStartRequestedEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -982,6 +993,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           messageId: command.message.messageId,
           taskProfile,
+          ...(routerDecision === undefined ? {} : { routerDecision }),
           ...(command.modelSelection !== undefined
             ? { modelSelection: command.modelSelection }
             : {}),

@@ -20,6 +20,7 @@ import {
 import { EditorId } from "./editor.ts";
 import { ModelCapabilities } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
+import { AgentRoutingBlocker } from "./router.ts";
 import { ServerSettings } from "./settings.ts";
 
 const KeybindingsMalformedConfigIssue = Schema.Struct({
@@ -218,15 +219,6 @@ export const isProviderAvailable = (snapshot: ServerProvider): boolean =>
  * work. Reported as a list so a caller can explain every missing precondition
  * at once instead of surfacing them one repair at a time.
  */
-export const AgentRoutingBlocker = Schema.Literals([
-  "driver_unavailable",
-  "not_installed",
-  "provider_error",
-  "disabled",
-  "unauthenticated",
-]);
-export type AgentRoutingBlocker = typeof AgentRoutingBlocker.Type;
-
 /**
  * Integration and routing readiness, which are deliberately not the same thing.
  *

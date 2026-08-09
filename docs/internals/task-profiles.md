@@ -54,7 +54,9 @@ and bounded evidence, then adds it to `thread.turn-start-requested`. Both fields
 durable schemas so historical events and mixed-version snapshots continue to decode.
 
 The original user message remains the provider input and continues through the existing message
-event. The task profile is metadata for later router, budget, collaboration, and telemetry stages.
+event. The task profile feeds the optional shadow decision described in
+[`adaptive-router.md`](./adaptive-router.md) and remains metadata for later budget, collaboration,
+and telemetry stages.
 
 ## Limitations
 
@@ -62,7 +64,7 @@ event. The task profile is metadata for later router, budget, collaboration, and
 - Repository evidence is root-only. It does not inspect changed areas, nested package manifests,
   source files, test results, Git history, or historical outcomes.
 - Scores are explainable heuristics, not measured provider-quality evidence.
-- No provider selection or collaboration behavior changes in this phase.
+- The shadow decision cannot change provider selection or collaboration behavior.
 
 Later router work may add bounded change and telemetry inputs, but it must keep classification cheap,
 versioned, privacy-preserving, and subordinate to explicit user routing choices.

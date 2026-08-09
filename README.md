@@ -47,8 +47,9 @@ runtime bottlenecks move behind small Rust components.
   installs and automatic routing remain gated.
 - **Explainable routing foundation** — every new turn receives a bounded, deterministic task profile
   with domain, complexity, tool, testing, security, collaboration, and cheap root-level repository
-  signals. It stores no prompt excerpts or repository paths and does not override the provider or
-  model selected by the user.
+  signals plus a shadow routing decision. The decision records provider eligibility and execution
+  needs, but its contract cannot override the provider or model selected by the user. Neither record
+  stores prompt excerpts or repository paths.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 

@@ -74,7 +74,7 @@ import {
   projectActivityEvent,
   projectThreadDetailSnapshot,
 } from "./orchestration/ActivityPayloadProjection.ts";
-import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
+import { normalizeDispatchCommand, readRouterContext } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -1041,7 +1041,8 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
-              const normalizedCommand = yield* normalizeDispatchCommand(command);
+              const routerContext = yield* readRouterContext(providerRegistry);
+              const normalizedCommand = yield* normalizeDispatchCommand(command, { routerContext });
               // Archive and settle both mean "done with this thread", so a
               // live provider session must not keep running background work
               // (PR monitors, dev servers, subagent fleets) after either
@@ -1079,20 +1080,23 @@ const makeWsRpcLayer = (
                 const parkingKind = parkingCommand.type === "thread.archive" ? "archive" : "settle";
                 if (shouldStopSessionAfterCommand) {
                   yield* Effect.gen(function* () {
-                    const stopCommand = yield* normalizeDispatchCommand({
-                      type: "thread.session.stop",
-                      commandId: CommandId.make(
-                        `session-stop-for-${parkingKind}:${parkingCommand.commandId}`,
-                      ),
-                      threadId: parkingCommand.threadId,
-                      createdAt: yield* nowIso,
-                      // A settled thread can be re-engaged before this stop is
-                      // decided; the decider then drops the stop instead of
-                      // killing the new session. Archive stops stay
-                      // unconditional: turn starts on archived threads are
-                      // rejected, so there is no new session to protect.
-                      ...(parkingKind === "settle" ? { onlyIfSettled: true } : {}),
-                    });
+                    const stopCommand = yield* normalizeDispatchCommand(
+                      {
+                        type: "thread.session.stop",
+                        commandId: CommandId.make(
+                          `session-stop-for-${parkingKind}:${parkingCommand.commandId}`,
+                        ),
+                        threadId: parkingCommand.threadId,
+                        createdAt: yield* nowIso,
+                        // A settled thread can be re-engaged before this stop is
+                        // decided; the decider then drops the stop instead of
+                        // killing the new session. Archive stops stay
+                        // unconditional: turn starts on archived threads are
+                        // rejected, so there is no new session to protect.
+                        ...(parkingKind === "settle" ? { onlyIfSettled: true } : {}),
+                      },
+                      { routerContext },
+                    );
 
                     yield* dispatchNormalizedCommand(stopCommand);
                   }).pipe(

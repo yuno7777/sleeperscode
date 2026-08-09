@@ -70,6 +70,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - Turn normalization now enriches that profile with cached, root-only repository markers, languages,
   frameworks, test runners, and workspace shape. The profiler performs no recursive traversal, caps
   manifest reads at 128 KiB, stores no paths or manifest text, and ignores forged client evidence.
+- WebSocket turns now retain a deterministic shadow routing decision. Turn overrides beat thread
+  selections; provider eligibility uses live registry blockers; multiple healthy providers remain
+  unranked; and the versioned contract fixes `applied: false`, so no provider/model behavior changes.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -151,8 +154,8 @@ the user asked for fewer than six releases, not for speculative releases during 
    process-local before enabling unattended routing.
 5. Reconcile the usage ledger with routing phases without inventing quality scores.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
-7. Define the Phase 32 deterministic router decision contract and precedence rules before activating
-   any automatic choice; keep explicit provider/model selection authoritative.
+7. Define task-outcome attribution and reconcile it with usage records before calibrating Phase 33
+   scores. Do not activate routing from provider-brand priors or unmeasured quality claims.
 
 ## Hard constraints
 

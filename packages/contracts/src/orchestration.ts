@@ -22,6 +22,7 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import { RouterContext, RouterDecision } from "./router.ts";
 import { TaskProfile, TaskRepositoryEvidence } from "./taskProfile.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
@@ -821,6 +822,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
   }),
   /** Server-owned metadata; client turn schemas intentionally omit it. */
   repositoryEvidence: Schema.optionalKey(TaskRepositoryEvidence),
+  /** Server-owned routing inputs; client turn schemas intentionally omit them. */
+  routerContext: Schema.optionalKey(RouterContext),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
@@ -1238,6 +1241,8 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   messageId: MessageId,
   /** Optional for replay compatibility with turns created before task profiling. */
   taskProfile: Schema.optionalKey(TaskProfile),
+  /** Optional shadow decision; version 1 never changes the effective selection. */
+  routerDecision: Schema.optionalKey(RouterDecision),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),

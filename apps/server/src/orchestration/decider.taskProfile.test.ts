@@ -2,6 +2,7 @@ import {
   CommandId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   TaskProfile,
   ThreadId,
@@ -76,6 +77,24 @@ it.layer(NodeServices.layer)("turn task profiling", (it) => {
             workspace: "single-package",
             limited: false,
           },
+          routerContext: {
+            version: 1,
+            candidates: [
+              {
+                instanceId: ProviderInstanceId.make("codex"),
+                driver: ProviderDriverKind.make("codex"),
+                eligible: true,
+                blockers: [],
+              },
+              {
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                driver: ProviderDriverKind.make("claudeAgent"),
+                eligible: false,
+                blockers: ["unauthenticated"],
+              },
+            ],
+            limited: false,
+          },
           createdAt: NOW,
         },
         readModel,
@@ -111,6 +130,16 @@ it.layer(NodeServices.layer)("turn task profiling", (it) => {
         ]),
       );
       expect(encodeProfileJson(taskProfile)).not.toContain(privateMarker);
+      expect(turnStart.payload.routerDecision).toMatchObject({
+        version: 1,
+        mode: "shadow",
+        applied: false,
+        effectiveSelection: { instanceId: "codex", model: "gpt-5.4" },
+        selectionSource: "thread",
+        selectedEligibility: "eligible",
+        recommendation: { outcome: "retain-current", instanceId: "codex" },
+        execution: { review: "required", research: false },
+      });
     }),
   );
 });

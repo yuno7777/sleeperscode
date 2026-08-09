@@ -275,6 +275,11 @@ it.effect("accepts server repository evidence but strips it from client turn com
         workspace: "single-package",
         limited: false,
       },
+      routerContext: {
+        version: 1,
+        candidates: [{ instanceId: "codex", driver: "codex", eligible: true, blockers: [] }],
+        limited: false,
+      },
       runtimeMode: "full-access",
       interactionMode: "default",
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -284,8 +289,16 @@ it.effect("accepts server repository evidence but strips it from client turn com
     const clientCommand = yield* decodeClientOrchestrationCommand(input);
 
     assert.deepStrictEqual(serverCommand.repositoryEvidence?.frameworks, ["react"]);
+    assert.strictEqual(serverCommand.routerContext?.candidates[0]?.instanceId, "codex");
+    assert.strictEqual(serverCommand.routerContext?.candidates[0]?.driver, "codex");
+    assert.strictEqual(serverCommand.routerContext?.candidates[0]?.eligible, true);
+    assert.deepStrictEqual(serverCommand.routerContext?.candidates[0]?.blockers, []);
     assert.strictEqual(
       "repositoryEvidence" in clientCommand ? clientCommand.repositoryEvidence : undefined,
+      undefined,
+    );
+    assert.strictEqual(
+      "routerContext" in clientCommand ? clientCommand.routerContext : undefined,
       undefined,
     );
   }),
