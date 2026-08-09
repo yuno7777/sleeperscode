@@ -2,13 +2,17 @@ import {
   ACP_REGISTRY_URL,
   AcpRegistry,
   acpPlatformTriple,
+  acpPrerequisiteCommandsFor,
   acpPrerequisitesFor,
   deriveAcpInstallSafety,
   selectAcpDistribution,
+  type AcpPrerequisite,
+  type AcpPrerequisiteStatus,
   type AgentCatalogEntry,
   type AgentCatalogSnapshot,
   type AgentCatalogUnavailableReason,
 } from "@t3tools/contracts";
+import { isCommandAvailable } from "@t3tools/shared/shell";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -57,9 +61,40 @@ const prepareEntries = (
     })
     .toSorted((left, right) => left.agent.name.localeCompare(right.agent.name));
 
-export const makeWithPlatform = (platform: string, architecture: string) =>
+const probePrerequisites = <R>(
+  prerequisites: ReadonlyArray<AcpPrerequisite>,
+  commandAvailable: (command: string) => Effect.Effect<boolean, never, R>,
+): Effect.Effect<ReadonlyArray<AcpPrerequisiteStatus>, never, R> =>
+  Effect.forEach(prerequisites, (prerequisite) => {
+    const commands = acpPrerequisiteCommandsFor(prerequisite);
+    return Effect.all(commands.map(commandAvailable), { concurrency: "unbounded" }).pipe(
+      Effect.map(
+        (available): AcpPrerequisiteStatus => ({
+          prerequisite,
+          availability: available.every(Boolean) ? "available" : "missing",
+          commands,
+        }),
+      ),
+      Effect.catchCause(() =>
+        Effect.succeed<AcpPrerequisiteStatus>({
+          prerequisite,
+          availability: "unknown",
+          commands,
+        }),
+      ),
+    );
+  });
+
+export const makeWithPlatform = <R>(
+  platform: string,
+  architecture: string,
+  commandAvailable: (command: string) => Effect.Effect<boolean, never, R>,
+) =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
+    const commandContext = yield* Effect.context<R>();
+    const probeCommand = (command: string) =>
+      commandAvailable(command).pipe(Effect.provideContext(commandContext));
     const cache = yield* Ref.make<Option.Option<CachedCatalog>>(Option.none());
     const refreshLock = yield* Semaphore.make(1);
     const platformTriple = acpPlatformTriple(platform, architecture);
@@ -87,13 +122,23 @@ export const makeWithPlatform = (platform: string, architecture: string) =>
       const registry = yield* Schema.decodeUnknownEffect(AcpRegistry)(payload.value).pipe(
         Effect.mapError(() => "invalid_payload" as const),
       );
+      const preparedEntries = prepareEntries(registry, platformTriple);
+      const requiredPrerequisites = [
+        ...new Set(preparedEntries.flatMap((entry) => entry.prerequisites)),
+      ];
+      const prerequisiteStatus = yield* probePrerequisites(requiredPrerequisites, probeCommand);
       const fetchedAt = yield* DateTime.now;
       const fetchedAtMillis = DateTime.toEpochMillis(fetchedAt);
       return {
         fetchedAtMillis,
         fetchedAt: DateTime.formatIso(fetchedAt),
         registryVersion: registry.version,
-        agents: prepareEntries(registry, platformTriple),
+        agents: preparedEntries.map((entry) => ({
+          ...entry,
+          prerequisiteStatus: prerequisiteStatus.filter((status) =>
+            entry.prerequisites.includes(status.prerequisite),
+          ),
+        })),
       } satisfies CachedCatalog;
     });
 
@@ -155,5 +200,9 @@ export const makeWithPlatform = (platform: string, architecture: string) =>
     return AgentCatalog.of({ get });
   });
 
-export const make = makeWithPlatform(globalThis.process.platform, globalThis.process.arch);
+export const make = makeWithPlatform(
+  globalThis.process.platform,
+  globalThis.process.arch,
+  isCommandAvailable,
+);
 export const layer = Layer.effect(AgentCatalog, make);

@@ -5,6 +5,7 @@ import {
   AcpRegistry,
   AcpRegistryAgent,
   acpPlatformTriple,
+  acpPrerequisiteCommandsFor,
   acpPrerequisitesFor,
   deriveAcpInstallSafety,
   resolveAgentInstallArchiveFormat,
@@ -178,11 +179,13 @@ describe("acpPrerequisitesFor", () => {
   it("needs Node on PATH for an npx distribution", () => {
     const choice = selectAcpDistribution(decodeAgent(npxEntry), "windows-x86_64");
     expect(acpPrerequisitesFor(choice)).toEqual(["node"]);
+    expect(acpPrerequisiteCommandsFor("node")).toEqual(["node", "npx"]);
   });
 
   it("needs uv for a uvx distribution", () => {
     const agent = decodeAgent({ ...npxEntry, distribution: { uvx: { package: "example" } } });
     expect(acpPrerequisitesFor(selectAcpDistribution(agent, "linux-x86_64"))).toEqual(["uv"]);
+    expect(acpPrerequisiteCommandsFor("uv")).toEqual(["uv", "uvx"]);
   });
 
   it("asks for nothing when there is nothing to install", () => {

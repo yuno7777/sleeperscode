@@ -69,18 +69,21 @@ const stubHttp = (reply: (requestNumber: number) => Response | "fail", requests:
 const run = <A>(
   effect: Effect.Effect<A, never, AgentCatalog.AgentCatalog>,
   http: Layer.Layer<HttpClient.HttpClient>,
+  commandAvailable: (command: string) => Effect.Effect<boolean> = () => Effect.succeed(true),
 ) =>
   effect.pipe(
     Effect.provide(
-      Layer.effect(AgentCatalog.AgentCatalog, AgentCatalog.makeWithPlatform("win32", "x64")).pipe(
-        Layer.provide(http),
-      ),
+      Layer.effect(
+        AgentCatalog.AgentCatalog,
+        AgentCatalog.makeWithPlatform("win32", "x64", commandAvailable),
+      ).pipe(Layer.provide(http)),
     ),
   );
 
 describe("AgentCatalog", () => {
   it.effect("prepares platform-specific choices without granting registry trust", () => {
     const requests: string[] = [];
+    const commands: string[] = [];
     return run(
       Effect.gen(function* () {
         const catalog = yield* AgentCatalog.AgentCatalog;
@@ -101,21 +104,35 @@ describe("AgentCatalog", () => {
             risks: ["package_manager_install"],
           },
           prerequisites: ["node"],
+          prerequisiteStatus: [
+            {
+              prerequisite: "node",
+              availability: "available",
+              commands: ["node", "npx"],
+            },
+          ],
           trust: "registry-unverified",
         });
         expect(snapshot.agents[1]).toMatchObject({
           selectedDistribution: { kind: "binary", triple: "windows-x86_64" },
           installSafety: { checksumVerifiable: true, risks: [] },
           prerequisites: [],
+          prerequisiteStatus: [],
           trust: "registry-unverified",
         });
+        expect(commands).toEqual(["node", "npx"]);
       }),
       stubHttp(() => json(fixture), requests),
+      (command) => {
+        commands.push(command);
+        return Effect.succeed(true);
+      },
     );
   });
 
   it.effect("shares a fresh catalog across callers", () => {
     const requests: string[] = [];
+    const commands: string[] = [];
     return run(
       Effect.gen(function* () {
         const catalog = yield* AgentCatalog.AgentCatalog;
@@ -123,9 +140,51 @@ describe("AgentCatalog", () => {
         const second = yield* catalog.get();
         expect(first).toEqual(second);
         expect(requests).toEqual([ACP_REGISTRY_URL]);
+        expect(commands).toEqual(["node", "npx"]);
       }),
       stubHttp(() => json(fixture), requests),
+      (command) => {
+        commands.push(command);
+        return Effect.succeed(true);
+      },
     );
+  });
+
+  it.effect("reports missing and unknown prerequisite evidence without hiding the catalog", () => {
+    const missingRequests: string[] = [];
+    const unknownRequests: string[] = [];
+    return Effect.all([
+      run(
+        Effect.gen(function* () {
+          const catalog = yield* AgentCatalog.AgentCatalog;
+          const snapshot = yield* catalog.get();
+          expect(snapshot.agents[0]?.prerequisiteStatus).toEqual([
+            {
+              prerequisite: "node",
+              availability: "missing",
+              commands: ["node", "npx"],
+            },
+          ]);
+        }),
+        stubHttp(() => json(fixture), missingRequests),
+        (command) => Effect.succeed(command === "node"),
+      ),
+      run(
+        Effect.gen(function* () {
+          const catalog = yield* AgentCatalog.AgentCatalog;
+          const snapshot = yield* catalog.get();
+          expect(snapshot.agents[0]?.prerequisiteStatus).toEqual([
+            {
+              prerequisite: "node",
+              availability: "unknown",
+              commands: ["node", "npx"],
+            },
+          ]);
+        }),
+        stubHttp(() => json(fixture), unknownRequests),
+        () => Effect.die("probe failed"),
+      ),
+    ]).pipe(Effect.asVoid);
   });
 
   it.effect("serves the last valid catalog when an explicit refresh fails", () => {

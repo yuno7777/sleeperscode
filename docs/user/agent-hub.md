@@ -29,6 +29,12 @@ You can search by agent, author, or license and filter the catalog by:
 - binary distributions that provide a usable SHA-256 checksum; or
 - package-manager distributions.
 
+Package entries report whether their complete runtime pair is available on the connected
+environment: **Node + npx** for npm packages and **uv + uvx** for uv packages. **Missing** means at
+least one command could not be found on that environment. **Not checked** means the environment did
+not provide reliable evidence, including when an older server is connected. This status is
+informational; package-manager installation remains disabled.
+
 The environment caches a valid catalog snapshot. If a refresh fails, Agent Hub can keep showing the
 last valid snapshot and labels it as stale instead of silently presenting an empty catalog.
 

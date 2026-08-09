@@ -4,6 +4,8 @@ import {
   agentInstallProgressLabel,
   catalogDistributionLabel,
   catalogExternalUrl,
+  catalogPrerequisiteLabel,
+  catalogPrerequisiteStatuses,
   filterAgentCatalog,
   findAgentInstallation,
   providerReadinessLabel,
@@ -571,9 +573,18 @@ function RegistryAgentCard({
           {distribution}
         </Badge>
         <Badge variant="secondary">Registry · unverified</Badge>
-        {entry.prerequisites.map((prerequisite) => (
-          <Badge key={prerequisite} variant="outline">
-            Needs {prerequisite}
+        {catalogPrerequisiteStatuses(entry).map((status) => (
+          <Badge
+            key={status.prerequisite}
+            variant={
+              status.availability === "available"
+                ? "success"
+                : status.availability === "missing"
+                  ? "warning"
+                  : "outline"
+            }
+          >
+            {catalogPrerequisiteLabel(status)}
           </Badge>
         ))}
       </div>

@@ -42,8 +42,9 @@ runtime bottlenecks move behind small Rust components.
 - **Usage visibility** — shared web/mobile dashboards aggregate Claude and Codex token and cost data.
 - **Agent Hub discovery and secure binary installation** — web, desktop, and mobile review the exact
   artifact, require explicit consent for unverified publishers, enforce HTTPS and SHA-256, activate
-  through isolated staging, register the resulting ACP provider, and support app-managed uninstall.
-  Package-manager installs and automatic routing remain gated.
+  through isolated staging, register the resulting ACP provider, support app-managed uninstall, and
+  report whether package runtimes are available on the connected environment. Package-manager
+  installs and automatic routing remain gated.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 

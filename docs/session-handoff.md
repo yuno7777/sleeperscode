@@ -60,6 +60,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   stored.
 - Web/desktop and mobile now expose exact-plan review, streamed progress, installed state, and
   uninstall. Package-manager execution remains intentionally disabled.
+- Package entries now carry environment-owned PATH evidence for their complete runtime pair:
+  `node` plus `npx`, or `uv` plus `uvx`. Both clients distinguish ready, missing, and not checked;
+  older server snapshots degrade to not checked instead of guessing.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -102,6 +105,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   and provider-registry focused tests plus the server typecheck.
 - The generic ACP health slice passes **30 tests across 2 files** and the real `t3` server typecheck;
   only unrelated existing Effect suggestions remain.
+- Live prerequisite detection passes **40 tests across 3 files**. Contracts, client-runtime, server,
+  web, and mobile typechecks pass, and the web production build passes with the existing bundle-size
+  and resolver-timing warnings.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.
@@ -128,8 +134,8 @@ the user asked for fewer than six releases, not for speculative releases during 
    on a mobile device after explicit browser/device permission.
 2. Design the human-reviewed publisher allowlist/signature policy required for stronger registry
    trust levels. Do not infer endorsement from the ACP feed.
-3. Add live prerequisite detection before considering package-manager execution; keep `npx` and
-   `uvx` gated until an equally auditable policy exists.
+3. Design an auditable package-manager execution policy before enabling `npx` or `uvx`; live PATH
+   detection alone is not an installation safety boundary.
 4. Decide whether successful-session auth evidence should persist, expire, or remain deliberately
    process-local before enabling unattended routing.
 5. Reconcile the usage ledger with routing phases without inventing quality scores.

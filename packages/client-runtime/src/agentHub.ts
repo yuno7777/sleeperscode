@@ -1,5 +1,7 @@
 import {
+  acpPrerequisiteCommandsFor,
   deriveAgentStatusLevels,
+  type AcpPrerequisiteStatus,
   type AgentCatalogEntry,
   type AgentInstallation,
   type AgentInstallProgressEvent,
@@ -72,6 +74,32 @@ export function catalogDistributionLabel(entry: AgentCatalogEntry): string {
       return entry.selectedDistribution.reason === "unsupported_platform"
         ? "Platform unsupported"
         : "No compatible build";
+  }
+}
+
+/** Normalizes snapshots from both status-aware and older servers. */
+export function catalogPrerequisiteStatuses(
+  entry: AgentCatalogEntry,
+): ReadonlyArray<AcpPrerequisiteStatus> {
+  return entry.prerequisites.map(
+    (prerequisite) =>
+      entry.prerequisiteStatus?.find((status) => status.prerequisite === prerequisite) ?? {
+        prerequisite,
+        availability: "unknown",
+        commands: acpPrerequisiteCommandsFor(prerequisite),
+      },
+  );
+}
+
+export function catalogPrerequisiteLabel(status: AcpPrerequisiteStatus): string {
+  const commands = status.prerequisite === "node" ? "Node + npx" : "uv + uvx";
+  switch (status.availability) {
+    case "available":
+      return `${commands} ready`;
+    case "missing":
+      return `${commands} missing`;
+    case "unknown":
+      return `${commands} not checked`;
   }
 }
 

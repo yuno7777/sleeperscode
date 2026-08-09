@@ -6,6 +6,8 @@ import {
   agentInstallProgressLabel,
   catalogDistributionLabel,
   catalogExternalUrl,
+  catalogPrerequisiteLabel,
+  catalogPrerequisiteStatuses,
   filterAgentCatalog,
   findAgentInstallation,
   providerReadinessLabel,
@@ -106,6 +108,42 @@ describe("Agent Hub logic", () => {
     expect(catalogDistributionLabel(entries[0]!)).toBe("Checksum available");
     expect(catalogDistributionLabel(entries[1]!)).toBe("npm package");
     expect(catalogDistributionLabel(entries[2]!)).toBe("No compatible build");
+  });
+
+  it("presents live prerequisite evidence and degrades older snapshots to unknown", () => {
+    expect(catalogPrerequisiteStatuses(entries[1]!)).toEqual([
+      {
+        prerequisite: "node",
+        availability: "unknown",
+        commands: ["node", "npx"],
+      },
+    ]);
+
+    const [status] = catalogPrerequisiteStatuses({
+      ...entries[1]!,
+      prerequisiteStatus: [
+        {
+          prerequisite: "node",
+          availability: "available",
+          commands: ["node", "npx"],
+        },
+      ],
+    });
+    expect(status && catalogPrerequisiteLabel(status)).toBe("Node + npx ready");
+    expect(
+      catalogPrerequisiteLabel({
+        prerequisite: "node",
+        availability: "missing",
+        commands: ["node", "npx"],
+      }),
+    ).toBe("Node + npx missing");
+    expect(
+      catalogPrerequisiteLabel({
+        prerequisite: "uv",
+        availability: "unknown",
+        commands: ["uv", "uvx"],
+      }),
+    ).toBe("uv + uvx not checked");
   });
 
   it("exposes only HTTP links from registry metadata", () => {

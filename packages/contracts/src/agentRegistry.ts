@@ -237,6 +237,22 @@ export const deriveAcpInstallSafety = (choice: AcpDistributionChoice): AcpInstal
 export const AcpPrerequisite = Schema.Literals(["node", "uv"]);
 export type AcpPrerequisite = typeof AcpPrerequisite.Type;
 
+/** Executables whose PATH resolution proves one prerequisite is usable. */
+export const acpPrerequisiteCommandsFor = (prerequisite: AcpPrerequisite): ReadonlyArray<string> =>
+  prerequisite === "node" ? ["node", "npx"] : ["uv", "uvx"];
+
+export const AcpPrerequisiteAvailability = Schema.Literals(["available", "missing", "unknown"]);
+export type AcpPrerequisiteAvailability = typeof AcpPrerequisiteAvailability.Type;
+
+/** Live PATH evidence collected by the server that owns the agent process. */
+export const AcpPrerequisiteStatus = Schema.Struct({
+  prerequisite: AcpPrerequisite,
+  availability: AcpPrerequisiteAvailability,
+  /** Every executable that must resolve for this package distribution to work. */
+  commands: Schema.Array(TrimmedNonEmptyString),
+});
+export type AcpPrerequisiteStatus = typeof AcpPrerequisiteStatus.Type;
+
 /**
  * Prerequisites implied by how an agent is obtained.
  *
@@ -267,6 +283,8 @@ export const AgentCatalogEntry = Schema.Struct({
   selectedDistribution: AcpDistributionChoice,
   installSafety: AcpInstallSafety,
   prerequisites: Schema.Array(AcpPrerequisite),
+  /** Optional so a newer client can still consume snapshots from an older server. */
+  prerequisiteStatus: Schema.optionalKey(Schema.Array(AcpPrerequisiteStatus)),
   /** Registry membership proves ACP compatibility, not vendor endorsement. */
   trust: Schema.Literal("registry-unverified"),
 });

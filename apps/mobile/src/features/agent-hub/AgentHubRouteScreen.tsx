@@ -3,6 +3,8 @@ import {
   agentHubSummary,
   agentInstallProgressLabel,
   catalogDistributionLabel,
+  catalogPrerequisiteLabel,
+  catalogPrerequisiteStatuses,
   filterAgentCatalog,
   findAgentInstallation,
   providerReadinessLabel,
@@ -585,9 +587,24 @@ function RegistryAgentCard(props: {
         <View className="rounded-full bg-subtle px-2.5 py-1.5">
           <Text className="text-xs text-foreground-muted">Registry · unverified</Text>
         </View>
-        {entry.prerequisites.map((prerequisite) => (
-          <View key={prerequisite} className="rounded-full bg-subtle px-2.5 py-1.5">
-            <Text className="text-xs text-foreground-muted">Needs {prerequisite}</Text>
+        {catalogPrerequisiteStatuses(entry).map((status) => (
+          <View
+            key={status.prerequisite}
+            className={
+              status.availability === "available"
+                ? "rounded-full bg-subtle-strong px-2.5 py-1.5"
+                : "rounded-full bg-subtle px-2.5 py-1.5"
+            }
+          >
+            <Text
+              className={
+                status.availability === "available"
+                  ? "text-xs font-t3-medium text-foreground"
+                  : "text-xs text-foreground-muted"
+              }
+            >
+              {catalogPrerequisiteLabel(status)}
+            </Text>
           </View>
         ))}
       </View>
