@@ -54,9 +54,11 @@ restored.
 external tools or repositories. Package-manager entries such as `npx` and `uvx` remain disabled
 because they do not yet have an equally auditable execution policy.
 
-An installed catalog agent currently reports authentication as unknown. It can appear as an
-integrated provider, but it is not eligible for automatic routing until non-secret authentication
-and health probes are implemented. Authenticate through the agent's own supported flow when needed;
+An installed catalog agent receives a bounded ACP protocol health check. The probe performs only the
+`initialize` handshake: it does not authenticate, create a session, send a prompt, or inspect
+credentials. Authentication therefore remains unknown. The agent can appear as installed,
+integrated, and protocol-ready, but it is not eligible for automatic routing until a provider-safe
+authentication signal exists. Authenticate through the agent's own supported flow when needed;
 never paste credentials into Agent Hub metadata.
 
 ## Troubleshooting

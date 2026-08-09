@@ -65,9 +65,9 @@ Tool broker <---------------+
 Verification -> checkpoint -> usage and outcome ledger
 ```
 
-The adaptive router, catalog-agent authentication and health probes, publisher signing, broader
-task-outcome analytics, Tauri migration, and clean-machine release qualification are roadmap
-work—not finished features. See the
+The adaptive router, catalog-agent authentication probes and health history, publisher signing,
+broader task-outcome analytics, Tauri migration, and clean-machine release qualification are
+roadmap work—not finished features. See the
 [canonical engineering tracker](./docs/sleepers-code-roadmap.md) for evidence and blockers rather
 than aspirational checkmarks.
 

@@ -53,6 +53,8 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - `087521b8b` registers installed binaries as dynamic generic ACP provider instances. Their auth
   state stays `unknown`, they never become automatically routable, and unsupported auth/model/text
   generation behavior fails honestly instead of borrowing Cursor identity.
+- `8d8a956fb` adds a bounded, managed ACP protocol health probe. It sends only `initialize`, never
+  authenticates or creates a session, and preserves `unknown` auth even when the handshake passes.
 - Web/desktop and mobile now expose exact-plan review, streamed progress, installed state, and
   uninstall. Package-manager execution remains intentionally disabled.
 
@@ -95,6 +97,8 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   size and resolver timing warnings remain.
 - The preceding installer/provider slice passed AgentInstaller, ACP runtime/adapter, dynamic-driver,
   and provider-registry focused tests plus the server typecheck.
+- The generic ACP health slice passes **30 tests across 2 files** and the real `t3` server typecheck;
+  only unrelated existing Effect suggestions remain.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.
@@ -119,8 +123,8 @@ the user asked for fewer than six releases, not for speculative releases during 
 
 1. Qualify Agent Hub install, progress, cancellation, and uninstall in a real web/desktop client and
    on a mobile device after explicit browser/device permission.
-2. Add non-secret auth and health probes for generic ACP agents before exposing any automatic route
-   action. Preserve `unknown` when an agent offers no safe probe.
+2. Add a provider-safe authentication probe for generic ACP agents before exposing any automatic
+   route action. Preserve `unknown` when an agent offers no reliable signal.
 3. Design the human-reviewed publisher allowlist/signature policy required for stronger registry
    trust levels. Do not infer endorsement from the ACP feed.
 4. Add live prerequisite detection before considering package-manager execution; keep `npx` and
