@@ -17,6 +17,7 @@ export * from "./providerRuntime.ts";
 // upstream addition into a merge conflict in this barrel.
 export * from "./runtime.ts";
 export * from "./model.ts";
+export * from "./localModel.ts";
 export * from "./keybindings.ts";
 export * from "./server.ts";
 export * from "./settings.ts";
