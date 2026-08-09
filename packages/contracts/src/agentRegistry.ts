@@ -101,8 +101,8 @@ export type AcpInstallRisk = typeof AcpInstallRisk.Type;
 
 export const AcpInstallSafety = Schema.Struct({
   /**
-   * True only when every artifact for this entry can be fetched over HTTPS and
-   * checked against a published SHA-256 before anything executes.
+   * True only when the selected artifact can be fetched over HTTPS and checked
+   * against a published SHA-256 before anything executes.
    */
   checksumVerifiable: Schema.Boolean,
   risks: Schema.Array(AcpInstallRisk),
@@ -120,7 +120,7 @@ const isHttpsUrl = (value: string): boolean => {
 };
 
 /**
- * Classifies how an entry may be installed.
+ * Classifies how the selected distribution may be installed.
  *
  * This answers "can these bytes be verified before they run", not "is this agent
  * trustworthy". A checksum proves the download matches what the publisher
@@ -128,34 +128,6 @@ const isHttpsUrl = (value: string): boolean => {
  * publisher is the agent's vendor is a separate judgement this function
  * deliberately does not make.
  */
-export const deriveAcpInstallSafety = (agent: AcpRegistryAgent): AcpInstallSafety => {
-  const risks: Array<AcpInstallRisk> = [];
-  const binaries = Object.values(agent.distribution.binary ?? {});
-  const hasPackageDistribution =
-    agent.distribution.npx !== undefined || agent.distribution.uvx !== undefined;
-
-  if (binaries.length === 0 && !hasPackageDistribution) {
-    return { checksumVerifiable: false, risks: ["no_distribution"] };
-  }
-
-  if (binaries.some((artifact) => !isHttpsUrl(artifact.archive))) {
-    risks.push("insecure_archive_url");
-  }
-  if (binaries.some((artifact) => !SHA256_PATTERN.test(artifact.sha256 ?? ""))) {
-    risks.push("unverified_checksum");
-  }
-  if (hasPackageDistribution) {
-    risks.push("package_manager_install");
-  }
-
-  return {
-    // A package-manager entry is never checksum-verifiable, even alongside
-    // binaries, because the package path is what would actually run.
-    checksumVerifiable: binaries.length > 0 && risks.length === 0,
-    risks,
-  };
-};
-
 /**
  * Platform triple used by registry `binary` keys, in the publisher's spelling.
  *
@@ -209,7 +181,7 @@ export type AcpDistributionChoice =
  *
  * Selection is deliberately independent of whether the chosen artifact passes
  * `deriveAcpInstallSafety`. Choosing and permitting are separate steps: an
- * installer still has to consult the safety gate before acting on this.
+ * installer still has to classify the returned choice before acting on it.
  */
 export const selectAcpDistribution = (
   agent: AcpRegistryAgent,
@@ -226,6 +198,28 @@ export const selectAcpDistribution = (
     return { kind: "uvx", distribution: agent.distribution.uvx };
   }
   return { kind: "unavailable", reason: "no_distribution_for_platform" };
+};
+
+/**
+ * Evaluates only the distribution selected for the current platform.
+ *
+ * Alternate platforms and lower-priority package-manager fallbacks must not make
+ * a selected, checksummed binary look unsafe. Conversely, a safe artifact for a
+ * different platform cannot make the package path that will actually run look
+ * verifiable.
+ */
+export const deriveAcpInstallSafety = (choice: AcpDistributionChoice): AcpInstallSafety => {
+  if (choice.kind === "unavailable") {
+    return { checksumVerifiable: false, risks: ["no_distribution"] };
+  }
+  if (choice.kind === "npx" || choice.kind === "uvx") {
+    return { checksumVerifiable: false, risks: ["package_manager_install"] };
+  }
+
+  const risks: Array<AcpInstallRisk> = [];
+  if (!isHttpsUrl(choice.artifact.archive)) risks.push("insecure_archive_url");
+  if (!SHA256_PATTERN.test(choice.artifact.sha256 ?? "")) risks.push("unverified_checksum");
+  return { checksumVerifiable: risks.length === 0, risks };
 };
 
 /**

@@ -39,8 +39,9 @@ the same rule the rest of these contracts already apply to growing server-to-cli
 **Separate "can these bytes be verified" from "is this publisher trustworthy."**
 `deriveAcpInstallSafety` answers only the first. HTTPS archives carrying a well-formed SHA-256 are
 checksum-verifiable; `npx`/`uvx` package names are not, because the package resolves at install time
-with nothing to check beforehand; a malformed digest counts as no digest. An entry offering both a
-binary and a package path is not verifiable, because the package path is what would actually run.
+with nothing to check beforehand; a malformed digest counts as no digest. Safety is evaluated after
+platform selection, so unrelated platform artifacts and lower-priority fallbacks cannot change the
+classification of the distribution that would actually run.
 
 Nothing infers vendor endorsement from registry membership. A checksum proves a download matches what
 its publisher uploaded and says nothing about who that publisher is. Deciding that an entry is the

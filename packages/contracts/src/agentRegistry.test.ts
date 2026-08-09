@@ -161,7 +161,10 @@ describe("selectAcpDistribution", () => {
       },
     });
     expect(selectAcpDistribution(agent, "windows-x86_64").kind).toBe("binary");
-    expect(deriveAcpInstallSafety(agent).checksumVerifiable).toBe(false);
+    expect(deriveAcpInstallSafety(selectAcpDistribution(agent, "windows-x86_64"))).toEqual({
+      checksumVerifiable: false,
+      risks: ["insecure_archive_url", "unverified_checksum"],
+    });
   });
 });
 
@@ -189,14 +192,16 @@ describe("acpPrerequisitesFor", () => {
 
 describe("deriveAcpInstallSafety", () => {
   it("treats fully checksummed HTTPS binaries as verifiable", () => {
-    expect(deriveAcpInstallSafety(decodeAgent(ampAcpEntry))).toEqual({
+    const choice = selectAcpDistribution(decodeAgent(ampAcpEntry), "windows-x86_64");
+    expect(deriveAcpInstallSafety(choice)).toEqual({
       checksumVerifiable: true,
       risks: [],
     });
   });
 
   it("flags a package-manager entry as unverifiable before install", () => {
-    expect(deriveAcpInstallSafety(decodeAgent(npxEntry))).toEqual({
+    const choice = selectAcpDistribution(decodeAgent(npxEntry), "windows-x86_64");
+    expect(deriveAcpInstallSafety(choice)).toEqual({
       checksumVerifiable: false,
       risks: ["package_manager_install"],
     });
@@ -214,7 +219,7 @@ describe("deriveAcpInstallSafety", () => {
         },
       },
     });
-    expect(deriveAcpInstallSafety(agent)).toEqual({
+    expect(deriveAcpInstallSafety(selectAcpDistribution(agent, "linux-x86_64"))).toEqual({
       checksumVerifiable: false,
       risks: ["unverified_checksum"],
     });
@@ -233,7 +238,9 @@ describe("deriveAcpInstallSafety", () => {
         },
       },
     });
-    expect(deriveAcpInstallSafety(agent).risks).toEqual(["unverified_checksum"]);
+    expect(deriveAcpInstallSafety(selectAcpDistribution(agent, "linux-x86_64")).risks).toEqual([
+      "unverified_checksum",
+    ]);
   });
 
   it("flags a plain HTTP archive", () => {
@@ -249,10 +256,12 @@ describe("deriveAcpInstallSafety", () => {
         },
       },
     });
-    expect(deriveAcpInstallSafety(agent).risks).toEqual(["insecure_archive_url"]);
+    expect(deriveAcpInstallSafety(selectAcpDistribution(agent, "linux-x86_64")).risks).toEqual([
+      "insecure_archive_url",
+    ]);
   });
 
-  it("does not consider a mixed entry verifiable, because the package path would run", () => {
+  it("ignores an npx fallback when a verified binary is selected", () => {
     const agent = decodeAgent({
       ...ampAcpEntry,
       distribution: {
@@ -260,14 +269,28 @@ describe("deriveAcpInstallSafety", () => {
         npx: { package: "@example/agent" },
       },
     });
-    const safety = deriveAcpInstallSafety(agent);
-    expect(safety.checksumVerifiable).toBe(false);
-    expect(safety.risks).toEqual(["package_manager_install"]);
+    const safety = deriveAcpInstallSafety(selectAcpDistribution(agent, "windows-x86_64"));
+    expect(safety).toEqual({ checksumVerifiable: true, risks: [] });
+  });
+
+  it("does not borrow safety from a binary for a different platform", () => {
+    const agent = decodeAgent({
+      ...ampAcpEntry,
+      distribution: {
+        ...ampAcpEntry.distribution,
+        npx: { package: "@example/agent" },
+      },
+    });
+    const safety = deriveAcpInstallSafety(selectAcpDistribution(agent, "darwin-aarch64"));
+    expect(safety).toEqual({
+      checksumVerifiable: false,
+      risks: ["package_manager_install"],
+    });
   });
 
   it("reports an entry with no distribution at all", () => {
     const agent = decodeAgent({ ...ampAcpEntry, distribution: {} });
-    expect(deriveAcpInstallSafety(agent)).toEqual({
+    expect(deriveAcpInstallSafety(selectAcpDistribution(agent, "linux-x86_64"))).toEqual({
       checksumVerifiable: false,
       risks: ["no_distribution"],
     });
