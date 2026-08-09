@@ -47,22 +47,20 @@ That result is not reproduced by the committed paired regressions: Node and Rust
 16 KiB and 512 x 2 KiB, preserving all 1 MiB and every ordered delta. All four cases completed in
 3.66 seconds of test time. The Rust-only focused durations were 0.98 and 1.08 seconds. The ACP event
 queue is now bounded at 256 events; the 512-delta cases prove both transports can apply and release
-backpressure beyond that capacity. The cause of the earlier ad hoc timeout is unknown.
+pressure while a consumer drains a stream larger than that capacity. They do not prove that the
+queue actually became full. The cause of the earlier ad hoc timeout is unknown.
 
 ## Stalled-consumer behavior
 
-The lossless probes above always drain while the turn runs, so they never covered a consumer that
-stops. A paired Node and Rust regression now forks a 1,024 x 4 KiB turn, consumes nothing, and waits
-on an incoming-protocol-log receipt rather than a timer before asserting that the prompt has not
-completed. Both transports hold the agent, and resuming the consumer still delivers all 1,024 ordered
-deltas byte-for-byte.
+The lossless probes above attach their consumers before each turn. A paired Node and Rust regression
+now forks a 1,024 x 4 KiB turn, waits for a raw incoming-protocol receipt, and only then attaches the
+event consumer. Both transports still deliver all 1,024 ordered deltas byte-for-byte.
 
-The stall arrives much earlier than expected. With nothing draining, both transports stop reading
-after roughly 24 incoming messages, far below the 256-event queue capacity: read-ahead is bounded by
-the pipe and the transport's own buffers, and the event queue never gets a chance to fill. That is
-the safe direction for memory, and it means `ACP_SESSION_EVENT_QUEUE_CAPACITY` is not the binding
-constraint for a stalled consumer. It also means the capacity value is still unjustified by evidence
-in either direction, and the actual read-ahead ceiling in bytes remains unmeasured.
+This is a late-consumer regression, not proof of transport backpressure. Raw protocol receipts are
+chunks of bytes and include protocol traffic; their count does not measure queued application events.
+The previous assertion after 16 raw receipts therefore did not establish that the event queue was
+full or that the agent had stalled. The 256-event capacity and the read-ahead ceiling remain
+unvalidated under a consumer that stays stopped.
 
 ## Locally discovered CLIs
 
@@ -83,7 +81,8 @@ supported-version claim.
 
 - Exercise authenticated launch, authentication failure, and provider-specific crash behavior in a
   disposable account or sanctioned fixture environment.
-- Measure the byte ceiling of transport read-ahead and process-tree memory during a stalled
-  consumer. The regression proves the stall happens and loses nothing; it does not quantify the
-  resident cost, and the 256-event capacity remains an unexercised bound rather than a tuned value.
+- Add a deterministic receipt at the event-queue boundary, then measure the byte ceiling of
+  transport read-ahead and process-tree memory while a consumer stays stopped. The current
+  regression proves only that attaching a consumer late loses nothing; the 256-event capacity
+  remains an unexercised bound rather than a tuned value.
 - Repeat 1/3/5/10 process-tree sampling with real provider fixtures and multiple runs per level.
