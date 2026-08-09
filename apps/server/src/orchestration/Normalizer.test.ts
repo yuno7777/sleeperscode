@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import {
   CommandId,
   type ClientOrchestrationCommand,
@@ -6,9 +8,11 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  type OrchestrationProjectShell,
+  type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 
-import { canonicalizeClientCommandTimestamps } from "./Normalizer.ts";
+import { canonicalizeClientCommandTimestamps, resolveTurnRepositoryRoot } from "./Normalizer.ts";
 
 const clientCreatedAt = "2031-01-01T00:00:00.000Z";
 const serverReceivedAt = "2026-07-18T00:00:00.000Z";
@@ -69,5 +73,59 @@ describe("canonicalizeClientCommandTimestamps", () => {
     }
     expect(result.createdAt).toBe(serverReceivedAt);
     expect(result.bootstrap?.createThread?.createdAt).toBe(serverReceivedAt);
+  });
+});
+
+describe("resolveTurnRepositoryRoot", () => {
+  const command: Extract<ClientOrchestrationCommand, { type: "thread.turn.start" }> = {
+    type: "thread.turn.start",
+    commandId: CommandId.make("command-root"),
+    threadId: ThreadId.make("thread-root"),
+    message: {
+      messageId: MessageId.make("message-root"),
+      role: "user",
+      text: "Implement the change",
+      attachments: [],
+    },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    createdAt: clientCreatedAt,
+  };
+
+  it("prefers the existing thread worktree", async () => {
+    const root = await Effect.runPromise(
+      resolveTurnRepositoryRoot(command, {
+        getThreadShellById: () =>
+          Effect.succeed(
+            Option.some({
+              projectId: ProjectId.make("project-root"),
+              worktreePath: "C:\\repo\\worktree",
+            } as OrchestrationThreadShell),
+          ),
+        getProjectShellById: () => Effect.die("project query should not run"),
+      }),
+    );
+
+    expect(root).toBe("C:\\repo\\worktree");
+  });
+
+  it("falls back to the existing thread project root", async () => {
+    const root = await Effect.runPromise(
+      resolveTurnRepositoryRoot(command, {
+        getThreadShellById: () =>
+          Effect.succeed(
+            Option.some({
+              projectId: ProjectId.make("project-root"),
+              worktreePath: null,
+            } as OrchestrationThreadShell),
+          ),
+        getProjectShellById: () =>
+          Effect.succeed(
+            Option.some({ workspaceRoot: "C:\\repo\\project" } as OrchestrationProjectShell),
+          ),
+      }),
+    );
+
+    expect(root).toBe("C:\\repo\\project");
   });
 });

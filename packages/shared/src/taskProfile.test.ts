@@ -67,6 +67,28 @@ describe("classifyTaskProfile", () => {
     expect(profile.signals.every((signal) => !signal.includes("auth.ts"))).toBe(true);
   });
 
+  it("uses bounded repository evidence without treating it as prompt content", () => {
+    const profile = classifyTaskProfile({
+      text: "Implement the requested change.",
+      repositoryEvidence: {
+        version: 1,
+        source: "root-markers",
+        markers: ["package-json", "tsconfig-json"],
+        languages: ["typescript"],
+        frameworks: ["react"],
+        testRunners: ["vitest"],
+        workspace: "single-package",
+        limited: false,
+      },
+    });
+
+    expect(profile.repositoryEvidence?.frameworks).toEqual(["react"]);
+    expect(profile.repoContextRequirement).toBe("high");
+    expect(profile.signals).toEqual(
+      expect.arrayContaining(["repository-evidence", "test-capability-detected"]),
+    );
+  });
+
   it("is deterministic and bounds work for oversized prompts", () => {
     const text = `Implement the server tests. ${"context ".repeat(20_000)}`;
     const first = classifyTaskProfile({ text });

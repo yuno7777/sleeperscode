@@ -6,6 +6,7 @@ import type {
   TaskKind,
   TaskProfile,
   TaskProfileSignal,
+  TaskRepositoryEvidence,
   TaskRequirementLevel,
   TaskSecuritySensitivity,
   TaskTestingRequirement,
@@ -21,6 +22,7 @@ const LONG_PROMPT_CHARS = 3_000;
 type TaskProfileInput = {
   readonly text: string;
   readonly attachmentTypes?: ReadonlyArray<"image">;
+  readonly repositoryEvidence?: TaskRepositoryEvidence;
 };
 
 const clampScore = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
@@ -63,6 +65,8 @@ export function classifyTaskProfile(input: TaskProfileInput): TaskProfile {
   const text = samplePrompt(input.text);
   const hasImageAttachment = input.attachmentTypes?.includes("image") === true;
   const isLongPrompt = input.text.length >= LONG_PROMPT_CHARS;
+  const hasRepositoryEvidence = input.repositoryEvidence !== undefined;
+  const hasTestCapability = (input.repositoryEvidence?.testRunners.length ?? 0) > 0;
 
   const implementation = matches(
     text,
@@ -208,7 +212,7 @@ export function classifyTaskProfile(input: TaskProfileInput): TaskProfile {
         : "none";
   const repoContextRequirement: TaskRequirementLevel =
     implementation || debugging || review
-      ? broadScope || fileReferenceCount > 0
+      ? broadScope || fileReferenceCount > 0 || hasRepositoryEvidence
         ? "high"
         : "medium"
       : fileReferenceCount > 0 || systems > 0 || backend > 0
@@ -265,6 +269,8 @@ export function classifyTaskProfile(input: TaskProfileInput): TaskProfile {
     ...(explicitCollaboration ? (["explicit-collaboration"] as const) : []),
     ...(hasImageAttachment ? (["image-attachment"] as const) : []),
     ...(isLongPrompt ? (["long-prompt"] as const) : []),
+    ...(hasRepositoryEvidence ? (["repository-evidence"] as const) : []),
+    ...(hasTestCapability ? (["test-capability-detected"] as const) : []),
   ]);
 
   return {
@@ -283,5 +289,8 @@ export function classifyTaskProfile(input: TaskProfileInput): TaskProfile {
     toolRequirements,
     collaboration,
     signals,
+    ...(input.repositoryEvidence !== undefined
+      ? { repositoryEvidence: input.repositoryEvidence }
+      : {}),
   };
 }

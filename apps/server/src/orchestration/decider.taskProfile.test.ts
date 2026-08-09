@@ -66,6 +66,16 @@ it.layer(NodeServices.layer)("turn task profiling", (it) => {
           },
           runtimeMode: "full-access",
           interactionMode: "default",
+          repositoryEvidence: {
+            version: 1,
+            source: "root-markers",
+            markers: ["package-json", "tsconfig-json"],
+            languages: ["typescript"],
+            frameworks: ["react"],
+            testRunners: ["vitest"],
+            workspace: "single-package",
+            limited: false,
+          },
           createdAt: NOW,
         },
         readModel,
@@ -84,6 +94,10 @@ it.layer(NodeServices.layer)("turn task profiling", (it) => {
         testingRequirement: "focused",
         securitySensitivity: "high",
         collaboration: "single-worker",
+        repositoryEvidence: {
+          frameworks: ["react"],
+          testRunners: ["vitest"],
+        },
       });
       expect(taskProfile.kinds).toEqual(expect.arrayContaining(["implementation", "design"]));
       expect(taskProfile.signals).toEqual(
@@ -92,6 +106,8 @@ it.layer(NodeServices.layer)("turn task profiling", (it) => {
           "frontend-domain",
           "security-sensitive",
           "testing-request",
+          "repository-evidence",
+          "test-capability-detected",
         ]),
       );
       expect(encodeProfileJson(taskProfile)).not.toContain(privateMarker);

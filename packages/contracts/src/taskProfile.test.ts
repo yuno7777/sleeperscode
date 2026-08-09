@@ -43,4 +43,40 @@ describe("TaskProfile", () => {
       }),
     ).toThrow();
   });
+
+  it("decodes bounded server-owned repository evidence", () => {
+    const repositoryEvidence = {
+      version: 1,
+      source: "root-markers",
+      markers: ["package-json", "tsconfig-json"],
+      languages: ["typescript"],
+      frameworks: ["react"],
+      testRunners: ["vitest"],
+      workspace: "single-package",
+      limited: false,
+    } as const;
+
+    expect(Schema.decodeUnknownSync(TaskProfile)({ ...validProfile, repositoryEvidence })).toEqual({
+      ...validProfile,
+      repositoryEvidence,
+    });
+  });
+
+  it("rejects free-form repository languages", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(TaskProfile)({
+        ...validProfile,
+        repositoryEvidence: {
+          version: 1,
+          source: "root-markers",
+          markers: ["package-json"],
+          languages: ["secret-language"],
+          frameworks: [],
+          testRunners: [],
+          workspace: "single-package",
+          limited: false,
+        },
+      }),
+    ).toThrow();
+  });
 });

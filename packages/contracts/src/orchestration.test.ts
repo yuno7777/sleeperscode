@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
+  ClientOrchestrationCommand,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   ModelSelection,
@@ -33,6 +34,7 @@ const decodeProjectCreateCommand = Schema.decodeUnknownEffect(ProjectCreateComma
 const decodeProjectCreatedPayload = Schema.decodeUnknownEffect(ProjectCreatedPayload);
 const decodeProjectMetaUpdatedPayload = Schema.decodeUnknownEffect(ProjectMetaUpdatedPayload);
 const decodeThreadTurnStartCommand = Schema.decodeUnknownEffect(ThreadTurnStartCommand);
+const decodeClientOrchestrationCommand = Schema.decodeUnknownEffect(ClientOrchestrationCommand);
 const decodeThreadTurnStartRequestedPayload = Schema.decodeUnknownEffect(
   ThreadTurnStartRequestedPayload,
 );
@@ -248,6 +250,44 @@ it.effect("preserves explicit provider and runtime mode in thread.turn.start", (
     assert.strictEqual(parsed.modelSelection?.instanceId, "codex");
     assert.strictEqual(parsed.runtimeMode, "full-access");
     assert.strictEqual(parsed.interactionMode, DEFAULT_PROVIDER_INTERACTION_MODE);
+  }),
+);
+
+it.effect("accepts server repository evidence but strips it from client turn commands", () =>
+  Effect.gen(function* () {
+    const input = {
+      type: "thread.turn.start",
+      commandId: "cmd-turn-evidence",
+      threadId: "thread-1",
+      message: {
+        messageId: "msg-evidence",
+        role: "user",
+        text: "hello",
+        attachments: [],
+      },
+      repositoryEvidence: {
+        version: 1,
+        source: "root-markers",
+        markers: ["package-json"],
+        languages: ["typescript"],
+        frameworks: ["react"],
+        testRunners: ["vitest"],
+        workspace: "single-package",
+        limited: false,
+      },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const serverCommand = yield* decodeThreadTurnStartCommand(input);
+    const clientCommand = yield* decodeClientOrchestrationCommand(input);
+
+    assert.deepStrictEqual(serverCommand.repositoryEvidence?.frameworks, ["react"]);
+    assert.strictEqual(
+      "repositoryEvidence" in clientCommand ? clientCommand.repositoryEvidence : undefined,
+      undefined,
+    );
   }),
 );
 

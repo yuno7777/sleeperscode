@@ -67,6 +67,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   profile records bounded domain/complexity scores, tool and verification needs, security level,
   coarse scope, and conservative collaboration guidance without storing prompt excerpts or changing
   the user's selected provider.
+- Turn normalization now enriches that profile with cached, root-only repository markers, languages,
+  frameworks, test runners, and workspace shape. The profiler performs no recursive traversal, caps
+  manifest reads at 128 KiB, stores no paths or manifest text, and ignores forged client evidence.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -112,9 +115,10 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - Live prerequisite detection passes **40 tests across 3 files**. Contracts, client-runtime, server,
   web, and mobile typechecks pass, and the web production build passes with the existing bundle-size
   and resolver-timing warnings.
-- Task-profile contracts, classifier fixtures, turn-event integration, and the focused decider
-  regression pass **103 tests across 11 files**; contracts, shared, and server typechecks pass with
-  only unrelated existing Effect suggestions, and the production server bundle builds.
+- Task-profile contracts, classifier fixtures, root profiler/cache, command normalization,
+  turn-event integration, and the focused decider regression pass **115 tests across 13 files**;
+  contracts, shared, and server typechecks pass with only unrelated existing Effect suggestions,
+  and the production server bundle builds.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.
@@ -147,8 +151,8 @@ the user asked for fewer than six releases, not for speculative releases during 
    process-local before enabling unattended routing.
 5. Reconcile the usage ledger with routing phases without inventing quality scores.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
-7. Enrich task profiles with cheap repository evidence before using them for adaptive routing; keep
-   explicit provider/model selection authoritative.
+7. Define the Phase 32 deterministic router decision contract and precedence rules before activating
+   any automatic choice; keep explicit provider/model selection authoritative.
 
 ## Hard constraints
 

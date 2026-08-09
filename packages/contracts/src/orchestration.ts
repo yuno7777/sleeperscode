@@ -22,7 +22,7 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { TaskProfile } from "./taskProfile.ts";
+import { TaskProfile, TaskRepositoryEvidence } from "./taskProfile.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -819,6 +819,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
     text: Schema.String,
     attachments: Schema.Array(ChatAttachment),
   }),
+  /** Server-owned metadata; client turn schemas intentionally omit it. */
+  repositoryEvidence: Schema.optionalKey(TaskRepositoryEvidence),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),

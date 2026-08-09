@@ -1,6 +1,7 @@
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import {
   type ClientOrchestrationCommand,
@@ -14,6 +15,19 @@ import { createAttachmentId, resolveAttachmentPath } from "../attachmentStore.ts
 import { ServerConfig } from "../config.ts";
 import { parseBase64DataUrl } from "../imageMime.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as TaskRepositoryProfiler from "./TaskRepositoryProfiler.ts";
+import * as ProjectionSnapshotQuery from "./Services/ProjectionSnapshotQuery.ts";
+import type { ProjectionSnapshotQueryShape } from "./Services/ProjectionSnapshotQuery.ts";
+
+type ClientThreadTurnStartCommand = Extract<
+  ClientOrchestrationCommand,
+  { readonly type: "thread.turn.start" }
+>;
+
+type TaskRepositoryRootQuery = Pick<
+  ProjectionSnapshotQueryShape,
+  "getProjectShellById" | "getThreadShellById"
+>;
 
 export const canonicalizeClientCommandTimestamps = (
   command: ClientOrchestrationCommand,
@@ -42,6 +56,36 @@ export const canonicalizeClientCommandTimestamps = (
     },
   };
 };
+
+export const resolveTurnRepositoryRoot = (
+  command: ClientThreadTurnStartCommand,
+  query: TaskRepositoryRootQuery,
+) =>
+  Effect.gen(function* () {
+    if (command.bootstrap?.prepareWorktree?.projectCwd !== undefined) {
+      return command.bootstrap.prepareWorktree.projectCwd;
+    }
+
+    const thread = yield* query
+      .getThreadShellById(command.threadId)
+      .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
+    if (Option.isSome(thread) && thread.value.worktreePath !== null) {
+      return thread.value.worktreePath;
+    }
+
+    const bootstrapWorktree = command.bootstrap?.createThread?.worktreePath;
+    if (bootstrapWorktree != null) return bootstrapWorktree;
+
+    const projectId = Option.isSome(thread)
+      ? thread.value.projectId
+      : command.bootstrap?.createThread?.projectId;
+    if (projectId === undefined) return undefined;
+
+    const project = yield* query
+      .getProjectShellById(projectId)
+      .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
+    return Option.isSome(project) ? project.value.workspaceRoot : undefined;
+  });
 
 export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
   Effect.gen(function* () {
@@ -103,6 +147,16 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
     if (canonicalCommand.type !== "thread.turn.start") {
       return canonicalCommand as OrchestrationCommand;
     }
+
+    const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+    const repositoryRoot = yield* resolveTurnRepositoryRoot(
+      canonicalCommand,
+      projectionSnapshotQuery,
+    );
+    const repositoryEvidence =
+      repositoryRoot === undefined
+        ? undefined
+        : yield* TaskRepositoryProfiler.getTaskRepositoryEvidence(repositoryRoot);
 
     const normalizedAttachments = yield* Effect.forEach(
       canonicalCommand.message.attachments,
@@ -175,5 +229,6 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
         ...canonicalCommand.message,
         attachments: normalizedAttachments,
       },
+      ...(repositoryEvidence === undefined ? {} : { repositoryEvidence }),
     } satisfies OrchestrationCommand;
   });

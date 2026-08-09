@@ -965,6 +965,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       const taskProfile = classifyTaskProfile({
         text: command.message.text,
         attachmentTypes: command.message.attachments.map((attachment) => attachment.type),
+        ...(command.repositoryEvidence !== undefined
+          ? { repositoryEvidence: command.repositoryEvidence }
+          : {}),
       });
       const turnStartRequestedEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...(yield* withEventBase({

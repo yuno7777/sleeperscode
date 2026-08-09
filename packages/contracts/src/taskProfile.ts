@@ -54,6 +54,85 @@ export const TaskToolRequirement = Schema.Literals([
 ]);
 export type TaskToolRequirement = typeof TaskToolRequirement.Type;
 
+export const TaskRepositoryLanguage = Schema.Literals([
+  "typescript",
+  "javascript",
+  "rust",
+  "python",
+  "go",
+  "java",
+  "kotlin",
+  "swift",
+  "dotnet",
+  "cpp",
+  "ruby",
+  "php",
+  "dart",
+]);
+export type TaskRepositoryLanguage = typeof TaskRepositoryLanguage.Type;
+
+export const TaskRepositoryFramework = Schema.Literals([
+  "react",
+  "next",
+  "vue",
+  "svelte",
+  "vite",
+  "expo",
+  "electron",
+  "tauri",
+  "effect",
+  "express",
+  "fastify",
+]);
+export type TaskRepositoryFramework = typeof TaskRepositoryFramework.Type;
+
+export const TaskRepositoryTestRunner = Schema.Literals([
+  "vitest",
+  "jest",
+  "playwright",
+  "cypress",
+  "cargo",
+  "pytest",
+  "go-test",
+  "gradle",
+  "swift-test",
+  "dotnet-test",
+]);
+export type TaskRepositoryTestRunner = typeof TaskRepositoryTestRunner.Type;
+
+export const TaskRepositoryMarker = Schema.Literals([
+  "package-json",
+  "tsconfig-json",
+  "pnpm-workspace",
+  "turbo-json",
+  "cargo-toml",
+  "pyproject-toml",
+  "requirements-txt",
+  "go-mod",
+  "pom-xml",
+  "gradle",
+  "package-swift",
+  "dotnet",
+  "cmake",
+  "pubspec-yaml",
+  "gemfile",
+  "composer-json",
+]);
+export type TaskRepositoryMarker = typeof TaskRepositoryMarker.Type;
+
+/** Bounded server-owned evidence; no workspace paths or manifest contents. */
+export const TaskRepositoryEvidence = Schema.Struct({
+  version: Schema.Literal(1),
+  source: Schema.Literal("root-markers"),
+  markers: Schema.Array(TaskRepositoryMarker),
+  languages: Schema.Array(TaskRepositoryLanguage),
+  frameworks: Schema.Array(TaskRepositoryFramework),
+  testRunners: Schema.Array(TaskRepositoryTestRunner),
+  workspace: Schema.Literals(["single-package", "monorepo", "unknown"]),
+  limited: Schema.Boolean,
+});
+export type TaskRepositoryEvidence = typeof TaskRepositoryEvidence.Type;
+
 /** Stable, non-content-bearing explanations emitted by classifier version 1. */
 export const TaskProfileSignal = Schema.Literals([
   "trivial-change",
@@ -74,6 +153,8 @@ export const TaskProfileSignal = Schema.Literals([
   "explicit-collaboration",
   "image-attachment",
   "long-prompt",
+  "repository-evidence",
+  "test-capability-detected",
 ]);
 export type TaskProfileSignal = typeof TaskProfileSignal.Type;
 
@@ -108,5 +189,6 @@ export const TaskProfile = Schema.Struct({
   toolRequirements: Schema.Array(TaskToolRequirement),
   collaboration: TaskCollaborationRecommendation,
   signals: Schema.Array(TaskProfileSignal),
+  repositoryEvidence: Schema.optionalKey(TaskRepositoryEvidence),
 });
 export type TaskProfile = typeof TaskProfile.Type;
