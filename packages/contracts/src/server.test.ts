@@ -3,10 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   deriveAgentStatusLevels,
+  selectRoutableAgents,
   ServerConfig,
   ServerProvider,
   ServerProviders,
   ServerUpsertKeybindingResult,
+  summariseAgentHealth,
 } from "./server.ts";
 
 const decodeServerProvider = Schema.decodeUnknownSync(ServerProvider);
@@ -79,6 +81,92 @@ describe("deriveAgentStatusLevels", () => {
 
   it("treats an absent availability field as available", () => {
     expect(levelsFor({ availability: undefined }).integrated).toBe(true);
+  });
+});
+
+describe("agent health", () => {
+  const snapshot = (overrides: Record<string, unknown>) =>
+    decodeServerProvider({ ...baseProviderSnapshot, ...overrides });
+
+  it("summarises one agent into router-facing health", () => {
+    expect(summariseAgentHealth(snapshot({}))).toEqual({
+      instanceId: "codex",
+      driver: "codex",
+      integrated: true,
+      routable: true,
+      routingBlockers: [],
+      version: "1.0.0",
+      updateAvailable: false,
+      checkedAt: "2026-04-10T00:00:00.000Z",
+    });
+  });
+
+  it("reports an update when the provider says it is behind", () => {
+    const health = summariseAgentHealth(
+      snapshot({
+        versionAdvisory: {
+          status: "behind_latest",
+          currentVersion: "1.0.0",
+          latestVersion: "1.1.0",
+          updateCommand: null,
+          checkedAt: null,
+          message: null,
+        },
+      }),
+    );
+    expect(health.updateAvailable).toBe(true);
+  });
+
+  it("does not report an update when the advisory status is unknown", () => {
+    const health = summariseAgentHealth(
+      snapshot({
+        versionAdvisory: {
+          status: "unknown",
+          currentVersion: null,
+          latestVersion: null,
+          updateCommand: null,
+          checkedAt: null,
+          message: null,
+        },
+      }),
+    );
+    expect(health.updateAvailable).toBe(false);
+  });
+
+  it("splits eligible agents from excluded ones with reasons", () => {
+    const result = selectRoutableAgents([
+      snapshot({ instanceId: "codex", driver: "codex" }),
+      snapshot({ instanceId: "claude", driver: "claude", enabled: false }),
+      snapshot({ instanceId: "cursor", driver: "cursor", installed: false }),
+    ]);
+
+    expect(result.eligible.map((agent) => agent.instanceId)).toEqual(["codex"]);
+    expect(result.excluded.map((agent) => [agent.instanceId, agent.routingBlockers])).toEqual([
+      ["claude", ["disabled"]],
+      ["cursor", ["not_installed"]],
+    ]);
+  });
+
+  it("preserves input order rather than ranking healthy agents", () => {
+    const result = selectRoutableAgents([
+      snapshot({ instanceId: "cursor", driver: "cursor" }),
+      snapshot({ instanceId: "codex", driver: "codex" }),
+      snapshot({ instanceId: "claude", driver: "claude" }),
+    ]);
+    expect(result.eligible.map((agent) => agent.instanceId)).toEqual(["cursor", "codex", "claude"]);
+  });
+
+  it("returns no eligible agents when every candidate is blocked", () => {
+    const result = selectRoutableAgents([
+      snapshot({ instanceId: "codex", status: "error" }),
+      snapshot({ instanceId: "claude", auth: { status: "unknown" } }),
+    ]);
+    expect(result.eligible).toEqual([]);
+    expect(result.excluded).toHaveLength(2);
+  });
+
+  it("handles an empty configuration", () => {
+    expect(selectRoutableAgents([])).toEqual({ eligible: [], excluded: [] });
   });
 });
 

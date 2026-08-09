@@ -274,6 +274,56 @@ export const deriveAgentStatusLevels = (snapshot: ServerProvider): AgentStatusLe
   };
 };
 
+/** One agent's health, flattened to what a router needs to decide eligibility. */
+export const AgentHealth = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  driver: ProviderDriverKind,
+  integrated: Schema.Boolean,
+  routable: Schema.Boolean,
+  routingBlockers: Schema.Array(AgentRoutingBlocker),
+  version: Schema.NullOr(TrimmedNonEmptyString),
+  /** True when the provider itself reports a newer version is available. */
+  updateAvailable: Schema.Boolean,
+  /** When this snapshot was taken, so a caller can tell fresh health from stale. */
+  checkedAt: IsoDateTime,
+});
+export type AgentHealth = typeof AgentHealth.Type;
+
+export const summariseAgentHealth = (snapshot: ServerProvider): AgentHealth => ({
+  instanceId: snapshot.instanceId,
+  driver: snapshot.driver,
+  ...deriveAgentStatusLevels(snapshot),
+  version: snapshot.version,
+  updateAvailable: snapshot.versionAdvisory?.status === "behind_latest",
+  checkedAt: snapshot.checkedAt,
+});
+
+/**
+ * Splits configured agents into those the orchestrator may assign work to and
+ * those it may not, with the reason for each exclusion.
+ *
+ * This filters; it does not rank. Eligible agents keep their input order, so
+ * nothing here encodes a preference between two healthy agents. Choosing between
+ * them needs quality and cost evidence that does not exist yet, and inventing an
+ * order now would quietly become the router's scoring.
+ *
+ * The point of returning exclusions rather than dropping them is re-selection: a
+ * provider that becomes unavailable mid-task leaves a caller needing to know
+ * which candidates remain and why the others went away.
+ */
+export const selectRoutableAgents = (
+  snapshots: ReadonlyArray<ServerProvider>,
+): {
+  readonly eligible: ReadonlyArray<AgentHealth>;
+  readonly excluded: ReadonlyArray<AgentHealth>;
+} => {
+  const summaries = snapshots.map(summariseAgentHealth);
+  return {
+    eligible: summaries.filter((agent) => agent.routable),
+    excluded: summaries.filter((agent) => !agent.routable),
+  };
+};
+
 export const ServerObservability = Schema.Struct({
   logsDirectoryPath: TrimmedNonEmptyString,
   localTracingEnabled: Schema.Boolean,
