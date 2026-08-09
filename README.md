@@ -40,9 +40,10 @@ runtime bottlenecks move behind small Rust components.
 - **Provider discovery that respects the host** — Windows PATH repair, WinGet/npm/pnpm/user-local
   discovery, safe `.cmd` handling, WSL login-shell paths, and persisted overrides for every provider.
 - **Usage visibility** — shared web/mobile dashboards aggregate Claude and Codex token and cost data.
-- **Agent Hub discovery** — web, desktop, and mobile distinguish installed, integrated, and routable
-  providers while reading the ACP catalog through the connected environment. Installation remains
-  security-gated during alpha.
+- **Agent Hub discovery and secure binary installation** — web, desktop, and mobile review the exact
+  artifact, require explicit consent for unverified publishers, enforce HTTPS and SHA-256, activate
+  through isolated staging, register the resulting ACP provider, and support app-managed uninstall.
+  Package-manager installs and automatic routing remain gated.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 
@@ -64,8 +65,9 @@ Tool broker <---------------+
 Verification -> checkpoint -> usage and outcome ledger
 ```
 
-The adaptive router, secure agent installation, broader task-outcome analytics, Tauri migration, and
-clean-machine release qualification are roadmap work—not finished features. See the
+The adaptive router, catalog-agent authentication and health probes, publisher signing, broader
+task-outcome analytics, Tauri migration, and clean-machine release qualification are roadmap
+work—not finished features. See the
 [canonical engineering tracker](./docs/sleepers-code-roadmap.md) for evidence and blockers rather
 than aspirational checkmarks.
 

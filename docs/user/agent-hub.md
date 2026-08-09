@@ -4,9 +4,10 @@ Agent Hub shows which coding agents your Sleepers Code environment can use now a
 ACP-compatible agents are discoverable. Open it from the desktop sidebar or command palette. On
 mobile, open **Settings → Agent Hub**.
 
-## Built-in providers
+## Provider instances
 
-The built-in section reports three different states:
+The provider section includes built-in integrations and agents installed by Agent Hub. It reports
+three different states:
 
 - **Installed** means the provider command was detected on the environment.
 - **Integrated** means this Sleepers Code build contains an adapter for the provider.
@@ -34,15 +35,29 @@ last valid snapshot and labels it as stale instead of silently presenting an emp
 ## Trust and installation
 
 Every catalog entry is labelled **Registry · unverified**. Registry membership means an entry is
-published in the ACP catalog; it does not prove vendor endorsement or publisher identity. Likewise,
-**Checksum available** means a future downloader could verify downloaded bytes. It does not mean
-Sleepers Code has downloaded or verified that agent already.
+published in the ACP catalog; it does not prove vendor endorsement or publisher identity.
+**Checksum available** means the publisher supplied a digest that can be checked after download. It
+does not establish publisher trust or prove that an agent was previously installed.
 
-Installation is disabled during the current alpha. Sleepers Code will not execute registry-provided
-package commands or download community binaries until explicit consent, publisher trust, checksum
-verification, staging, rollback, and prerequisite checks are enforced end to end. Install and
-authenticate a provider independently, then use provider settings to configure its server-side
-command or absolute path.
+Agent Hub enables installation only for a host-compatible binary distribution that uses HTTPS,
+provides a SHA-256 checksum, uses a supported archive, and declares a safe command path. Before any
+download, Sleepers Code shows the exact publisher, version, host, command, and checksum. An
+unverified publisher requires explicit acknowledgement.
+
+The environment then revalidates the plan against a fresh catalog snapshot, downloads with size and
+time limits, verifies the checksum, extracts into isolated staging with archive-safety checks, and
+atomically activates the files. The installed command becomes an explicit ACP provider instance.
+If activation or settings registration fails, the previous installation and provider settings are
+restored.
+
+**Uninstall** removes the provider instance and files managed by Agent Hub. It does not remove
+external tools or repositories. Package-manager entries such as `npx` and `uvx` remain disabled
+because they do not yet have an equally auditable execution policy.
+
+An installed catalog agent currently reports authentication as unknown. It can appear as an
+integrated provider, but it is not eligible for automatic routing until non-secret authentication
+and health probes are implemented. Authenticate through the agent's own supported flow when needed;
+never paste credentials into Agent Hub metadata.
 
 ## Troubleshooting
 
@@ -51,6 +66,10 @@ command or absolute path.
   desktop.
 - If an old snapshot is shown, the environment could not refresh the registry but retained its last
   valid result.
+- If installation is unavailable, the selected environment has no compatible checksum-protected
+  binary distribution for that catalog entry.
+- If installation fails, retry only after reading the surfaced error. Sleepers Code does not
+  silently rerun an activation that may already have completed.
 - If a provider is installed but not routable, check authentication, its enabled setting, and the
   configured executable path.
 

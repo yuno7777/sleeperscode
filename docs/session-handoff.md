@@ -10,8 +10,9 @@ Audited 2026-08-09 after reviewing the Claude continuation that followed commit 
   divergence immediately before any push.
 - `upstream`: `https://github.com/pingdotgg/t3code.git`.
 - Latest fetched upstream in this handoff: `1a003e383`; it is already an ancestor of this branch.
-- At audit time nothing had been pushed and no release had been created. Verify remote state rather
-  than assuming this remains true.
+- The branch is 245 commits past the recorded fork base before the current client/documentation
+  commits. Do not manufacture history to target an older numeric range. Remote push/release state
+  was not refreshed during this local continuation, so verify it immediately before publishing.
 
 ## Read first
 
@@ -41,9 +42,19 @@ when that would trigger an unnecessary dependency refresh.
 - ACP high-volume and late-consumer regressions.
 - Five benchmark harnesses and runtime audit documents.
 
-These began as incremental scaffolding and optimizations. Registry fetching and read-only Agent Hub
-surfaces are now wired into web, desktop, and mobile. Agent installation, adaptive routing, and
-local-model execution are not wired into product flows yet.
+These began as incremental scaffolding and optimizations. Registry fetching is wired into web,
+desktop, and mobile. Adaptive routing and local-model execution are not wired into product flows.
+
+## Current Agent Hub installation slice
+
+- `15bc89d3f` adds the server-owned secure binary installer: fresh-plan revalidation, explicit
+  unverified-publisher consent, HTTPS and SHA-256 enforcement, bounded downloads, archive safety,
+  isolated staging, atomic activation, rollback, and confirmed uninstall.
+- `087521b8b` registers installed binaries as dynamic generic ACP provider instances. Their auth
+  state stays `unknown`, they never become automatically routable, and unsupported auth/model/text
+  generation behavior fails honestly instead of borrowing Cursor identity.
+- Web/desktop and mobile now expose exact-plan review, streamed progress, installed state, and
+  uninstall. Package-manager execution remains intentionally disabled.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -77,6 +88,13 @@ local-model execution are not wired into product flows yet.
 
 ## Verification
 
+- Current Agent Hub client continuation: **21 tests passed across 2 files**.
+- Client-runtime, web, and mobile typechecks pass. Client-runtime reports one unrelated existing
+  Effect suggestion in `relay/discovery.ts`.
+- The web production build passes after adding the install and uninstall surfaces. Existing bundle
+  size and resolver timing warnings remain.
+- The preceding installer/provider slice passed AgentInstaller, ACP runtime/adapter, dynamic-driver,
+  and provider-registry focused tests plus the server typecheck.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.
@@ -99,14 +117,14 @@ the user asked for fewer than six releases, not for speculative releases during 
 
 ## Best next engineering work
 
-1. Qualify the read-only Agent Hub in a real web/desktop client and on a mobile device after explicit
-   browser/device permission.
-2. Design the human-reviewed publisher allowlist required for registry trust levels. Do not infer
-   endorsement from the ACP feed.
-3. Build the installer executor around explicit consent, prerequisite detection, isolated staging,
-   SHA-256 verification, atomic activation, and rollback. Keep package-manager execution gated until
-   an equally auditable policy exists.
-4. Add non-secret auth and health probes for catalog agents before exposing any route/start action.
+1. Qualify Agent Hub install, progress, cancellation, and uninstall in a real web/desktop client and
+   on a mobile device after explicit browser/device permission.
+2. Add non-secret auth and health probes for generic ACP agents before exposing any automatic route
+   action. Preserve `unknown` when an agent offers no safe probe.
+3. Design the human-reviewed publisher allowlist/signature policy required for stronger registry
+   trust levels. Do not infer endorsement from the ACP feed.
+4. Add live prerequisite detection before considering package-manager execution; keep `npx` and
+   `uvx` gated until an equally auditable policy exists.
 5. Reconcile the usage ledger with routing phases without inventing quality scores.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
 
