@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import * as NodeCrypto from "node:crypto";
 import * as NodeModule from "node:module";
 
 import { fromYaml } from "@t3tools/shared/schemaYaml";
@@ -120,6 +121,22 @@ export function resourceMonitorExecutableName(platform: typeof BuildPlatform.Typ
 
 export function runtimeSidecarExecutableName(platform: typeof BuildPlatform.Type): string {
   return platform === "win" ? "t3-runtime-sidecar.exe" : "t3-runtime-sidecar";
+}
+
+export interface DesktopArtifactChecksum {
+  readonly fileName: string;
+  readonly sha256: string;
+}
+
+export function isDesktopReleaseArtifact(fileName: string): boolean {
+  return fileName !== "builder-debug.yml" && fileName !== "SHA256SUMS.txt";
+}
+
+export function renderSha256Sums(entries: ReadonlyArray<DesktopArtifactChecksum>): string {
+  return `${[...entries]
+    .sort((left, right) => left.fileName.localeCompare(right.fileName))
+    .map(({ fileName, sha256 }) => `${sha256.toLowerCase()}  ${fileName}`)
+    .join("\n")}\n`;
 }
 
 const PLATFORM_CONFIG: Record<typeof BuildPlatform.Type, PlatformConfig> = {
@@ -448,6 +465,28 @@ export class DesktopBuildNoArtifactsProducedError extends Schema.TaggedErrorClas
     return `Build completed but no files were produced in ${this.distPath}`;
   }
 }
+
+export class DesktopBuildChecksumError extends Schema.TaggedErrorClass<DesktopBuildChecksumError>()(
+  "DesktopBuildChecksumError",
+  {
+    artifactPath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Could not calculate SHA-256 for ${this.artifactPath}.`;
+  }
+}
+
+const sha256File = Effect.fn("sha256File")(function* (artifactPath: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const hash = NodeCrypto.createHash("sha256");
+  yield* fs.stream(artifactPath).pipe(
+    Stream.runForEach((chunk) => Effect.sync(() => hash.update(chunk))),
+    Effect.mapError((cause) => new DesktopBuildChecksumError({ artifactPath, cause })),
+  );
+  return hash.digest("hex");
+});
 
 export class WslNodePtyPrebuildMissingError extends Schema.TaggedErrorClass<WslNodePtyPrebuildMissingError>()(
   "WslNodePtyPrebuildMissingError",
@@ -2233,6 +2272,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   const copiedArtifacts: string[] = [];
   for (const entry of stageEntries) {
+    if (!isDesktopReleaseArtifact(entry)) {
+      yield* fs.remove(path.join(options.outputDir, entry), { force: true }).pipe(Effect.ignore);
+      continue;
+    }
+
     const from = path.join(stageDistDir, entry);
     const stat = yield* fs.stat(from).pipe(Effect.orElseSucceed(() => null));
     if (!stat || stat.type !== "File") continue;
@@ -2249,6 +2293,21 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       arch: options.arch,
     });
   }
+
+  const checksums = yield* Effect.forEach(
+    copiedArtifacts,
+    (artifactPath) =>
+      sha256File(artifactPath).pipe(
+        Effect.map((sha256) => ({
+          fileName: path.basename(artifactPath),
+          sha256,
+        })),
+      ),
+    { concurrency: 2 },
+  );
+  const checksumManifestPath = path.join(options.outputDir, "SHA256SUMS.txt");
+  yield* fs.writeFileString(checksumManifestPath, renderSha256Sums(checksums));
+  copiedArtifacts.push(checksumManifestPath);
 
   yield* Effect.log("[desktop-artifact] Done. Artifacts:").pipe(
     Effect.annotateLogs({ artifacts: copiedArtifacts }),

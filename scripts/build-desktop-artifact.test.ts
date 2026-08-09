@@ -21,6 +21,7 @@ import {
   InvalidMacPasskeyRpDomainError,
   InvalidMacPasskeyPublishableKeyError,
   InvalidMockUpdateServerPortError,
+  isDesktopReleaseArtifact,
   UnsupportedDesktopBuildArchitectureError,
   isMacPasskeySigningConfigurationError,
   LinuxIconResizeError,
@@ -38,6 +39,7 @@ import {
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
   resolveResourceMonitorRustTargets,
+  renderSha256Sums,
   resourceMonitorExecutableName,
   runtimeSidecarExecutableName,
   resolveGitHubPublishConfig,
@@ -91,6 +93,24 @@ function iconResizeSpawnerLayer(
 }
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+  it("keeps release artifacts and excludes internal builder metadata", () => {
+    assert.isTrue(isDesktopReleaseArtifact("Sleepers-Code-0.0.32-x64.exe"));
+    assert.isTrue(isDesktopReleaseArtifact("Sleepers-Code-0.0.32-x64.exe.blockmap"));
+    assert.isTrue(isDesktopReleaseArtifact("latest.yml"));
+    assert.isFalse(isDesktopReleaseArtifact("builder-debug.yml"));
+    assert.isFalse(isDesktopReleaseArtifact("SHA256SUMS.txt"));
+  });
+
+  it("renders a stable lowercase SHA-256 manifest", () => {
+    assert.equal(
+      renderSha256Sums([
+        { fileName: "Sleepers-Code.exe.blockmap", sha256: "BBBB" },
+        { fileName: "Sleepers-Code.exe", sha256: "AAAA" },
+      ]),
+      "aaaa  Sleepers-Code.exe\nbbbb  Sleepers-Code.exe.blockmap\n",
+    );
+  });
+
   it("resolves the dedicated nightly updater channel from nightly versions", () => {
     assert.equal(resolveDesktopUpdateChannel("0.0.17-nightly.20260413.42"), "nightly");
     assert.equal(resolveDesktopUpdateChannel("0.0.17"), "latest");
