@@ -22,9 +22,10 @@ the user remains in control. The React clients and proven Node paths stay intact
 runtime bottlenecks move behind small Rust components.
 
 > [!IMPORTANT]
-> Sleepers Code is under active alpha development. There is not yet a verified public Sleepers Code
-> installer. Build from source for this fork; upstream `npx t3`, App Store, package-manager, and
-> hosted-app links install T3 Code, not Sleepers Code.
+> Sleepers Code is under active alpha development. A Windows x64 NSIS installer now builds locally,
+> but it has not completed clean-machine launch, upgrade, uninstall, or signing validation and is not
+> a public release. Build from source for this fork; upstream `npx t3`, App Store, package-manager,
+> and hosted-app links install T3 Code, not Sleepers Code.
 
 ## What works today
 
@@ -60,9 +61,10 @@ Tool broker <---------------+
 Verification -> checkpoint -> usage and outcome ledger
 ```
 
-The router, Agent Hub, broader task-outcome analytics, Tauri packaging, and installer are roadmap
-work—not finished features. See the [canonical engineering tracker](./docs/sleepers-code-roadmap.md)
-for evidence and blockers rather than aspirational checkmarks.
+The router, Agent Hub, broader task-outcome analytics, Tauri migration, and clean-machine release
+qualification are roadmap work—not finished features. See the
+[canonical engineering tracker](./docs/sleepers-code-roadmap.md) for evidence and blockers rather
+than aspirational checkmarks.
 
 ## Performance, without spin
 
@@ -83,7 +85,7 @@ are not yet fully measured.
 ### Requirements
 
 - Git
-- Node.js 24.10 or newer recommended
+- Node.js 24.13.1 or newer
 - [Vite+](https://viteplus.dev/guide/)
 - at least one installed and authenticated provider CLI
 - Rust only when building or testing the optional native runtime
@@ -123,6 +125,17 @@ Focused production build:
 ```bash
 vp run build:desktop
 ```
+
+Windows x64 alpha installer build:
+
+```powershell
+vp run dist:desktop:win:x64
+```
+
+The release builder stages production dependencies, Rust helper binaries, Electron assets, the NSIS
+installer, differential-update blockmap, and `SHA256SUMS.txt` into `release/`. A complete WSL-capable
+local build also needs a Linux x64 `node-pty` prebuild passed through `--wsl-prebuild`; CI builds that
+binary on Linux. An unsigned local artifact is for testing, not publication.
 
 Useful native-runtime checks:
 

@@ -72,7 +72,12 @@ authenticated.
   `dist:desktop:dmg:x64`, or pass `--arch <arm64|x64|universal>`, to force one.
 - `vp run dist:desktop:linux`: Builds a Linux AppImage into `./release`.
 - `vp run dist:desktop:win`: Builds a Windows NSIS installer into `./release`. `:arm64` and `:x64`
-  variants exist.
+  variants exist. Publishable artifacts receive stable `Sleepers-Code-<version>-<arch>` names and a
+  generated `SHA256SUMS.txt`; Electron Builder's internal `builder-debug.yml` is not copied into the
+  release set.
+- Windows artifacts that support the WSL backend require a Linux `node-pty` native binary. CI builds
+  it on Linux; local packaging passes it with `--wsl-prebuild <path-to-pty.node>`. Omitting it keeps
+  the general desktop build usable but intentionally reports WSL as unavailable.
 
 ### Desktop `.dmg` packaging notes
 
