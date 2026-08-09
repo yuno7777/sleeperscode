@@ -7,6 +7,8 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -31,10 +33,34 @@ import {
 } from "../ProviderDriver.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
+import { subscribeBeforeSnapshotWithoutMutex } from "../../utils/subscribeBeforeSnapshot.ts";
 
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 const decodeConfig = Schema.decodeSync(InstalledAcpProviderConfig);
 const GENERIC_ACP_HEALTH_PROBE_TIMEOUT = Duration.seconds(15);
+const UNKNOWN_AUTH = { status: "unknown" as const };
+const VERIFIED_SESSION_AUTH = { status: "authenticated" as const };
+const VERIFIED_SESSION_MESSAGE =
+  "A real ACP session started successfully; account identity is not exposed.";
+
+function withAuthEvidence(snapshot: ServerProvider, auth: ServerProvider["auth"]): ServerProvider {
+  const messageWithoutEvidence = snapshot.message?.endsWith(` ${VERIFIED_SESSION_MESSAGE}`)
+    ? snapshot.message.slice(0, -VERIFIED_SESSION_MESSAGE.length - 1)
+    : snapshot.message === VERIFIED_SESSION_MESSAGE
+      ? undefined
+      : snapshot.message;
+  return {
+    ...snapshot,
+    auth,
+    ...(auth.status === "authenticated"
+      ? {
+          message: `${messageWithoutEvidence ? `${messageWithoutEvidence} ` : ""}${VERIFIED_SESSION_MESSAGE}`,
+        }
+      : messageWithoutEvidence
+        ? { message: messageWithoutEvidence }
+        : {}),
+  };
+}
 
 export type AcpRegistryDriverEnv =
   | BackgroundPolicy.BackgroundPolicy
@@ -111,6 +137,16 @@ export const AcpRegistryDriver: ProviderDriver<InstalledAcpProviderConfig, AcpRe
         provider: INSTALLED_ACP_DRIVER_KIND,
         packageName: null,
       });
+      const authEvidenceRef = yield* Ref.make<ServerProvider["auth"]>(UNKNOWN_AUTH);
+      const authEvidenceChanges = yield* Effect.acquireRelease(
+        PubSub.unbounded<ServerProvider["auth"]>(),
+        PubSub.shutdown,
+      );
+      const publishAuthEvidence = (auth: ServerProvider["auth"]) =>
+        Ref.set(authEvidenceRef, auth).pipe(
+          Effect.andThen(PubSub.publish(authEvidenceChanges, auth)),
+          Effect.asVoid,
+        );
 
       const makeSnapshot = (input: {
         readonly installed: boolean;
@@ -119,32 +155,36 @@ export const AcpRegistryDriver: ProviderDriver<InstalledAcpProviderConfig, AcpRe
       }) =>
         Effect.gen(function* () {
           const checkedAt = DateTime.formatIso(yield* DateTime.now);
-          return {
-            instanceId,
-            driver: INSTALLED_ACP_DRIVER_KIND,
-            displayName: resolvedDisplayName,
-            ...(accentColor ? { accentColor } : {}),
-            continuation: { groupKey: continuationIdentity.continuationKey },
-            enabled,
-            installed: input.installed,
-            version: config.version,
-            status: input.status,
-            auth: { status: "unknown" },
-            checkedAt,
-            availability: "available",
-            ...(input.message ? { message: input.message } : {}),
-            models: [
-              {
-                slug: "default",
-                name: "Agent default",
-                isCustom: false,
-                isDefault: true,
-                capabilities: null,
-              },
-            ],
-            slashCommands: [],
-            skills: [],
-          } satisfies ServerProvider;
+          const authEvidence = yield* Ref.get(authEvidenceRef);
+          return withAuthEvidence(
+            {
+              instanceId,
+              driver: INSTALLED_ACP_DRIVER_KIND,
+              displayName: resolvedDisplayName,
+              ...(accentColor ? { accentColor } : {}),
+              continuation: { groupKey: continuationIdentity.continuationKey },
+              enabled,
+              installed: input.installed,
+              version: config.version,
+              status: input.status,
+              auth: UNKNOWN_AUTH,
+              checkedAt,
+              availability: "available",
+              ...(input.message ? { message: input.message } : {}),
+              models: [
+                {
+                  slug: "default",
+                  name: "Agent default",
+                  isCustom: false,
+                  isDefault: true,
+                  capabilities: null,
+                },
+              ],
+              slashCommands: [],
+              skills: [],
+            } satisfies ServerProvider,
+            authEvidence,
+          );
         });
 
       const commandAvailable = fs.exists(config.commandPath).pipe(
@@ -235,6 +275,17 @@ export const AcpRegistryDriver: ProviderDriver<InstalledAcpProviderConfig, AcpRe
         haveSettingsChanged: () => false,
         initialSnapshot: () => buildInitialSnapshot,
         checkProvider,
+        enrichSnapshot: ({ snapshot, publishSnapshot }) =>
+          Effect.gen(function* () {
+            const authEvidence = yield* subscribeBeforeSnapshotWithoutMutex(
+              authEvidenceChanges,
+              Ref.get(authEvidenceRef),
+            );
+            const applyAuthEvidence = (auth: ServerProvider["auth"]) =>
+              publishSnapshot(withAuthEvidence(snapshot, auth));
+            yield* applyAuthEvidence(authEvidence.latest);
+            yield* authEvidence.changes.pipe(Stream.runForEach(applyAuthEvidence));
+          }).pipe(Effect.scoped),
       }).pipe(
         Effect.mapError(
           (cause) =>
@@ -247,7 +298,7 @@ export const AcpRegistryDriver: ProviderDriver<InstalledAcpProviderConfig, AcpRe
         ),
       );
 
-      const adapter = yield* makeCursorAdapter(decodeCursorSettings({ enabled: true }), {
+      const baseAdapter = yield* makeCursorAdapter(decodeCursorSettings({ enabled: true }), {
         provider: INSTALLED_ACP_DRIVER_KIND,
         providerDisplayName: resolvedDisplayName,
         enableModelSelection: false,
@@ -256,6 +307,14 @@ export const AcpRegistryDriver: ProviderDriver<InstalledAcpProviderConfig, AcpRe
         makeAcpRuntime: (input) => makeGenericAcpRuntime(config, input),
         environment: processEnvironment,
       });
+      const adapter = {
+        ...baseAdapter,
+        startSession: (input: Parameters<typeof baseAdapter.startSession>[0]) =>
+          baseAdapter.startSession(input).pipe(
+            Effect.tap(() => publishAuthEvidence(VERIFIED_SESSION_AUTH)),
+            Effect.tapError(() => publishAuthEvidence(UNKNOWN_AUTH)),
+          ),
+      } satisfies typeof baseAdapter;
 
       return {
         instanceId,

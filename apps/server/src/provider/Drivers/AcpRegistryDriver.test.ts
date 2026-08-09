@@ -4,7 +4,12 @@ import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  deriveAgentStatusLevels,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -109,6 +114,13 @@ describe("AcpRegistryDriver", () => {
         providerInstanceId: instanceId,
         status: "ready",
       });
+      const authenticatedSnapshot = yield* instance.snapshot.refresh;
+      expect(authenticatedSnapshot).toMatchObject({
+        status: "ready",
+        auth: { status: "authenticated" },
+        message: expect.stringContaining("A real ACP session started successfully"),
+      });
+      expect(deriveAgentStatusLevels(authenticatedSnapshot).routable).toBe(true);
       expect(turn.threadId).toBe(threadId);
       expect(yield* instance.adapter.listSessions()).toHaveLength(1);
       yield* instance.adapter.stopAll();
