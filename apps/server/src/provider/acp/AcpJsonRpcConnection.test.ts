@@ -311,6 +311,75 @@ describe("AcpSessionRuntime", () => {
   }
 
   for (const backend of ["node", "rust"] as const) {
+    it.effect(`reaches the ${backend} event-queue boundary before draining losslessly`, () => {
+      const chunkCount = AcpSessionRuntime.ACP_SESSION_EVENT_QUEUE_CAPACITY - 1;
+      const chunkBytes = 128;
+      let promptResponded: Deferred.Deferred<void> | undefined;
+
+      return Effect.gen(function* () {
+        promptResponded = yield* Deferred.make<void>();
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+
+        const promptFiber = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "fill the bounded event queue" }] })
+          .pipe(Effect.forkChild);
+
+        // The first delta also opens an assistant item, so 255 deltas occupy
+        // all 256 slots. The prompt response is a protocol receipt that those
+        // notifications were accepted; closing the assistant item then blocks
+        // on slot 257 until a consumer attaches.
+        yield* Deferred.await(promptResponded);
+        expect(yield* runtime.getEventQueueDepth).toBe(
+          AcpSessionRuntime.ACP_SESSION_EVENT_QUEUE_CAPACITY,
+        );
+
+        const eventsFiber = yield* runtime
+          .getEvents()
+          .pipe(Stream.take(chunkCount + 2), Stream.runCollect, Effect.forkChild);
+        const result = yield* Fiber.join(promptFiber);
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+        const deltas = events.filter((event) => event._tag === "ContentDelta");
+
+        expect(result.stopReason).toBe("end_turn");
+        expect(events[0]?._tag).toBe("AssistantItemStarted");
+        expect(events.at(-1)?._tag).toBe("AssistantItemCompleted");
+        expect(deltas).toHaveLength(chunkCount);
+        expect(
+          deltas.reduce(
+            (total, event) => total + (event._tag === "ContentDelta" ? event.text.length : 0),
+            0,
+          ),
+        ).toBe(chunkCount * chunkBytes);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                T3_ACP_STREAM_CHUNK_COUNT: String(chunkCount),
+                T3_ACP_STREAM_CHUNK_BYTES: String(chunkBytes),
+              },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "t3-queue-boundary-test", version: "0.0.0" },
+            authMethodId: "test",
+            requestLogger: (event) =>
+              event.method === "session/prompt" && event.status === "succeeded" && promptResponded
+                ? Deferred.succeed(promptResponded, void 0).pipe(Effect.asVoid)
+                : Effect.void,
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(HostProcessEnvironment, {
+          ...process.env,
+          T3CODE_RUNTIME_BACKEND: backend,
+        }),
+      );
+    });
+
     it.effect(`resumes a ${backend} stream losslessly after the consumer starts late`, () => {
       const chunkCount = 1024;
       const chunkBytes = 4 * 1024;
