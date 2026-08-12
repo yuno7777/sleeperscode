@@ -12,6 +12,7 @@ import {
   isToolLifecycleItemType,
   ThreadId,
   type ThreadTokenUsageSnapshot,
+  type TaskOutcomeObservation,
   TurnId,
   type OrchestrationCheckpointSummary,
   type OrchestrationProposedPlan,
@@ -266,6 +267,21 @@ function normalizeRuntimeTurnState(
     default:
       return "completed";
   }
+}
+
+export function taskOutcomeFromRuntimeEvent(
+  event: Extract<ProviderRuntimeEvent, { type: "turn.completed" | "turn.aborted" }>,
+): TaskOutcomeObservation {
+  return {
+    version: 1,
+    terminalState:
+      event.type === "turn.completed" ? normalizeRuntimeTurnState(event.payload.state) : "aborted",
+    provider: {
+      driver: event.provider,
+      ...(event.providerInstanceId !== undefined ? { instanceId: event.providerInstanceId } : {}),
+    },
+    observedAt: event.createdAt,
+  };
 }
 
 function orchestrationSessionStatusFromRuntimeState(
@@ -1636,6 +1652,30 @@ const make = Effect.gen(function* () {
               lastError,
               updatedAt: now,
             },
+            createdAt: now,
+          });
+        }
+      }
+
+      if (event.type === "turn.completed" || event.type === "turn.aborted") {
+        const outcomeTurnId = toTurnId(event.turnId);
+        const outcomeBelongsToTrackedTurn =
+          outcomeTurnId !== undefined &&
+          !conflictsWithActiveTurn &&
+          !missingTurnForActiveTurn &&
+          (activeTurnId === null || sameId(activeTurnId, outcomeTurnId));
+        const shouldRecordOutcome =
+          outcomeBelongsToTrackedTurn &&
+          (event.type !== "turn.completed" || shouldApplyThreadLifecycle);
+
+        if (shouldRecordOutcome && outcomeTurnId !== undefined) {
+          const outcome = taskOutcomeFromRuntimeEvent(event);
+          yield* orchestrationEngine.dispatch({
+            type: "thread.turn.outcome.record",
+            commandId: yield* providerCommandId(event, "thread-turn-outcome-record"),
+            threadId: thread.id,
+            turnId: outcomeTurnId,
+            outcome,
             createdAt: now,
           });
         }

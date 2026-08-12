@@ -49,7 +49,8 @@ runtime bottlenecks move behind small Rust components.
   with domain, complexity, tool, testing, security, collaboration, and cheap root-level repository
   signals plus a shadow routing decision. The decision records provider eligibility and execution
   needs, but its contract cannot override the provider or model selected by the user. Neither record
-  stores prompt excerpts or repository paths.
+  stores prompt excerpts or repository paths. A local task-run ledger now joins this bounded evidence
+  to factual provider terminal states without calling completion “success.”
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 
@@ -71,8 +72,8 @@ Tool broker <---------------+
 Verification -> checkpoint -> usage and outcome ledger
 ```
 
-The adaptive router, persistent catalog-agent auth/health history, publisher signing, broader
-task-outcome analytics, Tauri migration, and clean-machine release qualification are roadmap
+Automatic router selection, persistent catalog-agent auth/health history, publisher signing,
+quality/cost outcome analytics, Tauri migration, and clean-machine release qualification are roadmap
 work—not finished features. See the
 [canonical engineering tracker](./docs/sleepers-code-roadmap.md) for evidence and blockers rather
 than aspirational checkmarks.

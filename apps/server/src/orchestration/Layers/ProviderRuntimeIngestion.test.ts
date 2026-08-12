@@ -47,7 +47,10 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
-import { ProviderRuntimeIngestionLive } from "./ProviderRuntimeIngestion.ts";
+import {
+  ProviderRuntimeIngestionLive,
+  taskOutcomeFromRuntimeEvent,
+} from "./ProviderRuntimeIngestion.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
@@ -171,6 +174,46 @@ type ProviderRuntimeTestMessage = ProviderRuntimeTestThread["messages"][number];
 type ProviderRuntimeTestProposedPlan = ProviderRuntimeTestThread["proposedPlans"][number];
 type ProviderRuntimeTestActivity = ProviderRuntimeTestThread["activities"][number];
 type ProviderRuntimeTestCheckpoint = ProviderRuntimeTestThread["checkpoints"][number];
+
+describe("taskOutcomeFromRuntimeEvent", () => {
+  it("maps terminal provider states without copying error or abort text", () => {
+    const failed = taskOutcomeFromRuntimeEvent({
+      type: "turn.completed",
+      eventId: asEventId("evt-outcome-failed"),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("codex-work"),
+      createdAt: "2026-08-12T12:00:00.000Z",
+      threadId: asThreadId("thread-outcome"),
+      turnId: asTurnId("turn-outcome"),
+      payload: {
+        state: "failed",
+        errorMessage: "private provider failure",
+      },
+    });
+    const aborted = taskOutcomeFromRuntimeEvent({
+      type: "turn.aborted",
+      eventId: asEventId("evt-outcome-aborted"),
+      provider: ProviderDriverKind.make("opencode"),
+      createdAt: "2026-08-12T12:01:00.000Z",
+      threadId: asThreadId("thread-outcome"),
+      turnId: asTurnId("turn-outcome-aborted"),
+      payload: { reason: "private abort detail" },
+    });
+
+    expect(failed).toEqual({
+      version: 1,
+      terminalState: "failed",
+      provider: { driver: "codex", instanceId: "codex-work" },
+      observedAt: "2026-08-12T12:00:00.000Z",
+    });
+    expect(aborted).toEqual({
+      version: 1,
+      terminalState: "aborted",
+      provider: { driver: "opencode" },
+      observedAt: "2026-08-12T12:01:00.000Z",
+    });
+  });
+});
 
 async function waitForThread(
   readModel: () => Promise<ProviderRuntimeTestReadModel>,
@@ -363,6 +406,21 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("turn failed");
+    await harness.drain();
+    const events = await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    const outcome = events.find((event) => event.type === "thread.turn-outcome-recorded");
+    expect(outcome?.type).toBe("thread.turn-outcome-recorded");
+    if (outcome?.type !== "thread.turn-outcome-recorded") return;
+    expect(outcome.payload.outcome).toEqual({
+      version: 1,
+      terminalState: "failed",
+      provider: { driver: "codex" },
+      observedAt: now,
+    });
   });
 
   it("applies provider session.state.changed transitions directly", async () => {
@@ -788,6 +846,19 @@ describe("ProviderRuntimeIngestion", () => {
       harness.readModel,
       (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
     );
+    await harness.drain();
+    const events = await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    const outcomes = events.filter(
+      (
+        event,
+      ): event is Extract<(typeof events)[number], { type: "thread.turn-outcome-recorded" }> =>
+        event.type === "thread.turn-outcome-recorded",
+    );
+    expect(outcomes.map((event) => event.payload.turnId)).toEqual(["turn-guarded-main"]);
   });
 
   it("ignores auxiliary turn completions from a different provider thread", async () => {

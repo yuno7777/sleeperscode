@@ -56,13 +56,15 @@ durable schemas so historical events and mixed-version snapshots continue to dec
 The original user message remains the provider input and continues through the existing message
 event. The task profile feeds the optional shadow decision described in
 [`adaptive-router.md`](./adaptive-router.md) and remains metadata for later budget, collaboration,
-and telemetry stages.
+and telemetry stages. The durable task-run join in
+[`task-outcome-attribution.md`](./task-outcome-attribution.md) carries the profile to the provider's
+concrete turn id without copying prompt content.
 
 ## Limitations
 
 - Version 1 uses English keyword signals and coarse estimates.
 - Repository evidence is root-only. It does not inspect changed areas, nested package manifests,
-  source files, test results, Git history, or historical outcomes.
+  source files, test results, Git history, or quality outcomes.
 - Scores are explainable heuristics, not measured provider-quality evidence.
 - The shadow decision cannot change provider selection or collaboration behavior.
 

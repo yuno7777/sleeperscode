@@ -5,6 +5,10 @@ import {
   EventId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
+  RouterDecision,
+  TaskOutcomeObservation,
+  TaskProfile,
   ThreadId,
   TurnId,
   ProviderInstanceId,
@@ -15,6 +19,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
@@ -2787,6 +2792,142 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
           faviconPath: "brand/icon.svg",
         },
       ]);
+    }),
+  );
+
+  it.effect("binds shadow routing evidence to a factual provider outcome", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = ProjectId.make("project-task-run");
+      const threadId = ThreadId.make("thread-task-run");
+      const turnId = TurnId.make("turn-task-run");
+      const requestedAt = "2026-08-12T12:00:00.000Z";
+      const observedAt = "2026-08-12T12:01:00.000Z";
+      const privateMarker = "PRIVATE_TASK_MARKER_4c50e54d";
+
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-task-run-project"),
+        projectId,
+        title: "Task run project",
+        workspaceRoot: "/tmp/task-run-project",
+        defaultModelSelection: null,
+        createdAt: requestedAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-task-run-thread"),
+        threadId,
+        projectId,
+        title: "Task run thread",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5.6-sol",
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt: requestedAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-task-run-start"),
+        threadId,
+        message: {
+          messageId: MessageId.make("message-task-run"),
+          role: "user",
+          text: `Implement and test the backend. ${privateMarker}`,
+          attachments: [],
+        },
+        routerContext: {
+          version: 1,
+          candidates: [
+            {
+              instanceId: ProviderInstanceId.make("codex"),
+              driver: ProviderDriverKind.make("codex"),
+              eligible: true,
+              blockers: [],
+            },
+          ],
+          limited: false,
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdAt: requestedAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-task-run-bind"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          runtimeMode: "full-access",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: requestedAt,
+        },
+        createdAt: requestedAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.turn.outcome.record",
+        commandId: CommandId.make("cmd-task-run-outcome"),
+        threadId,
+        turnId,
+        outcome: {
+          version: 1,
+          terminalState: "completed",
+          provider: {
+            driver: ProviderDriverKind.make("codex"),
+            instanceId: ProviderInstanceId.make("codex"),
+          },
+          observedAt,
+        },
+        createdAt: observedAt,
+      });
+
+      const rows = yield* sql<{
+        readonly turnId: string | null;
+        readonly taskProfileJson: string | null;
+        readonly routerDecisionJson: string | null;
+        readonly outcomeJson: string | null;
+        readonly observedAt: string | null;
+      }>`
+        SELECT
+          turn_id AS "turnId",
+          task_profile_json AS "taskProfileJson",
+          router_decision_json AS "routerDecisionJson",
+          outcome_json AS "outcomeJson",
+          observed_at AS "observedAt"
+        FROM projection_task_runs
+        WHERE thread_id = ${threadId}
+      `;
+
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]?.turnId, turnId);
+      const taskProfile = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(TaskProfile))(
+        rows[0]?.taskProfileJson,
+      );
+      const routerDecision = yield* Schema.decodeUnknownEffect(
+        Schema.fromJsonString(RouterDecision),
+      )(rows[0]?.routerDecisionJson);
+      const outcome = yield* Schema.decodeUnknownEffect(
+        Schema.fromJsonString(TaskOutcomeObservation),
+      )(rows[0]?.outcomeJson);
+      assert.equal(taskProfile.kinds.includes("implementation"), true);
+      assert.equal(routerDecision.applied, false);
+      assert.equal(outcome.version, 1);
+      assert.equal(outcome.terminalState, "completed");
+      assert.equal(outcome.provider.driver, "codex");
+      assert.equal(outcome.provider.instanceId, "codex");
+      assert.equal(outcome.observedAt, observedAt);
+      assert.equal(rows[0]?.observedAt, observedAt);
+      assert.equal(rows[0]?.taskProfileJson?.includes(privateMarker), false);
+      assert.equal(rows[0]?.routerDecisionJson?.includes(privateMarker), false);
     }),
   );
 });

@@ -73,6 +73,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - WebSocket turns now retain a deterministic shadow routing decision. Turn overrides beat thread
   selections; provider eligibility uses live registry blockers; multiple healthy providers remain
   unranked; and the versioned contract fixes `applied: false`, so no provider/model behavior changes.
+- A durable local task-run projection now binds each normal turn's task profile and shadow decision
+  to its provider turn id and terminal state. It stores no prompt, path, provider error text, usage
+  payload, or inferred success/quality label; no router behavior consumes it yet.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -122,6 +125,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   turn-event integration, and the focused decider regression pass **115 tests across 13 files**;
   contracts, shared, and server typechecks pass with only unrelated existing Effect suggestions,
   and the production server bundle builds.
+- Task-outcome contracts, migration, repository roundtrip, projection integration, decider, and
+  provider-ingestion regressions pass their focused suites. Contracts, shared, client-runtime,
+  server, web, and mobile typechecks pass; only the existing Effect suggestions remain.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.
@@ -154,8 +160,9 @@ the user asked for fewer than six releases, not for speculative releases during 
    process-local before enabling unattended routing.
 5. Reconcile the usage ledger with routing phases without inventing quality scores.
 6. Add redaction tests at the emitting boundaries listed in `docs/secret-handling-audit.md`.
-7. Define task-outcome attribution and reconcile it with usage records before calibrating Phase 33
-   scores. Do not activate routing from provider-brand priors or unmeasured quality claims.
+7. Reconcile terminal task-run evidence with usage records, then design an explicit human-evaluation
+   signal before calibrating Phase 33 scores. Do not activate routing from provider-brand priors or
+   treat terminal completion as a quality claim.
 
 ## Hard constraints
 

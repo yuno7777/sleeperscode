@@ -571,6 +571,8 @@ const makeWsRpcLayer = (
             );
           case "thread.unarchived":
             return threadUpsertOrRemove(event.payload.threadId, event.sequence);
+          case "thread.turn-outcome-recorded":
+            return Effect.succeed(Option.none());
           default:
             if (event.aggregateKind !== "thread") {
               return Effect.succeed(Option.none());

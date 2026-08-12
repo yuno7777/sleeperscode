@@ -1,0 +1,60 @@
+# Task outcome attribution
+
+Sleepers Code keeps a local, durable join between a turn's server-owned task profile, its shadow
+router decision, and the provider's factual terminal state. This is the first outcome-attribution
+input for later router evaluation; it does not score provider quality or activate automatic routing.
+
+## Lifecycle
+
+The `projection_task_runs` table follows the existing event-sourced turn lifecycle:
+
+1. `thread.turn-start-requested` replaces the thread's pending task-run row and stores the optional
+   `TaskProfile` and `RouterDecision` JSON.
+2. A running `thread.session-set` binds that pending row to the provider's concrete turn id.
+3. Provider `turn.completed` and `turn.aborted` events pass the same active-turn guard used by the
+   session lifecycle.
+4. The server emits `thread.turn-outcome-recorded`, and the task-run projection records its
+   versioned `TaskOutcomeObservation`.
+
+The projection has its own replay cursor. Existing databases receive it through migration 41, and
+the projector can rebuild it from the durable event log. Historical turns created before task
+profiles or router decisions remain decodable with missing evidence rather than guessed values.
+
+## What an observation means
+
+Version 1 records only:
+
+- `completed`, `failed`, `interrupted`, `cancelled`, or `aborted`;
+- the provider driver and optional configured instance id; and
+- the provider event timestamp.
+
+`completed` means the provider reported a completed turn. It does **not** mean the implementation was
+correct, tests passed, the changes survived, or the user was satisfied. The contract intentionally
+has no `success`, quality score, free-form error, or stop-reason field.
+
+## Privacy and bounds
+
+The task-run projection stores closed-enum task metadata, the bounded shadow decision, and the
+content-free terminal observation. It does not duplicate:
+
+- prompts or assistant messages;
+- filenames, repository paths, diffs, or manifest content;
+- provider error text or abort reasons;
+- credentials or account identity; or
+- raw usage payloads.
+
+The source conversation and checkpoint data continue to live in their existing stores. Usage and
+cost remain in the usage ledger until a tested attribution join exists.
+
+## Current limits
+
+- Only a normal turn-start-to-running transition can produce a fully joined task-run row. A late
+  provider completion without a preceding pending row remains in the event log but is not invented
+  into a task profile.
+- There is no quality label, test-result ingestion, user rating, repair count, change-survival
+  signal, or usage/cost join yet.
+- No router score or provider selection consumes these rows.
+- No analytics UI or export/delete control exposes this projection yet.
+
+Router scoring must wait for independent quality evidence and a defensible evaluation dataset. A
+terminal-state count alone is not a model leaderboard.

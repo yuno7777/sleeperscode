@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   TaskProfile,
   ThreadId,
+  TurnId,
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -140,6 +141,45 @@ it.layer(NodeServices.layer)("turn task profiling", (it) => {
         recommendation: { outcome: "retain-current", instanceId: "codex" },
         execution: { review: "required", research: false },
       });
+    }),
+  );
+
+  it.effect("records a typed terminal observation without inferring success", () =>
+    Effect.gen(function* () {
+      const result = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.turn.outcome.record",
+          commandId: CommandId.make("cmd-outcome"),
+          threadId: ThreadId.make("thread-profile"),
+          turnId: TurnId.make("turn-profile"),
+          outcome: {
+            version: 1,
+            terminalState: "completed",
+            provider: {
+              driver: ProviderDriverKind.make("codex"),
+              instanceId: ProviderInstanceId.make("codex"),
+            },
+            observedAt: NOW,
+          },
+          createdAt: NOW,
+        },
+        readModel,
+      });
+
+      expect(result).toMatchObject({
+        type: "thread.turn-outcome-recorded",
+        payload: {
+          threadId: "thread-profile",
+          turnId: "turn-profile",
+          outcome: {
+            version: 1,
+            terminalState: "completed",
+            provider: { driver: "codex", instanceId: "codex" },
+            observedAt: NOW,
+          },
+        },
+      });
+      expect(result).not.toHaveProperty("payload.outcome.success");
     }),
   );
 });

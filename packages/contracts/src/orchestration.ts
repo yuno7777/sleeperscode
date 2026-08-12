@@ -23,6 +23,7 @@ import {
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { RouterContext, RouterDecision } from "./router.ts";
+import { TaskOutcomeObservation } from "./taskOutcome.ts";
 import { TaskProfile, TaskRepositoryEvidence } from "./taskProfile.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
@@ -1005,6 +1006,15 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadTurnOutcomeRecordCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.outcome.record"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  turnId: TurnId,
+  outcome: TaskOutcomeObservation,
+  createdAt: IsoDateTime,
+});
+
 const ThreadActivityAppendCommand = Schema.Struct({
   type: Schema.Literal("thread.activity.append"),
   commandId: CommandId,
@@ -1035,6 +1045,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadMessageAssistantCompleteCommand,
   ThreadProposedPlanUpsertCommand,
   ThreadTurnDiffCompleteCommand,
+  ThreadTurnOutcomeRecordCommand,
   ThreadActivityAppendCommand,
   ThreadRevertCompleteCommand,
   ThreadTitleRegenerationCompleteCommand,
@@ -1076,6 +1087,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.session-set",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
+  "thread.turn-outcome-recorded",
   "thread.activity-appended",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
@@ -1310,6 +1322,12 @@ export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   completedAt: IsoDateTime,
 });
 
+export const ThreadTurnOutcomeRecordedPayload = Schema.Struct({
+  threadId: ThreadId,
+  turnId: TurnId,
+  outcome: TaskOutcomeObservation,
+});
+
 export const ThreadActivityAppendedPayload = Schema.Struct({
   threadId: ThreadId,
   activity: OrchestrationThreadActivity,
@@ -1476,6 +1494,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.turn-diff-completed"),
     payload: ThreadTurnDiffCompletedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-outcome-recorded"),
+    payload: ThreadTurnOutcomeRecordedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

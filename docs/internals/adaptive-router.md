@@ -45,12 +45,18 @@ The decision contains no prompt excerpt, workspace path, credentials, provider i
 manifest content. It is optional on the durable turn-start event so older events and mixed-version
 clients continue to decode.
 
+The task-run projection described in
+[`task-outcome-attribution.md`](./task-outcome-attribution.md) now binds that decision to the
+provider's concrete turn id and content-free terminal state. A provider-completed state is lifecycle
+evidence, not a correctness or quality label.
+
 ## Deliberate limits
 
 Version 1 does not rank multiple eligible providers, choose another model, use provider-brand priors,
-estimate cost or latency, or activate collaboration. Those behaviors require measured task outcomes,
-pricing/usage reconciliation, user modes, and override semantics. Until that evidence exists, a
-fixed score table would turn assumptions into product behavior and violate the roadmap.
+estimate cost or latency, or activate collaboration. Those behaviors require independent quality
+evidence, pricing/usage reconciliation, user modes, and override semantics. Terminal provider states
+alone cannot calibrate them. Until that evidence exists, a fixed score table would turn assumptions
+into product behavior and violate the roadmap.
 
 Environment HTTP dispatch currently records a limited-context shadow decision; WebSocket dispatch
 has the live candidate set. Automatic routing must not be enabled until every command transport has

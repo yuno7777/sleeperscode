@@ -27,6 +27,7 @@ export * from "./sourceControl.ts";
 export * from "./orchestration.ts";
 export * from "./taskProfile.ts";
 export * from "./router.ts";
+export * from "./taskOutcome.ts";
 export * from "./t3ProjectFile.ts";
 export * from "./editor.ts";
 export * from "./project.ts";
