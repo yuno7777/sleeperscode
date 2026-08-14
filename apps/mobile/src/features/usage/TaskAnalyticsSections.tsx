@@ -1,4 +1,5 @@
 import type { MergedTaskAnalytics } from "@t3tools/shared/taskAnalyticsMerge";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
@@ -55,6 +56,15 @@ export function TaskAnalyticsSections(props: {
               <Metric label="Recorded" value={analytics.totalTasks} />
               <Metric label="Profiled" value={analytics.profiledTasks} />
               <Metric label="Terminal" value={analytics.terminalTasks} />
+              <Metric label="Timed" value={analytics.timedTasks} />
+              <Metric
+                label="Average elapsed"
+                value={
+                  analytics.averageElapsedMs === null
+                    ? "N/A"
+                    : formatDuration(analytics.averageElapsedMs)
+                }
+              />
               <Metric label="Pending" value={analytics.totalTasks - analytics.terminalTasks} />
             </>
           ) : (
@@ -74,7 +84,7 @@ export function TaskAnalyticsSections(props: {
       <SettingsSection title={view === "tasks" ? "Recent tasks" : "Recent decisions"} card>
         {analytics.records.slice(0, 30).map((record, index) => (
           <View
-            key={`${record.environmentId}:${record.threadId}:${record.requestedAt}:${index}`}
+            key={`${record.environmentId}:${record.threadId}:${record.requestedAt}`}
             className={index === 0 ? "gap-1 p-4" : "gap-1 border-t border-border-subtle p-4"}
           >
             <View className="flex-row items-baseline justify-between gap-3">
@@ -88,6 +98,7 @@ export function TaskAnalyticsSections(props: {
               </Text>
               <Text className="text-sm capitalize text-foreground-muted">
                 {humanize(record.outcome?.terminalState ?? "pending")}
+                {record.elapsedMs === undefined ? "" : ` · ${formatDuration(record.elapsedMs)}`}
               </Text>
             </View>
             <Text className="text-sm capitalize text-foreground-muted" numberOfLines={1}>
@@ -126,7 +137,7 @@ export function TaskAnalyticsSections(props: {
   );
 }
 
-function Metric({ label, value }: { readonly label: string; readonly value: number }) {
+function Metric({ label, value }: { readonly label: string; readonly value: number | string }) {
   return (
     <View className="w-1/2 gap-0.5 p-4">
       <Text className="text-sm text-foreground-muted">{label}</Text>

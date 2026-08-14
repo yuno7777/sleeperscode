@@ -29,6 +29,9 @@ export interface MergedTaskAnalytics {
   readonly profiledTasks: number;
   readonly routedTasks: number;
   readonly terminalTasks: number;
+  readonly timedTasks: number;
+  readonly totalElapsedMs: number;
+  readonly averageElapsedMs: number | null;
   readonly limitedRoutes: number;
   readonly terminalStates: readonly {
     readonly state: TaskOutcomeTerminalState;
@@ -109,6 +112,8 @@ export function mergeTaskAnalytics(
   let profiledTasks = 0;
   let routedTasks = 0;
   let terminalTasks = 0;
+  let timedTasks = 0;
+  let totalElapsedMs = 0;
   let limitedRoutes = 0;
 
   for (const record of records) {
@@ -129,6 +134,10 @@ export function mergeTaskAnalytics(
       increment(terminalStates, record.outcome.terminalState);
       increment(providers, record.outcome.provider.driver);
     }
+    if (record.elapsedMs !== undefined) {
+      timedTasks += 1;
+      totalElapsedMs += record.elapsedMs;
+    }
   }
 
   return {
@@ -136,6 +145,9 @@ export function mergeTaskAnalytics(
     profiledTasks,
     routedTasks,
     terminalTasks,
+    timedTasks,
+    totalElapsedMs,
+    averageElapsedMs: timedTasks === 0 ? null : Math.round(totalElapsedMs / timedTasks),
     limitedRoutes,
     terminalStates: descending(terminalStates).map(([state, count]) => ({ state, count })),
     providers: descending(providers).map(([driver, count]) => ({ driver, count })),

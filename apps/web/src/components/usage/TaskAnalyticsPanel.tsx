@@ -1,4 +1,5 @@
 import type { MergedTaskAnalytics } from "@t3tools/shared/taskAnalyticsMerge";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 
 import { cn } from "../../lib/utils";
 
@@ -58,10 +59,20 @@ export function TaskAnalyticsPanel({
 
       {view === "tasks" ? (
         <>
-          <section className="grid grid-cols-2 gap-px border-y border-border bg-border md:grid-cols-4">
+          <section className="grid grid-cols-2 gap-px border-y border-border bg-border md:grid-cols-3 xl:grid-cols-6">
             <EvidenceMetric label="Recorded tasks" value={analytics.totalTasks} />
             <EvidenceMetric label="Profiled" value={analytics.profiledTasks} />
             <EvidenceMetric label="Terminal observations" value={analytics.terminalTasks} />
+            <EvidenceMetric label="Timed tasks" value={analytics.timedTasks} />
+            <EvidenceMetric
+              label="Average elapsed"
+              value={
+                analytics.averageElapsedMs === null
+                  ? "N/A"
+                  : formatDuration(analytics.averageElapsedMs)
+              }
+              detail="request to terminal"
+            />
             <EvidenceMetric
               label="Awaiting terminal state"
               value={analytics.totalTasks - analytics.terminalTasks}
@@ -145,7 +156,7 @@ function EvidenceMetric({
   detail,
 }: {
   readonly label: string;
-  readonly value: number;
+  readonly value: number | string;
   readonly detail?: string;
 }) {
   return (
@@ -226,15 +237,16 @@ function RecentTasksTable({
               <th className="py-2 font-normal">Environment</th>
               <th className="py-2 font-normal">Selection</th>
               <th className="py-2 font-normal">Evidence</th>
+              <th className="py-2 text-right font-normal">Elapsed</th>
               <th className="py-2 text-right font-normal">Observed</th>
             </tr>
           </thead>
           <tbody>
-            {records.map((record, index) => {
+            {records.map((record) => {
               const state = record.outcome?.terminalState ?? "pending";
               return (
                 <tr
-                  key={`${record.environmentId}:${record.threadId}:${record.requestedAt}:${index}`}
+                  key={`${record.environmentId}:${record.threadId}:${record.requestedAt}`}
                   className="border-b border-border/50"
                 >
                   <td className="py-3 pr-4 text-foreground">
@@ -254,6 +266,9 @@ function RecentTasksTable({
                   </td>
                   <td className={cn("py-3 pr-4 capitalize", terminalTone(state))}>
                     {humanize(state)}
+                  </td>
+                  <td className="py-3 pr-4 text-right text-muted-foreground tabular-nums">
+                    {record.elapsedMs === undefined ? "—" : formatDuration(record.elapsedMs)}
                   </td>
                   <td className="py-3 text-right text-muted-foreground tabular-nums">
                     {new Intl.DateTimeFormat(undefined, {

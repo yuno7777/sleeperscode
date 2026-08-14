@@ -20,6 +20,10 @@ The projection has its own replay cursor. Existing databases receive it through 
 the projector can rebuild it from the durable event log. Historical turns created before task
 profiles or router decisions remain decodable with missing evidence rather than guessed values.
 
+The analytics read model also derives `elapsedMs` when both timestamps are present and ordered. It
+measures request-to-terminal wall time, including queueing and provider work. It is not presented as
+model-only latency, and clock-skewed or pending rows remain untimed instead of being clamped to zero.
+
 ## What an observation means
 
 Version 1 records only:
@@ -50,20 +54,22 @@ cost remain in the usage ledger until a tested attribution join exists.
 
 `server.getTaskAnalytics` exposes at most 200 newest records per environment and reporting window.
 The payload contains only compact profile categories, shadow-decision reason codes, provider identity,
-and terminal state. It uses an opaque local-store fingerprint so clients can avoid double-counting the
-same database through multiple connections. Web/desktop and mobile merge those bounded summaries into
-Tasks and Router views on the Usage page. The views deliberately label terminal state as lifecycle
-evidence and shadow decisions as unapplied.
+terminal state, and optional elapsed milliseconds. It uses an opaque local-store fingerprint so
+clients can avoid double-counting the same database through multiple connections. Web/desktop and
+mobile merge those bounded summaries into Tasks and Router views on the Usage page, showing timing
+coverage, average elapsed time, and per-task elapsed time. The views deliberately label terminal
+state as lifecycle evidence and shadow decisions as unapplied.
 
 ## Current limits
 
 - Only a normal turn-start-to-running transition can produce a fully joined task-run row. A late
   provider completion without a preceding pending row remains in the event log but is not invented
   into a task profile.
-- There is no quality label, test-result ingestion, user rating, repair count, change-survival
-  signal, or usage/cost join yet.
+- Request-to-terminal elapsed time is available, but queue time and provider execution are not split.
+- There is no quality label, test-result ingestion, user rating, repair count, change-survival signal,
+  or usage/cost join yet.
 - No router score or provider selection consumes these rows.
-- No analytics UI or export/delete control exposes this projection yet.
+- There is no analytics export or automatic retention policy yet.
 
 Router scoring must wait for independent quality evidence and a defensible evaluation dataset. A
 terminal-state count alone is not a model leaderboard.

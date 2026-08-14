@@ -17,6 +17,7 @@ import {
   type ProjectionTaskRun,
 } from "../persistence/Services/ProjectionTaskRuns.ts";
 import {
+  elapsedMsFromTaskRun,
   primaryDomainFromProfile,
   TaskAnalyticsService,
   layerTest,
@@ -137,11 +138,24 @@ it.effect("TaskAnalyticsService returns bounded factual evidence with zoned wind
     assert.equal(record?.route?.eligibleCandidateCount, 1);
     assert.equal(record?.route?.contextLimited, true);
     assert.equal(record?.outcome?.terminalState, "completed");
+    assert.equal(record?.elapsedMs, 1_800_000);
     assert.notProperty(record ?? {}, "messageId");
     assert.notProperty(record ?? {}, "prompt");
     assert.notProperty(record ?? {}, "quality");
     assert.deepEqual(yield* service.clearHistory, { deletedRecords: 4 });
   }).pipe(Effect.provide(testLayer));
+});
+
+it("elapsedMsFromTaskRun omits pending and clock-skewed observations", () => {
+  assert.equal(elapsedMsFromTaskRun({ ...row, observedAt: null, outcome: null }), undefined);
+  assert.equal(
+    elapsedMsFromTaskRun({
+      ...row,
+      requestedAt: "2026-03-08T07:00:00.000Z",
+      observedAt: "2026-03-08T06:30:00.000Z",
+    }),
+    undefined,
+  );
 });
 
 it("primaryDomainFromProfile handles empty and single-domain evidence", () => {

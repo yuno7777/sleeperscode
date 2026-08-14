@@ -64,6 +64,8 @@ export type TaskAnalyticsRoute = typeof TaskAnalyticsRoute.Type;
 export const TaskAnalyticsRecord = Schema.Struct({
   threadId: ThreadId,
   requestedAt: IsoDateTime,
+  /** Request-to-terminal elapsed time. Absent for pending rows and older servers. */
+  elapsedMs: Schema.optionalKey(NonNegativeInt),
   profile: Schema.NullOr(TaskAnalyticsProfile),
   route: Schema.NullOr(TaskAnalyticsRoute),
   outcome: Schema.NullOr(TaskOutcomeObservation),

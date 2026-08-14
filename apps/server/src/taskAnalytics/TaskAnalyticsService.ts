@@ -1,7 +1,7 @@
 /**
  * TaskAnalyticsService - reads compact, content-free task/router evidence.
  */
-import { createHash } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 import * as NodeOS from "node:os";
 
 import {
@@ -51,14 +51,26 @@ export function primaryDomainFromProfile(profile: TaskProfile): TaskAnalyticsPri
   return leaders.length === 1 ? leaders[0]! : "mixed";
 }
 
+export function elapsedMsFromTaskRun(row: ProjectionTaskRun): number | undefined {
+  if (row.observedAt === null) return undefined;
+  const requestedAt = DateTime.make(row.requestedAt);
+  const observedAt = DateTime.make(row.observedAt);
+  if (Option.isNone(requestedAt) || Option.isNone(observedAt)) return undefined;
+  const elapsedMs =
+    DateTime.toEpochMillis(observedAt.value) - DateTime.toEpochMillis(requestedAt.value);
+  return elapsedMs >= 0 ? elapsedMs : undefined;
+}
+
 function toAnalyticsRecord(row: ProjectionTaskRun): TaskAnalyticsRecord {
   const route = row.routerDecision;
+  const elapsedMs = elapsedMsFromTaskRun(row);
   const selectedCandidate = route?.candidates.find(
     (candidate) => candidate.instanceId === route.effectiveSelection.instanceId,
   );
   return {
     threadId: row.threadId,
     requestedAt: row.requestedAt,
+    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
     profile:
       row.taskProfile === null
         ? null
@@ -178,7 +190,7 @@ export const layerTest = (sourceFingerprint = "task-analytics-test-source") =>
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    const sourceFingerprint = createHash("sha256")
+    const sourceFingerprint = NodeCrypto.createHash("sha256")
       .update(`${NodeOS.hostname()}\0${config.dbPath}`)
       .digest("hex");
     return layerTest(sourceFingerprint).pipe(

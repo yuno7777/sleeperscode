@@ -25,6 +25,7 @@ describe("TaskAnalyticsSummary", () => {
         {
           threadId: ThreadId.make("thread-analytics"),
           requestedAt: "2026-08-12T11:58:00.000Z",
+          elapsedMs: 120_000,
           profile: {
             kinds: ["implementation"],
             complexity: "medium",
@@ -62,6 +63,7 @@ describe("TaskAnalyticsSummary", () => {
     });
 
     expect(summary.records).toHaveLength(1);
+    expect(summary.records[0]?.elapsedMs).toBe(120_000);
     expect(summary).not.toHaveProperty("prompt");
     expect(summary).not.toHaveProperty("providerError");
     expect(summary).not.toHaveProperty("quality");
@@ -88,6 +90,32 @@ describe("TaskAnalyticsSummary", () => {
         records: Array.from({ length: TASK_ANALYTICS_MAX_RECORDS + 1 }, () => record),
         truncated: true,
       }),
+    ).toThrow();
+  });
+
+  it("rejects a negative elapsed time but accepts older records without one", () => {
+    const base = {
+      contractVersion: 1,
+      readAt: "2026-08-12T12:00:00.000Z",
+      sourceFingerprint: "source-4ec8",
+      timeZone: "UTC",
+      sinceDay: "2026-08-01",
+      untilDay: "2026-08-12",
+      truncated: false,
+    };
+    const legacyRecord = {
+      threadId: ThreadId.make("thread-analytics"),
+      requestedAt: "2026-08-12T11:58:00.000Z",
+      profile: null,
+      route: null,
+      outcome: null,
+    };
+
+    expect(
+      decodeSummary({ ...base, records: [legacyRecord] }).records[0]?.elapsedMs,
+    ).toBeUndefined();
+    expect(() =>
+      decodeSummary({ ...base, records: [{ ...legacyRecord, elapsedMs: -1 }] }),
     ).toThrow();
   });
 });

@@ -29,6 +29,7 @@ function environment(
         {
           threadId: ThreadId.make(`thread-${id}`),
           requestedAt: `2026-08-12T1${id === "alpha" ? "1" : "0"}:00:00.000Z`,
+          elapsedMs: 3_600_000,
           profile: {
             kinds: ["implementation"],
             complexity: "medium",
@@ -72,6 +73,7 @@ describe("mergeTaskAnalytics", () => {
           {
             threadId: ThreadId.make("thread-beta"),
             requestedAt: "2026-08-12T10:00:00.000Z",
+            elapsedMs: 60_000,
             profile: null,
             route: null,
             outcome: {
@@ -90,11 +92,33 @@ describe("mergeTaskAnalytics", () => {
     expect(merged.profiledTasks).toBe(1);
     expect(merged.routedTasks).toBe(1);
     expect(merged.terminalTasks).toBe(2);
+    expect(merged.timedTasks).toBe(2);
+    expect(merged.totalElapsedMs).toBe(3_660_000);
+    expect(merged.averageElapsedMs).toBe(1_830_000);
     expect(merged.terminalStates).toEqual([
       { state: "completed", count: 1 },
       { state: "failed", count: 1 },
     ]);
     expect(merged.records.map((record) => record.environmentLabel)).toEqual(["alpha", "beta"]);
+  });
+
+  it("keeps timing coverage explicit when an older server omits elapsed time", () => {
+    const withoutTiming = environment("alpha", "source-alpha");
+    const merged = mergeTaskAnalytics([
+      {
+        ...withoutTiming,
+        summary: {
+          ...withoutTiming.summary,
+          records: withoutTiming.summary.records.map(
+            ({ elapsedMs: _elapsedMs, ...record }) => record,
+          ),
+        },
+      },
+    ]);
+
+    expect(merged.timedTasks).toBe(0);
+    expect(merged.totalElapsedMs).toBe(0);
+    expect(merged.averageElapsedMs).toBeNull();
   });
 
   it("deduplicates shared stores and excludes incompatible contracts", () => {
