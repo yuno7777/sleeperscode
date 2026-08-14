@@ -16,11 +16,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
 import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
+import { TaskAnalyticsSections, type MobileUsageAnalyticsView } from "./TaskAnalyticsSections";
 
 const WINDOW_OPTIONS = [
   { days: 7, label: "7 days" },
@@ -35,11 +36,13 @@ export function UsageRouteScreen() {
   const insets = useSafeAreaInsets();
   const [windowDays, setWindowDays] = useState<number>(30);
   const [metric, setMetric] = useState<UsageChartMetric>("cost");
+  const [view, setView] = useState<"overview" | MobileUsageAnalyticsView>("overview");
 
   // Recomputed only when the window length changes, so a re-render does not
   // shift the range and refetch every environment.
   const window = useMemo(() => makeWindow(windowDays), [windowDays]);
   const { merged, environments, isPending, isPartial, refresh } = useUsage(window);
+  const taskAnalytics = useTaskAnalytics(window);
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -49,7 +52,9 @@ export function UsageRouteScreen() {
   // The pull spinner tracks re-scans of environments that have answered
   // before. The initial scan renders its own placeholder, and an unreachable
   // environment stays pending forever — neither may pin the spinner on.
-  const refreshing = environments.some((entry) => entry.isPending && entry.summary !== null);
+  const refreshing =
+    environments.some((entry) => entry.isPending && entry.summary !== null) ||
+    taskAnalytics.environments.some((entry) => entry.isPending && entry.summary !== null);
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -65,38 +70,83 @@ export function UsageRouteScreen() {
         className="flex-1"
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refresh();
+              taskAnalytics.refresh();
+            }}
+          />
+        }
       >
+        <SegmentedControl
+          options={
+            [
+              { value: "overview", label: "Overview" },
+              { value: "tasks", label: "Tasks" },
+              { value: "router", label: "Router" },
+            ] as const
+          }
+          selected={view}
+          onSelect={setView}
+        />
+
         <SegmentedControl
           options={WINDOW_OPTIONS.map((option) => ({ value: option.days, label: option.label }))}
           selected={windowDays}
           onSelect={setWindowDays}
         />
 
-        <UsageCoverageNotice environments={environments} merged={merged} isPartial={isPartial} />
+        {view === "overview" ? (
+          <UsageCoverageNotice environments={environments} merged={merged} isPartial={isPartial} />
+        ) : null}
 
-        {isPending ? (
+        {view === "overview" ? (
+          isPending ? (
+            <Text className="py-16 text-center text-base text-foreground-muted">
+              Scanning provider transcripts…
+            </Text>
+          ) : environments.length === 0 ? (
+            <Text className="py-16 text-center text-base text-foreground-muted">
+              Connect an environment to see usage.
+            </Text>
+          ) : (
+            <>
+              <ChartCard
+                merged={merged}
+                days={days}
+                metric={metric}
+                onMetricChange={setMetric}
+                sinceDay={window.sinceDay}
+                untilDay={window.untilDay}
+              />
+              <ProviderSection merged={merged} metric={metric} />
+              <TotalsSection merged={merged} />
+              <ModelsSection merged={merged} />
+            </>
+          )
+        ) : taskAnalytics.isPending || taskAnalytics.isPartial ? (
           <Text className="py-16 text-center text-base text-foreground-muted">
-            Scanning provider transcripts…
+            Reading local task evidenceâ€¦
           </Text>
-        ) : environments.length === 0 ? (
+        ) : taskAnalytics.environments.length === 0 ? (
           <Text className="py-16 text-center text-base text-foreground-muted">
-            Connect an environment to see usage.
+            Connect an environment to see task analytics.
           </Text>
         ) : (
-          <>
-            <ChartCard
-              merged={merged}
-              days={days}
-              metric={metric}
-              onMetricChange={setMetric}
-              sinceDay={window.sinceDay}
-              untilDay={window.untilDay}
-            />
-            <ProviderSection merged={merged} metric={metric} />
-            <TotalsSection merged={merged} />
-            <ModelsSection merged={merged} />
-          </>
+          <TaskAnalyticsSections
+            view={view}
+            analytics={taskAnalytics.merged}
+            notices={[
+              ...taskAnalytics.environments
+                .filter((environment) => environment.error !== null)
+                .map((environment) => `${environment.label} could not report task analytics.`),
+              ...taskAnalytics.merged.duplicateSources.map(
+                (source) => `Counted one local task store once: ${source}.`,
+              ),
+            ]}
+          />
         )}
       </ScrollView>
     </View>

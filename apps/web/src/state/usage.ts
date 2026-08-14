@@ -9,7 +9,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   USAGE_CONTRACT_VERSION,
+  TASK_ANALYTICS_CONTRACT_VERSION,
   type EnvironmentId,
+  type TaskAnalyticsSummary,
+  type TaskAnalyticsSummaryInput,
   type UsageSummary,
   type UsageSummaryInput,
 } from "@t3tools/contracts";
@@ -18,6 +21,11 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { mergeUsage, type EnvironmentUsage, type MergedUsage } from "@t3tools/shared/usageMerge";
+import {
+  mergeTaskAnalytics,
+  type EnvironmentTaskAnalytics,
+  type MergedTaskAnalytics,
+} from "@t3tools/shared/taskAnalyticsMerge";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
@@ -116,6 +124,91 @@ export function useUsage(input: UsageSummaryInput): UsageView {
     (environment) => environment.summary === null && environment.error === null,
   ).length;
 
+  return {
+    merged,
+    environments,
+    isPending: answeredCount === 0 && stillReporting > 0,
+    isPartial: answeredCount > 0 && stillReporting > 0,
+    refresh,
+  };
+}
+
+export interface EnvironmentTaskAnalyticsStatus {
+  readonly environmentId: EnvironmentId;
+  readonly label: string;
+  readonly isPending: boolean;
+  readonly error: string | null;
+  readonly summary: TaskAnalyticsSummary | null;
+}
+
+const taskAnalyticsByWindowAtom = Atom.family((windowKey: string) =>
+  Atom.make((get): readonly EnvironmentTaskAnalyticsStatus[] => {
+    const input = JSON.parse(windowKey) as TaskAnalyticsSummaryInput;
+    const presentations = get(environmentPresentations.presentationsAtom);
+    const statuses: EnvironmentTaskAnalyticsStatus[] = [];
+    for (const [environmentId, presentation] of presentations) {
+      const result = get(serverEnvironment.taskAnalytics({ environmentId, input }));
+      statuses.push({
+        environmentId,
+        label: presentation.entry.target.label,
+        isPending: result.waiting,
+        error:
+          result._tag === "Failure" ? "This environment could not report task analytics." : null,
+        summary: Option.getOrNull(AsyncResult.value(result)),
+      });
+    }
+    return statuses;
+  }).pipe(Atom.withLabel(`web-task-analytics:window:${windowKey}`)),
+);
+
+export interface TaskAnalyticsView {
+  readonly merged: MergedTaskAnalytics;
+  readonly environments: readonly EnvironmentTaskAnalyticsStatus[];
+  readonly isPending: boolean;
+  readonly isPartial: boolean;
+  readonly refresh: () => void;
+}
+
+export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalyticsView {
+  const windowKey = useMemo(
+    () =>
+      JSON.stringify({
+        sinceDay: input.sinceDay,
+        untilDay: input.untilDay,
+        timeZone: input.timeZone,
+      }),
+    [input.sinceDay, input.untilDay, input.timeZone],
+  );
+  const environments = useAtomValue(taskAnalyticsByWindowAtom(windowKey));
+
+  const refresh = useCallback(() => {
+    const input = JSON.parse(windowKey) as TaskAnalyticsSummaryInput;
+    for (const environment of environments) {
+      appAtomRegistry.refresh(
+        serverEnvironment.taskAnalytics({ environmentId: environment.environmentId, input }),
+      );
+    }
+  }, [environments, windowKey]);
+
+  const merged = useMemo(() => {
+    const answered: EnvironmentTaskAnalytics[] = environments.flatMap((environment) =>
+      environment.summary === null
+        ? []
+        : [
+            {
+              environmentId: environment.environmentId,
+              label: environment.label,
+              summary: environment.summary,
+            },
+          ],
+    );
+    return mergeTaskAnalytics(answered, TASK_ANALYTICS_CONTRACT_VERSION);
+  }, [environments]);
+
+  const answeredCount = environments.filter((environment) => environment.summary !== null).length;
+  const stillReporting = environments.filter(
+    (environment) => environment.summary === null && environment.error === null,
+  ).length;
   return {
     merged,
     environments,

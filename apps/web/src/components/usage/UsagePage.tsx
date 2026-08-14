@@ -4,7 +4,7 @@ import { ArrowLeftIcon, CheckIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
-import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import {
   enumerateDays,
   formatCount,
@@ -16,6 +16,7 @@ import {
 } from "@t3tools/shared/usageFormat";
 import { ScrollArea } from "../ui/scroll-area";
 import { UsageChartLegend, UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
+import { TaskAnalyticsPanel, type UsageAnalyticsView } from "./TaskAnalyticsPanel";
 import { PROVIDER_COLOR, PROVIDER_LABEL, PROVIDER_MARK, PROVIDER_ORDER } from "./usageProviders";
 
 const WINDOW_OPTIONS = [
@@ -28,6 +29,7 @@ export function UsagePage() {
   const [windowDays, setWindowDays] = useState<number>(30);
   const [metric, setMetric] = useState<UsageChartMetric>("cost");
   const [breakdown, setBreakdown] = useState<"model" | "day">("model");
+  const [view, setView] = useState<"overview" | UsageAnalyticsView>("overview");
   const canGoBack = useCanGoBack();
   const navigate = useNavigate();
   const router = useRouter();
@@ -36,6 +38,7 @@ export function UsagePage() {
   // shift the range and refetch every environment.
   const window = useMemo(() => makeWindow(windowDays), [windowDays]);
   const { merged, environments, isPending, isPartial, refresh } = useUsage(window);
+  const taskAnalytics = useTaskAnalytics(window);
 
   // Hold the content until every environment is terminal. Rendering merged
   // totals while devices are still answering makes every number on the page
@@ -108,8 +111,11 @@ export function UsagePage() {
             </div>
             <button
               type="button"
-              onClick={refresh}
-              aria-label="Refresh usage"
+              onClick={() => {
+                refresh();
+                taskAnalytics.refresh();
+              }}
+              aria-label="Refresh analytics"
               className="cursor-pointer rounded-md border border-border p-2 text-muted-foreground hover:text-foreground"
             >
               <RefreshCwIcon className="size-3.5" />
@@ -117,248 +123,287 @@ export function UsagePage() {
           </div>
         </header>
 
-        {settling ? (
-          <>
-            {environments.length > 1 ? <UsageDeviceStrip environments={environments} /> : null}
-            <UsageSkeleton />
-          </>
-        ) : (
-          <>
-            <UsageCoverageNotice
-              environments={environments}
-              duplicateSources={merged.duplicateSources}
-              staleEnvironments={merged.staleEnvironments}
-            />
+        <nav className="flex gap-5 border-b border-border" aria-label="Usage analytics views">
+          {(["overview", "tasks", "router"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setView(option)}
+              className={cn(
+                "relative cursor-pointer pb-2 text-xs tracking-wide uppercase",
+                view === option
+                  ? "text-foreground after:absolute after:inset-x-0 after:bottom-[-1px] after:h-px after:bg-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </nav>
 
-            {/* Cost first: the financial answer, then the provider split. */}
-            <section className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-              {/* The summary follows the chart toggle, so the headline and the
+        {view === "overview" ? (
+          settling ? (
+            <>
+              {environments.length > 1 ? <UsageDeviceStrip environments={environments} /> : null}
+              <UsageSkeleton />
+            </>
+          ) : (
+            <>
+              <UsageCoverageNotice
+                environments={environments}
+                duplicateSources={merged.duplicateSources}
+                staleEnvironments={merged.staleEnvironments}
+              />
+
+              {/* Cost first: the financial answer, then the provider split. */}
+              <section className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+                {/* The summary follows the chart toggle, so the headline and the
                   series are always reading the same units. */}
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs tracking-wide text-muted-foreground uppercase">
-                    {metric === "cost" ? "Raw token cost" : "Processed tokens"}
-                  </span>
-                  <span className="text-4xl font-semibold text-foreground tabular-nums">
-                    {metric === "cost"
-                      ? `${formatUsd(merged.costUsd)}*`
-                      : formatTokens(merged.totalTokens)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {metric === "cost"
-                      ? "* if billed at full API rate"
-                      : `Input, cache reads and output across ${formatCount(merged.sessions)} sessions.`}
-                  </span>
+                <div className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs tracking-wide text-muted-foreground uppercase">
+                      {metric === "cost" ? "Raw token cost" : "Processed tokens"}
+                    </span>
+                    <span className="text-4xl font-semibold text-foreground tabular-nums">
+                      {metric === "cost"
+                        ? `${formatUsd(merged.costUsd)}*`
+                        : formatTokens(merged.totalTokens)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {metric === "cost"
+                        ? "* if billed at full API rate"
+                        : `Input, cache reads and output across ${formatCount(merged.sessions)} sessions.`}
+                    </span>
+                  </div>
+
+                  {orderedProviders.map((provider) => {
+                    const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+                    return (
+                      <div key={provider.provider} className="flex flex-col gap-1.5">
+                        <div className="flex items-baseline justify-between">
+                          <span className="flex items-center gap-2 text-sm text-foreground">
+                            <ProviderMark provider={provider.provider} className="size-4" />
+                            {PROVIDER_LABEL[provider.provider]}
+                          </span>
+                          <span className="text-sm text-foreground tabular-nums">
+                            {metric === "cost"
+                              ? formatUsd(provider.costUsd)
+                              : formatTokens(provider.totalTokens)}
+                          </span>
+                        </div>
+                        <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full"
+                            style={{
+                              width: `${(share * 100).toFixed(1)}%`,
+                              backgroundColor: PROVIDER_COLOR[provider.provider],
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {metric === "cost"
+                            ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
+                            : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {orderedProviders.map((provider) => {
-                  const share = metric === "cost" ? provider.costShare : provider.tokenShare;
-                  return (
-                    <div key={provider.provider} className="flex flex-col gap-1.5">
-                      <div className="flex items-baseline justify-between">
-                        <span className="flex items-center gap-2 text-sm text-foreground">
-                          <ProviderMark provider={provider.provider} className="size-4" />
-                          {PROVIDER_LABEL[provider.provider]}
-                        </span>
-                        <span className="text-sm text-foreground tabular-nums">
-                          {metric === "cost"
-                            ? formatUsd(provider.costUsd)
-                            : formatTokens(provider.totalTokens)}
-                        </span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-sm font-medium text-foreground">
+                      Daily {metric === "tokens" ? "processed tokens" : "cost"}
+                    </h2>
+                    <div className="flex items-center gap-4">
+                      <div className="flex overflow-hidden rounded-md border border-border">
+                        {(["cost", "tokens"] as const).map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => setMetric(option)}
+                            className={cn(
+                              "cursor-pointer px-2.5 py-1 text-[10px] tracking-wide uppercase",
+                              option === metric
+                                ? "bg-muted text-foreground"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {option}
+                          </button>
+                        ))}
                       </div>
-                      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full"
-                          style={{
-                            width: `${(share * 100).toFixed(1)}%`,
-                            backgroundColor: PROVIDER_COLOR[provider.provider],
-                          }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {metric === "cost"
-                          ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                          : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
-                      </span>
+                      <UsageChartLegend />
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                  <UsageProviderChart days={days} daily={merged.daily} metric={metric} />
+                </div>
+              </section>
 
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-sm font-medium text-foreground">
-                    Daily {metric === "tokens" ? "processed tokens" : "cost"}
-                  </h2>
-                  <div className="flex items-center gap-4">
-                    <div className="flex overflow-hidden rounded-md border border-border">
-                      {(["cost", "tokens"] as const).map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setMetric(option)}
-                          className={cn(
-                            "cursor-pointer px-2.5 py-1 text-[10px] tracking-wide uppercase",
-                            option === metric
-                              ? "bg-muted text-foreground"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                    <UsageChartLegend />
+              <section className="grid grid-cols-2 gap-px border-y border-border bg-border md:grid-cols-5">
+                <Metric
+                  label="Processed tokens"
+                  value={formatTokens(merged.totalTokens)}
+                  detail={`${formatTokens(dailyAverage)} per active day`}
+                />
+                <Metric
+                  label="Cached input"
+                  value={formatTokens(merged.cachedInputTokens)}
+                  detail={`${formatPercent(cachedShare)} of observed input`}
+                />
+                <Metric
+                  label="Uncached input"
+                  value={formatTokens(merged.uncachedInputTokens)}
+                  detail={`${formatTokens(merged.cacheCreationTokens)} cache writes`}
+                />
+                <Metric
+                  label="Output"
+                  value={formatTokens(merged.outputTokens)}
+                  detail={`includes ${formatTokens(merged.reasoningTokens)} reasoning`}
+                />
+                <Metric
+                  label="Cache savings"
+                  value={formatUsd(merged.costQuality.cacheSavingsUsd)}
+                  detail={
+                    merged.costUsd > 0
+                      ? `${(merged.costQuality.cacheSavingsUsd / merged.costUsd).toFixed(1)}x the raw token cost`
+                      : "vs full input rates"
+                  }
+                />
+              </section>
+
+              <section className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+                  <div className="flex overflow-hidden rounded-md border border-border">
+                    {(["model", "day"] as const).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setBreakdown(option)}
+                        className={cn(
+                          "cursor-pointer px-2.5 py-1 text-[10px] tracking-wide uppercase",
+                          option === breakdown
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {option}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <UsageProviderChart days={days} daily={merged.daily} metric={metric} />
-              </div>
-            </section>
 
-            <section className="grid grid-cols-2 gap-px border-y border-border bg-border md:grid-cols-5">
-              <Metric
-                label="Processed tokens"
-                value={formatTokens(merged.totalTokens)}
-                detail={`${formatTokens(dailyAverage)} per active day`}
-              />
-              <Metric
-                label="Cached input"
-                value={formatTokens(merged.cachedInputTokens)}
-                detail={`${formatPercent(cachedShare)} of observed input`}
-              />
-              <Metric
-                label="Uncached input"
-                value={formatTokens(merged.uncachedInputTokens)}
-                detail={`${formatTokens(merged.cacheCreationTokens)} cache writes`}
-              />
-              <Metric
-                label="Output"
-                value={formatTokens(merged.outputTokens)}
-                detail={`includes ${formatTokens(merged.reasoningTokens)} reasoning`}
-              />
-              <Metric
-                label="Cache savings"
-                value={formatUsd(merged.costQuality.cacheSavingsUsd)}
-                detail={
-                  merged.costUsd > 0
-                    ? `${(merged.costQuality.cacheSavingsUsd / merged.costUsd).toFixed(1)}x the raw token cost`
-                    : "vs full input rates"
-                }
-              />
-            </section>
-
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
-                <div className="flex overflow-hidden rounded-md border border-border">
-                  {(["model", "day"] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setBreakdown(option)}
-                      className={cn(
-                        "cursor-pointer px-2.5 py-1 text-[10px] tracking-wide uppercase",
-                        option === breakdown
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {breakdown === "model" ? (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                      <th className="py-2 font-normal">Model</th>
-                      <th className="py-2 text-right font-normal">Cost</th>
-                      <th className="py-2 text-right font-normal">Share</th>
-                      <th className="py-2 text-right font-normal">Tokens</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {merged.models.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                          No activity in this window.
-                        </td>
+                {breakdown === "model" ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="py-2 font-normal">Model</th>
+                        <th className="py-2 text-right font-normal">Cost</th>
+                        <th className="py-2 text-right font-normal">Share</th>
+                        <th className="py-2 text-right font-normal">Tokens</th>
                       </tr>
-                    ) : (
-                      merged.models.map((model) => (
-                        <tr
-                          key={`${model.provider}:${model.model}`}
-                          className="border-b border-border/50"
-                        >
-                          <td className="py-2 text-foreground">
-                            <span className="flex items-center gap-2">
-                              <ProviderMark provider={model.provider} className="size-3.5" />
-                              {model.model}
-                            </span>
-                          </td>
-                          <td className="py-2 text-right text-foreground tabular-nums">
-                            {formatUsd(model.costUsd)}
-                          </td>
-                          <td className="py-2 text-right text-muted-foreground tabular-nums">
-                            {formatPercent(model.costShare)}
-                          </td>
-                          <td className="py-2 text-right text-muted-foreground tabular-nums">
-                            {formatTokens(model.totalTokens)}
+                    </thead>
+                    <tbody>
+                      {merged.models.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-6 text-center text-muted-foreground">
+                            No activity in this window.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                      <th className="py-2 font-normal">Day</th>
-                      {PROVIDER_ORDER.map((provider) => (
-                        <th key={provider} className="py-2 text-right font-normal">
-                          {PROVIDER_LABEL[provider]}
-                        </th>
-                      ))}
-                      <th className="py-2 text-right font-normal">Total</th>
-                      <th className="py-2 text-right font-normal">Tokens</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentDays.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-6 text-center text-muted-foreground">
-                          No activity in this window.
-                        </td>
-                      </tr>
-                    ) : (
-                      recentDays.map((day) => (
-                        <tr key={day.day} className="border-b border-border/50">
-                          <td className="py-2 text-foreground">{formatDayShort(day.day)}</td>
-                          {PROVIDER_ORDER.map((provider) => (
-                            <td
-                              key={provider}
-                              className="py-2 text-right text-muted-foreground tabular-nums"
-                            >
-                              {formatUsd(day.byProvider.get(provider)?.costUsd ?? 0)}
+                      ) : (
+                        merged.models.map((model) => (
+                          <tr
+                            key={`${model.provider}:${model.model}`}
+                            className="border-b border-border/50"
+                          >
+                            <td className="py-2 text-foreground">
+                              <span className="flex items-center gap-2">
+                                <ProviderMark provider={model.provider} className="size-3.5" />
+                                {model.model}
+                              </span>
                             </td>
-                          ))}
-                          <td className="py-2 text-right text-foreground tabular-nums">
-                            {formatUsd(day.costUsd)}
-                          </td>
-                          <td className="py-2 text-right text-muted-foreground tabular-nums">
-                            {formatTokens(day.totalTokens)}
+                            <td className="py-2 text-right text-foreground tabular-nums">
+                              {formatUsd(model.costUsd)}
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground tabular-nums">
+                              {formatPercent(model.costShare)}
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground tabular-nums">
+                              {formatTokens(model.totalTokens)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="py-2 font-normal">Day</th>
+                        {PROVIDER_ORDER.map((provider) => (
+                          <th key={provider} className="py-2 text-right font-normal">
+                            {PROVIDER_LABEL[provider]}
+                          </th>
+                        ))}
+                        <th className="py-2 text-right font-normal">Total</th>
+                        <th className="py-2 text-right font-normal">Tokens</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentDays.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                            No activity in this window.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </section>
-          </>
+                      ) : (
+                        recentDays.map((day) => (
+                          <tr key={day.day} className="border-b border-border/50">
+                            <td className="py-2 text-foreground">{formatDayShort(day.day)}</td>
+                            {PROVIDER_ORDER.map((provider) => (
+                              <td
+                                key={provider}
+                                className="py-2 text-right text-muted-foreground tabular-nums"
+                              >
+                                {formatUsd(day.byProvider.get(provider)?.costUsd ?? 0)}
+                              </td>
+                            ))}
+                            <td className="py-2 text-right text-foreground tabular-nums">
+                              {formatUsd(day.costUsd)}
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground tabular-nums">
+                              {formatTokens(day.totalTokens)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            </>
+          )
+        ) : taskAnalytics.isPending || taskAnalytics.isPartial ? (
+          <UsageSkeleton />
+        ) : (
+          <TaskAnalyticsPanel
+            view={view}
+            analytics={taskAnalytics.merged}
+            notices={[
+              ...taskAnalytics.environments
+                .filter((environment) => environment.error !== null)
+                .map((environment) => `${environment.label} could not report task analytics.`),
+              ...taskAnalytics.merged.staleEnvironments.map(
+                (environmentId) =>
+                  `${taskAnalytics.environments.find((entry) => entry.environmentId === environmentId)?.label ?? environmentId} runs an incompatible analytics contract.`,
+              ),
+              ...taskAnalytics.merged.duplicateSources.map(
+                (source) => `Counted one local task store once: ${source}.`,
+              ),
+            ]}
+          />
         )}
       </div>
     </ScrollArea>

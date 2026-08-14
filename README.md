@@ -50,7 +50,8 @@ runtime bottlenecks move behind small Rust components.
   signals plus a shadow routing decision. The decision records provider eligibility and execution
   needs, but its contract cannot override the provider or model selected by the user. Neither record
   stores prompt excerpts or repository paths. A local task-run ledger now joins this bounded evidence
-  to factual provider terminal states without calling completion “success.”
+  to factual provider terminal states without calling completion “success,” and the Usage page exposes
+  compact Tasks and Router views across connected environments.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 

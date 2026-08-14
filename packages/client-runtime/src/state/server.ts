@@ -802,6 +802,11 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
     }),
+    taskAnalytics: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:task-analytics",
+      tag: WS_METHODS.serverGetTaskAnalytics,
+      staleTimeMs: 15_000,
+    }),
     agentCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:agent-catalog",
       tag: WS_METHODS.serverGetAgentCatalog,

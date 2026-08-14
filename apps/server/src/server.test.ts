@@ -150,6 +150,7 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
+import * as TaskAnalyticsService from "./taskAnalytics/TaskAnalyticsService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -828,6 +829,24 @@ const buildAppUnderTest = (options?: {
     const appLayer = servedRoutesLayer.pipe(
       Layer.provide(resourceTelemetryLayer),
       Layer.provide(UsageService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          TaskAnalyticsService.TaskAnalyticsService,
+          TaskAnalyticsService.TaskAnalyticsService.of({
+            readSummary: (input) =>
+              Effect.succeed({
+                contractVersion: 1,
+                readAt: "2026-08-12T00:00:00.000Z",
+                sourceFingerprint: "server-test-task-analytics",
+                timeZone: input.timeZone,
+                sinceDay: input.sinceDay,
+                untilDay: input.untilDay,
+                records: [],
+                truncated: false,
+              }),
+          }),
+        ),
+      ),
       Layer.provide(
         Layer.mock(BrowserTraceCollector.BrowserTraceCollector)({
           record: () => Effect.void,

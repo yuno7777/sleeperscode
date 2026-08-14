@@ -10,6 +10,7 @@ import { toPersistenceDecodeError, toPersistenceSqlError } from "../Errors.ts";
 import {
   BindProjectionTaskRunInput,
   ListProjectionTaskRunsInput,
+  ListProjectionTaskRunsWindowInput,
   ProjectionPendingTaskRun,
   ProjectionTaskRun,
   ProjectionTaskRunRepository,
@@ -107,6 +108,26 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
     `,
   });
 
+  const listWindowRows = SqlSchema.findAll({
+    Request: ListProjectionTaskRunsWindowInput,
+    Result: ProjectionTaskRunDbRow,
+    execute: ({ since, until, limit }) => sql`
+      SELECT
+        thread_id AS "threadId",
+        turn_id AS "turnId",
+        message_id AS "messageId",
+        task_profile_json AS "taskProfile",
+        router_decision_json AS "routerDecision",
+        outcome_json AS "outcome",
+        requested_at AS "requestedAt",
+        observed_at AS "observedAt"
+      FROM projection_task_runs
+      WHERE requested_at >= ${since} AND requested_at < ${until}
+      ORDER BY requested_at DESC, row_id DESC
+      LIMIT ${limit}
+    `,
+  });
+
   const replacePending: ProjectionTaskRunRepositoryShape["replacePending"] = (row) =>
     sql
       .withTransaction(
@@ -142,11 +163,23 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
       Effect.map((rows) => rows as ReadonlyArray<ProjectionTaskRun>),
     );
 
+  const listWindow: ProjectionTaskRunRepositoryShape["listWindow"] = (input) =>
+    listWindowRows(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProjectionTaskRunRepository.listWindow:query",
+          "ProjectionTaskRunRepository.listWindow:decodeRows",
+        ),
+      ),
+      Effect.map((rows) => rows as ReadonlyArray<ProjectionTaskRun>),
+    );
+
   return {
     replacePending,
     bindPendingTurn,
     recordOutcome,
     listByThreadId,
+    listWindow,
   } satisfies ProjectionTaskRunRepositoryShape;
 });
 

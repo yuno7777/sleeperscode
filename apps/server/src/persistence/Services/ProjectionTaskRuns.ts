@@ -59,6 +59,13 @@ export const ListProjectionTaskRunsInput = Schema.Struct({
 });
 export type ListProjectionTaskRunsInput = typeof ListProjectionTaskRunsInput.Type;
 
+export const ListProjectionTaskRunsWindowInput = Schema.Struct({
+  since: IsoDateTime,
+  until: IsoDateTime,
+  limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1_000 })),
+});
+export type ListProjectionTaskRunsWindowInput = typeof ListProjectionTaskRunsWindowInput.Type;
+
 export interface ProjectionTaskRunRepositoryShape {
   readonly replacePending: (
     row: ProjectionPendingTaskRun,
@@ -71,6 +78,9 @@ export interface ProjectionTaskRunRepositoryShape {
   ) => Effect.Effect<void, ProjectionRepositoryError>;
   readonly listByThreadId: (
     input: ListProjectionTaskRunsInput,
+  ) => Effect.Effect<ReadonlyArray<ProjectionTaskRun>, ProjectionRepositoryError>;
+  readonly listWindow: (
+    input: ListProjectionTaskRunsWindowInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionTaskRun>, ProjectionRepositoryError>;
 }
 

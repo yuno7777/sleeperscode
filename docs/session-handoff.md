@@ -76,6 +76,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - A durable local task-run projection now binds each normal turn's task profile and shadow decision
   to its provider turn id and terminal state. It stores no prompt, path, provider error text, usage
   payload, or inferred success/quality label; no router behavior consumes it yet.
+- A bounded, read-only task analytics RPC now exposes that content-free evidence to web/desktop and
+  mobile. The Usage page has Overview, Tasks, and Router views, deduplicates identical local stores,
+  and labels completion as lifecycle rather than quality; routing remains shadow-only.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -128,6 +131,8 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - Task-outcome contracts, migration, repository roundtrip, projection integration, decider, and
   provider-ingestion regressions pass their focused suites. Contracts, shared, client-runtime,
   server, web, and mobile typechecks pass; only the existing Effect suggestions remain.
+- Task/router analytics contracts, merge, zoned-window repository/service, and cross-environment
+  deduplication have focused coverage. Browser/device visual validation remains a release gate.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.

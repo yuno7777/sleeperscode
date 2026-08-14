@@ -46,6 +46,15 @@ content-free terminal observation. It does not duplicate:
 The source conversation and checkpoint data continue to live in their existing stores. Usage and
 cost remain in the usage ledger until a tested attribution join exists.
 
+## Read surface
+
+`server.getTaskAnalytics` exposes at most 200 newest records per environment and reporting window.
+The payload contains only compact profile categories, shadow-decision reason codes, provider identity,
+and terminal state. It uses an opaque local-store fingerprint so clients can avoid double-counting the
+same database through multiple connections. Web/desktop and mobile merge those bounded summaries into
+Tasks and Router views on the Usage page. The views deliberately label terminal state as lifecycle
+evidence and shadow decisions as unapplied.
+
 ## Current limits
 
 - Only a normal turn-start-to-running transition can produce a fully joined task-run row. A late

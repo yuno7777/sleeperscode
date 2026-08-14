@@ -125,6 +125,14 @@ layer("ProjectionTaskRunRepository", (it) => {
         assert.equal(row.outcome?.terminalState, "completed");
         assert.equal(row.observedAt, observedAt);
       }
+
+      const latest = yield* repository.listWindow({
+        since: "2026-08-12T00:00:00.000Z",
+        until: "2026-08-13T00:00:00.000Z",
+        limit: 1,
+      });
+      assert.equal(latest.length, 1);
+      assert.equal(latest[0]?.messageId, "message-task-run-second");
     }),
   );
 });
