@@ -493,13 +493,43 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    discoverLocalModels: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({
+        title: "Discover local models",
+        description:
+          "Expose models from local Ollama and LM Studio runtimes through this OpenCode worker.",
+        providerSettingsForm: {
+          control: "switch",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+    localModelEndpoint: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Local model endpoint",
+        description:
+          "Optional OpenAI-compatible endpoint on this host. Only localhost addresses are accepted.",
+        providerSettingsForm: {
+          placeholder: "http://127.0.0.1:8080/v1",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "serverUrl", "serverPassword"],
+    order: [
+      "binaryPath",
+      "serverUrl",
+      "serverPassword",
+      "discoverLocalModels",
+      "localModelEndpoint",
+    ],
   },
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
@@ -745,6 +775,8 @@ const OpenCodeSettingsPatch = Schema.Struct({
   binaryPath: Schema.optionalKey(TrimmedString),
   serverUrl: Schema.optionalKey(TrimmedString),
   serverPassword: Schema.optionalKey(TrimmedString),
+  discoverLocalModels: Schema.optionalKey(Schema.Boolean),
+  localModelEndpoint: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 

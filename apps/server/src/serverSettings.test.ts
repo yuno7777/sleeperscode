@@ -504,6 +504,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             binaryPath: "  /opt/homebrew/bin/opencode  ",
             serverUrl: "  http://127.0.0.1:4096  ",
             serverPassword: "  secret-password  ",
+            localModelEndpoint: "  http://127.0.0.1:8080/v1  ",
           },
         },
       });
@@ -528,6 +529,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         binaryPath: "/opt/homebrew/bin/opencode",
         serverUrl: "http://127.0.0.1:4096",
         serverPassword: "secret-password",
+        discoverLocalModels: true,
+        localModelEndpoint: "http://127.0.0.1:8080/v1",
         customModels: [],
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),

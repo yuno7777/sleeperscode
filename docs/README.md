@@ -14,6 +14,7 @@
 - [Background service (Linux)](./user/background-service.md)
 - Providers: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md) ·
   [Antigravity](./user/providers-antigravity.md)
+- [Local coding models through OpenCode](./user/local-models.md)
 
 Mobile app: [apps/mobile/README.md](../apps/mobile/README.md)
 

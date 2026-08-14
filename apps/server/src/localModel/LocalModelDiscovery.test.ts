@@ -101,9 +101,30 @@ describe("LocalModelDiscovery", () => {
         const discovery = yield* LocalModelDiscovery.LocalModelDiscovery;
         yield* discovery.probe({
           runtime: "openai-compatible",
-          baseUrl: "http://192.168.1.10:8000/v1/",
+          baseUrl: "http://127.0.0.1:8000/v1/",
         });
-        expect(requested).toEqual(["http://192.168.1.10:8000/v1/models"]);
+        expect(requested).toEqual(["http://127.0.0.1:8000/v1/models"]);
+      }),
+      stubHttp(() => json({ data: [] }), requested),
+    );
+  });
+
+  it.effect("rejects a non-loopback model endpoint before creating a request", () => {
+    const requested: Array<string> = [];
+    return run(
+      Effect.gen(function* () {
+        const discovery = yield* LocalModelDiscovery.LocalModelDiscovery;
+        const result = yield* discovery.probe({
+          runtime: "openai-compatible",
+          baseUrl: "http://192.168.1.10:8000/v1",
+        });
+        expect(result).toEqual({
+          status: "unreachable",
+          runtime: "openai-compatible",
+          baseUrl: "http://192.168.1.10:8000/v1",
+          reason: "non_loopback_url",
+        });
+        expect(requested).toEqual([]);
       }),
       stubHttp(() => json({ data: [] }), requested),
     );

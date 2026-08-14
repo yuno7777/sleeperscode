@@ -52,6 +52,15 @@ describe("ProviderSettingsForm helpers", () => {
       description: "Stored in plain text on disk.",
       control: "password",
     });
+
+    const localDiscovery = deriveProviderSettingsFields(opencode!).find(
+      (field) => field.key === "discoverLocalModels",
+    );
+    expect(localDiscovery).toMatchObject({
+      label: "Discover local models",
+      control: "switch",
+      defaultBooleanValue: true,
+    });
   });
 
   it("preserves unknown config keys while omitting empty configurable fields", () => {

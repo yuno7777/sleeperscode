@@ -37,6 +37,10 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
+export function openCodeInlineConfigContent(environment: NodeJS.ProcessEnv | undefined): string {
+  return environment?.OPENCODE_CONFIG_CONTENT ?? OPENCODE_EMPTY_CONFIG_CONTENT;
+}
+
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
 const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 30_000;
 const DEFAULT_HOSTNAME = "127.0.0.1";
@@ -461,7 +465,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
             shell: spawnCommand.shell,
             env: {
               ...input.environment,
-              OPENCODE_CONFIG_CONTENT: OPENCODE_EMPTY_CONFIG_CONTENT,
+              OPENCODE_CONFIG_CONTENT: openCodeInlineConfigContent(input.environment),
             },
             extendEnv: input.environment === undefined,
           }),

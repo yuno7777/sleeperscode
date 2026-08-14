@@ -49,6 +49,7 @@ export type LocalModelProbeResult =
       readonly reason:
         | "no_base_url"
         | "invalid_base_url"
+        | "non_loopback_url"
         | "request_failed"
         | "bad_status"
         | "unreadable_payload";
@@ -61,13 +62,23 @@ export class LocalModelDiscovery extends Context.Service<
   }
 >()("t3/localModel/LocalModelDiscovery") {}
 
-const normalizeHttpBaseUrl = (value: string): string | undefined => {
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+const normalizeHttpBaseUrl = (
+  value: string,
+): { readonly baseUrl: string } | { readonly reason: "invalid_base_url" | "non_loopback_url" } => {
   const baseUrl = value.trim();
   try {
-    const protocol = new URL(baseUrl).protocol;
-    return protocol === "http:" || protocol === "https:" ? baseUrl : undefined;
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { reason: "invalid_base_url" };
+    }
+    if (!LOOPBACK_HOSTNAMES.has(url.hostname.toLowerCase())) {
+      return { reason: "non_loopback_url" };
+    }
+    return { baseUrl };
   } catch {
-    return undefined;
+    return { reason: "invalid_base_url" };
   }
 };
 
@@ -86,15 +97,16 @@ export const make = Effect.gen(function* () {
         } as const;
       }
 
-      const baseUrl = normalizeHttpBaseUrl(configuredBaseUrl);
-      if (baseUrl === undefined) {
+      const normalized = normalizeHttpBaseUrl(configuredBaseUrl);
+      if ("reason" in normalized) {
         return {
           status: "unreachable",
           runtime: input.runtime,
           baseUrl: configuredBaseUrl.trim(),
-          reason: "invalid_base_url",
+          reason: normalized.reason,
         } as const;
       }
+      const { baseUrl } = normalized;
 
       const url = localModelListUrl(input.runtime, baseUrl);
       const unreachable = (reason: "request_failed" | "bad_status" | "unreadable_payload") =>

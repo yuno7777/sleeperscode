@@ -167,6 +167,25 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   });
 });
 
+describe("ServerSettings OpenCode local models", () => {
+  it("discovers local models by default and normalizes an optional endpoint", () => {
+    const defaults = decodeServerSettings({});
+    expect(defaults.providers.opencode.discoverLocalModels).toBe(true);
+    expect(defaults.providers.opencode.localModelEndpoint).toBe("");
+
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        opencode: {
+          discoverLocalModels: false,
+          localModelEndpoint: "  http://127.0.0.1:8080/v1  ",
+        },
+      },
+    });
+    expect(patch.providers?.opencode?.discoverLocalModels).toBe(false);
+    expect(patch.providers?.opencode?.localModelEndpoint).toBe("http://127.0.0.1:8080/v1");
+  });
+});
+
 describe("ServerSettings worktree defaults", () => {
   it("defaults start-from-origin on for legacy configs", () => {
     expect(decodeServerSettings({}).newWorktreesStartFromOrigin).toBe(true);

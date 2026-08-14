@@ -33,6 +33,9 @@ runtime bottlenecks move behind small Rust components.
 - **Six provider integrations** — Codex, Claude Code, Cursor, Grok Build, OpenCode, and Antigravity,
   using structured SDK, app-server, ACP, or documented stream-JSON transports. Antigravity sessions
   surface native web search and URL-reading tools when the CLI advertises them.
+- **Local coding workers** — managed OpenCode instances discover models served by Ollama and LM
+  Studio on the host, plus one optional OpenAI-compatible localhost endpoint. Those models use
+  OpenCode's file, command, and edit tools instead of being exposed as text-only chat endpoints.
 - **Web, desktop, and mobile control surfaces** — the existing remote-ready T3 architecture remains
   compatible across local, LAN, tailnet, relay, and WSL environments.
 - **Fast hybrid runtime** — a versioned Rust sidecar handles bounded processes and streaming ACP
@@ -197,6 +200,8 @@ Install and authenticate providers independently; proprietary CLIs are not bundl
 Every provider accepts a command name or absolute **server-side** binary path in Settings. This is
 deliberately not a browser file picker: remote and WSL environments must resolve files on the machine
 that actually runs the agent. See [provider executable discovery](./docs/provider-path-discovery.md).
+For host-local Ollama, LM Studio, and OpenAI-compatible models, see
+[local coding models](./docs/user/local-models.md).
 
 ## Architecture
 
@@ -222,6 +227,7 @@ Start with the [internal architecture overview](./docs/internals/overview.md), t
 - [Source control integrations](./docs/user/source-control.md)
 - [Agent Hub](./docs/user/agent-hub.md)
 - [Antigravity provider](./docs/user/providers-antigravity.md)
+- [Local coding models](./docs/user/local-models.md)
 - [Source build and verification](./docs/operations/source-build.md)
 - [Sleepers Code roadmap](./docs/sleepers-code-roadmap.md)
 - [Architecture decisions](./docs/decisions/)

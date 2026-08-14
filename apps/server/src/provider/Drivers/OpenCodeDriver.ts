@@ -24,6 +24,11 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { makeOpenCodeTextGeneration } from "../../textGeneration/OpenCodeTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
+import * as LocalModelDiscovery from "../../localModel/LocalModelDiscovery.ts";
+import {
+  shouldDiscoverOpenCodeLocalModels,
+  withOpenCodeLocalModels,
+} from "../../localModel/OpenCodeLocalModels.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeOpenCodeAdapter } from "../Layers/OpenCodeAdapter.ts";
@@ -119,7 +124,29 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
+      const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = shouldDiscoverOpenCodeLocalModels(effectiveConfig)
+        ? yield* Effect.gen(function* () {
+            const discovery = yield* LocalModelDiscovery.make;
+            const inputs: ReadonlyArray<LocalModelDiscovery.LocalModelProbeInput> = [
+              { runtime: "ollama" },
+              { runtime: "lmstudio" },
+              ...(effectiveConfig.localModelEndpoint.length > 0
+                ? ([
+                    {
+                      runtime: "openai-compatible",
+                      baseUrl: effectiveConfig.localModelEndpoint,
+                    },
+                  ] as const)
+                : []),
+            ];
+            const results = yield* Effect.all(inputs.map(discovery.probe), {
+              concurrency: "unbounded",
+            });
+            return withOpenCodeLocalModels(baseProcessEnv, results);
+          })
+        : baseProcessEnv;
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -130,7 +157,6 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         accentColor,
         continuationGroupKey: continuationIdentity.continuationKey,
       });
-      const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
       const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
