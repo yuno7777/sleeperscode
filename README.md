@@ -222,6 +222,7 @@ Start with the [internal architecture overview](./docs/internals/overview.md), t
 - [Source control integrations](./docs/user/source-control.md)
 - [Agent Hub](./docs/user/agent-hub.md)
 - [Antigravity provider](./docs/user/providers-antigravity.md)
+- [Source build and verification](./docs/operations/source-build.md)
 - [Sleepers Code roadmap](./docs/sleepers-code-roadmap.md)
 - [Architecture decisions](./docs/decisions/)
 
@@ -234,8 +235,9 @@ surfaces use the Sleepers Code identity; upstream merges remain intentional and 
 
 ## License
 
-[MIT](./LICENSE). The upstream copyright and license notice are preserved. Third-party provider CLIs
-retain their own licenses and terms and are not redistributed here.
+[MIT](./LICENSE). The upstream copyright and license notice is preserved in [NOTICE.md](./NOTICE.md).
+Third-party provider CLIs retain their own licenses and terms and are not redistributed here. Report
+vulnerabilities through the private process in [SECURITY.md](./SECURITY.md).
 
 Before contributing, read [CONTRIBUTING.md](./CONTRIBUTING.md). Keep changes focused, measured, and
 compatible with web, desktop, mobile, remote environments, and every affected provider.

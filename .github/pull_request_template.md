@@ -1,33 +1,38 @@
-<!--
-⚠️ READ BEFORE OPENING ⚠️
+## Problem
 
-We are not actively accepting contributions right now.
+<!-- What user-visible or engineering problem does this solve? Keep one concern per PR. -->
 
-You can still open a PR, but please do so knowing there is a high chance
-we may close it without merging it, or never review it.
+## Change
 
-- Small, focused PRs are strongly preferred. Bug fixes are most likely to be merged.
-- New features will most likely just annoy us.
-- 1,000+ line PRs with a bunch of new features will probably get you banned from the repo.
--->
+<!-- Explain the smallest model that makes the intended behavior unsurprising. -->
 
-## What Changed
+## Validation
 
-<!-- Describe the change clearly and keep scope tight. -->
+<!-- List exact tests, typechecks, lint, builds, benchmarks, or real-client checks that ran. -->
 
-## Why
+## Surfaces considered
 
-<!-- Explain the problem being solved and why this approach is the right one. -->
+- [ ] Web/local hosted client
+- [ ] Desktop/Electron
+- [ ] Mobile
+- [ ] Local, remote/relay, and tunnel connections
+- [ ] Every affected provider
+- [ ] Contracts, reverse actions, and documentation
+- [ ] Not applicable items are explained below
 
-## UI Changes
+## UI evidence
 
-<!-- If this PR changes UI, include clear before/after screenshots.
-     If the change involves motion or interaction, include a short video.
-     Delete this section if not applicable. -->
+<!-- Add before/after images for UI changes and a short recording for motion or timing. Delete if N/A. -->
+
+## Risk and rollback
+
+<!-- State known limitations, data or compatibility risks, and how the change can be reverted safely. -->
 
 ## Checklist
 
-- [ ] This PR is small and focused
-- [ ] I explained what changed and why
-- [ ] I included before/after screenshots for any UI changes
-- [ ] I included a video for animation/interaction changes
+- [ ] I read `AGENTS.md` and `CONTRIBUTING.md`
+- [ ] This PR contains one focused concern
+- [ ] I ran focused validation and reported only measured results
+- [ ] I did not commit secrets, tokens, transcripts, private repository content, or generated userdata
+- [ ] I preserved upstream and third-party notices
+- [ ] I named the model or harness used for agent-authored work

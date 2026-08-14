@@ -39,6 +39,9 @@ jobs:
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
 
+      - name: Audit open-source readiness
+        run: vp run audit:open-source
+
       - name: Check
         run: vp check
 

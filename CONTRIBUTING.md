@@ -1,65 +1,76 @@
-# Contributing
+# Contributing to Sleepers Code
 
-## Read This First
+Sleepers Code is an open-source fork of T3 Code. Contributions are welcome when they are focused,
+measurable, and preserve the product's web, desktop, mobile, remote, and provider compatibility.
 
-We are not actively accepting contributions right now.
+## Before you start
 
-You can still open an issue or PR, but please do so knowing there is a high chance we close it, defer it forever, or never look at it.
+1. Read [`AGENTS.md`](./AGENTS.md). It documents the architecture, safety boundaries, terminology,
+   and focused verification rules used in this repository.
+2. Search existing issues before filing a new one.
+3. Open an issue before starting a large feature, architectural change, new dependency, provider,
+   or wire-contract change. A discussion is not a promise that a pull request will be accepted.
+4. Report vulnerabilities through the private process in [`SECURITY.md`](./SECURITY.md), never in a
+   public issue, log dump, screenshot, or pull request.
 
-If that sounds annoying, that is because it is. This project is still early and we are trying to keep scope, quality, and direction under control.
+Small reliability, correctness, performance, accessibility, documentation, and test improvements are
+the easiest changes to review. Keep one concern per pull request.
 
-PRs are automatically labeled with a `vouch:*` trust status and a `size:*` diff size based on changed lines.
+## Development setup
 
-If you are an external contributor, expect `vouch:unvouched` until we explicitly add you to [.github/VOUCHED.td](.github/VOUCHED.td).
+Use Node 24 and Vite+. The full, platform-aware instructions and verified commands live in the
+[source-build runbook](./docs/operations/source-build.md).
 
-## What We Are Most Likely To Accept
+```bash
+git clone https://github.com/yuno7777/sleeperscode.git
+cd sleeperscode
+vp i
+vp run dev
+```
 
-Small, focused bug fixes.
+Development uses isolated repository-local `.t3` state. Never point a development server at another
+running installation's writable data directory.
 
-Small reliability fixes.
+## Making a change
 
-Small performance improvements.
+- Preserve compatibility-sensitive identifiers such as the `t3` CLI, URL schemes, environment
+  variables, app IDs, wire contracts, and existing data paths unless a reviewed migration exists.
+- Put wire changes in `packages/contracts`, shared client behavior in `packages/client-runtime`, and
+  provider-specific complexity at the provider adapter boundary.
+- Consider every applicable surface: web, desktop, mobile, local/remote connections, reverse actions,
+  documentation, and each affected provider.
+- Do not commit credentials, pairing tokens, provider transcripts, private repository content,
+  generated userdata, or release signing material.
+- Do not manufacture commits, tests, metrics, screenshots, or release evidence.
 
-Tightly scoped maintenance work that clearly improves the project without changing its direction.
+## Verification
 
-## What We Are Least Likely To Accept
+Run the smallest checks that prove the behavior you changed. Examples:
 
-Large PRs.
+```bash
+vp test run path/to/changed.test.ts
+vp lint path/to/changed.ts --report-unused-disable-directives
+tsgo --noEmit -p path/to/affected/tsconfig.json
+```
 
-Drive-by feature work.
+Backend behavior changes need focused tests. User-visible changes should include before/after images;
+motion or timing changes need a short recording. Do not claim a broad check passed when only a narrow
+test ran. Repository-wide checks belong to CI unless a maintainer explicitly requests them.
 
-Opinionated rewrites.
+Before opening a pull request, also run:
 
-Anything that expands product scope without us asking for it first.
+```bash
+vp run audit:open-source
+```
 
-If you open a 1,000+ line PR full of new features, we will probably close it quickly and remember that you ignored the clearly written instructions.
+## Pull requests
 
-## If You Still Want To Open A PR
+Use a conventional, plain-language title such as `fix(web): reconnect without losing the draft`.
+In the body, explain the problem, the chosen fix, validation performed, known limitations, and the
+model or harness used for agent-authored work. Keep unrelated changes separate.
 
-Keep it small.
+Pull requests receive automated size and contributor-trust labels. These labels help triage; they are
+not endorsements and do not replace source review.
 
-Explain exactly what changed.
-
-Explain exactly why the change should exist.
-
-Do not mix unrelated fixes together.
-
-If the PR makes anything resembling a UI change, include clear before/after images.
-
-If the change depends on motion, timing, transitions, or interaction details, include a short video.
-
-If we have to guess what changed, we are much less likely to review it.
-
-## Issues First
-
-If you are thinking about a non-trivial change, open an issue first.
-
-That still does not mean we will want the PR, but it gives you a chance to avoid wasting your time.
-
-## Be Realistic
-
-Opening a PR does not create an obligation on our side.
-
-We may close it. We may ignore it. We may ask you to shrink it. We may reimplement the idea ourselves later.
-
-If you are fine with that, proceed.
+By contributing, you agree that your contribution is licensed under this repository's
+[MIT License](./LICENSE). Preserve upstream and third-party notices.
