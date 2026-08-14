@@ -17,6 +17,13 @@ three different states:
 Use **Configure** on web or desktop to open provider settings when an integrated provider is not
 routable.
 
+Each provider also shows the time of its latest health snapshot, authentication evidence, available
+model count, slash-command count, enabled skills, and any version update reported by the provider.
+Warnings, driver failures, and failed updates keep the provider's current diagnostic message visible.
+These are current-snapshot facts, not an uptime history. Agent Hub does not claim rate-limit state,
+average startup time, account identity, or a last successful run until the environment can provide
+durable evidence for them.
+
 ## ACP registry
 
 The catalog is loaded by the connected environment, so compatibility reflects the machine that will

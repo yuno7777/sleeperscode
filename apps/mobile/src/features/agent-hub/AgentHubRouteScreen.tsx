@@ -7,6 +7,7 @@ import {
   catalogPrerequisiteStatuses,
   filterAgentCatalog,
   findAgentInstallation,
+  providerHealthFacts,
   providerReadinessLabel,
   type AgentHubCatalogFilter,
 } from "@t3tools/client-runtime/agent-hub";
@@ -472,6 +473,7 @@ function BuiltInProviderRow(props: {
   readonly divided: boolean;
 }) {
   const levels = deriveAgentStatusLevels(props.provider);
+  const health = providerHealthFacts(props.provider, Date.now());
   const readyColor = useThemeColor("--color-switch-active");
   const mutedColor = useThemeColor("--color-icon");
   return (
@@ -515,6 +517,59 @@ function BuiltInProviderRow(props: {
           mutedColor={mutedColor}
         />
       </View>
+      <View className="flex-row flex-wrap gap-x-5 gap-y-2">
+        <ProviderHealthFact label="Health" value={health.checkedLabel} />
+        <ProviderHealthFact label="Models" value={String(health.modelCount)} />
+        <ProviderHealthFact label="Commands" value={String(health.commandCount)} />
+        <ProviderHealthFact
+          label="Skills"
+          value={
+            health.enabledSkillCount === health.skillCount
+              ? String(health.skillCount)
+              : `${health.enabledSkillCount}/${health.skillCount} on`
+          }
+        />
+      </View>
+      <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
+        <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+          {health.authLabel}
+        </Text>
+        {health.updateLabel !== null ? (
+          <Text
+            className={
+              props.provider.updateState?.status === "failed"
+                ? "text-xs font-t3-medium text-rose-500 dark:text-rose-400"
+                : "text-xs font-t3-medium text-warning-foreground"
+            }
+          >
+            {health.updateLabel}
+          </Text>
+        ) : null}
+      </View>
+      {health.notice !== null ? (
+        <Text
+          className={
+            health.notice.tone === "error"
+              ? "text-xs leading-5 text-rose-500 dark:text-rose-400"
+              : "text-xs leading-5 text-warning-foreground"
+          }
+          numberOfLines={2}
+          accessibilityRole={health.notice.tone === "error" ? "alert" : undefined}
+        >
+          {health.notice.message}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function ProviderHealthFact(props: { readonly label: string; readonly value: string }) {
+  return (
+    <View className="min-w-[64px] gap-0.5">
+      <Text className="text-[10px] text-foreground-tertiary">{props.label}</Text>
+      <Text className="text-xs font-t3-medium tabular-nums text-foreground" numberOfLines={1}>
+        {props.value}
+      </Text>
     </View>
   );
 }
@@ -526,7 +581,11 @@ function ReadinessState(props: {
   readonly mutedColor: ColorValue;
 }) {
   return (
-    <View className="flex-row items-center gap-1.5">
+    <View
+      className="flex-row items-center gap-1.5"
+      accessible
+      accessibilityLabel={`${props.label}: ${props.ready ? "yes" : "no"}`}
+    >
       <SymbolView
         name={props.ready ? "checkmark.circle" : "exclamationmark.triangle"}
         size={13}

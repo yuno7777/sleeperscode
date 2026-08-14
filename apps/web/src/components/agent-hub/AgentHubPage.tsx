@@ -8,6 +8,7 @@ import {
   catalogPrerequisiteStatuses,
   filterAgentCatalog,
   findAgentInstallation,
+  providerHealthFacts,
   providerReadinessLabel,
   type AgentHubCatalogFilter,
 } from "@t3tools/client-runtime/agent-hub";
@@ -480,6 +481,7 @@ function BuiltInAgentCard({
   readonly onConfigure: () => void;
 }) {
   const levels = deriveAgentStatusLevels(provider);
+  const health = providerHealthFacts(provider, Date.now());
   const readiness = providerReadinessLabel(provider);
   const readinessVariant = levels.routable ? "success" : levels.integrated ? "info" : "warning";
 
@@ -495,6 +497,11 @@ function BuiltInAgentCard({
               {provider.displayName ?? provider.driver}
             </h3>
             <Badge variant={readinessVariant}>{readiness}</Badge>
+            {health.updateLabel !== null ? (
+              <Badge variant={provider.updateState?.status === "failed" ? "error" : "warning"}>
+                {health.updateLabel}
+              </Badge>
+            ) : null}
           </div>
           <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
             {provider.version ?? "Version unavailable"} · {provider.instanceId}
@@ -506,19 +513,62 @@ function BuiltInAgentCard({
         <ReadinessCell label="Integrated" ready={levels.integrated} />
         <ReadinessCell label="Routable" ready={levels.routable} />
       </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border/60 pt-3">
+        <ProviderHealthFact
+          label="Health check"
+          value={health.checkedLabel}
+          title={new Date(health.checkedAt).toLocaleString()}
+        />
+        <ProviderHealthFact label="Models" value={String(health.modelCount)} />
+        <ProviderHealthFact label="Commands" value={String(health.commandCount)} />
+        <ProviderHealthFact
+          label="Skills"
+          value={
+            health.enabledSkillCount === health.skillCount
+              ? String(health.skillCount)
+              : `${health.enabledSkillCount}/${health.skillCount} enabled`
+          }
+        />
+      </dl>
+      {health.notice !== null ? (
+        <p
+          role={health.notice.tone === "error" ? "alert" : "status"}
+          className={cn(
+            "line-clamp-2 text-[11px] leading-4",
+            health.notice.tone === "error"
+              ? "text-destructive-foreground"
+              : "text-warning-foreground",
+          )}
+        >
+          {health.notice.message}
+        </p>
+      ) : null}
       <div className="mt-auto flex items-center justify-between gap-3">
-        <span className="truncate text-[11px] text-muted-foreground">
-          {provider.auth.status === "authenticated"
-            ? (provider.auth.email ?? "Authenticated")
-            : provider.auth.status === "unknown"
-              ? "Auth unknown"
-              : "Authentication required"}
-        </span>
+        <span className="truncate text-[11px] text-muted-foreground">{health.authLabel}</span>
         <Button onClick={onConfigure} size="xs" variant="outline">
           Configure
         </Button>
       </div>
     </article>
+  );
+}
+
+function ProviderHealthFact({
+  label,
+  value,
+  title,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly title?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] text-muted-foreground">{label}</dt>
+      <dd className="truncate font-mono text-[11px] text-foreground tabular-nums" title={title}>
+        {value}
+      </dd>
+    </div>
   );
 }
 

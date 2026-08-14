@@ -10,6 +10,23 @@ import {
 
 export type AgentHubCatalogFilter = "all" | "compatible" | "verifiable" | "package";
 
+export type ProviderHealthNoticeTone = "warning" | "error";
+
+export interface ProviderHealthFacts {
+  readonly authLabel: string;
+  readonly checkedAt: string;
+  readonly checkedLabel: string;
+  readonly modelCount: number;
+  readonly commandCount: number;
+  readonly skillCount: number;
+  readonly enabledSkillCount: number;
+  readonly updateLabel: string | null;
+  readonly notice: {
+    readonly tone: ProviderHealthNoticeTone;
+    readonly message: string;
+  } | null;
+}
+
 const searchableText = (entry: AgentCatalogEntry): string =>
   [
     entry.agent.name,
@@ -123,6 +140,91 @@ export function providerReadinessLabel(provider: ServerProvider): string {
   if (!provider.installed) return "Not detected";
   if (provider.availability === "unavailable") return "Driver unavailable";
   return "Needs attention";
+}
+
+function providerAuthLabel(provider: ServerProvider): string {
+  switch (provider.auth.status) {
+    case "authenticated":
+      return provider.auth.email ?? provider.auth.label ?? "Authenticated";
+    case "unauthenticated":
+      return "Sign-in required";
+    case "unknown":
+      return "Auth not confirmed";
+  }
+}
+
+function checkedAtLabel(checkedAt: string, nowMs: number): string {
+  const checkedAtMs = Date.parse(checkedAt);
+  const elapsedMs = Math.max(0, nowMs - checkedAtMs);
+  const minutes = Math.floor(elapsedMs / 60_000);
+  if (minutes < 1) return "Checked just now";
+  if (minutes < 60) return `Checked ${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Checked ${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Checked ${days}d ago`;
+  return `Checked ${checkedAt.slice(0, 10)}`;
+}
+
+function providerUpdateLabel(provider: ServerProvider): string | null {
+  switch (provider.updateState?.status) {
+    case "queued":
+      return "Update queued";
+    case "running":
+      return "Update in progress";
+    case "failed":
+      return "Update failed";
+  }
+
+  if (provider.versionAdvisory?.status !== "behind_latest") return null;
+  return provider.versionAdvisory.latestVersion === null
+    ? "Update available"
+    : `Update ${provider.versionAdvisory.latestVersion} available`;
+}
+
+function providerHealthNotice(provider: ServerProvider): ProviderHealthFacts["notice"] {
+  if (provider.availability === "unavailable") {
+    return {
+      tone: "error",
+      message: provider.unavailableReason ?? "This provider driver is unavailable in this build.",
+    };
+  }
+  if (provider.status === "error") {
+    return {
+      tone: "error",
+      message: provider.message ?? "The latest provider health check failed.",
+    };
+  }
+  if (provider.updateState?.status === "failed") {
+    return {
+      tone: "error",
+      message: provider.updateState.message ?? "The last provider update failed.",
+    };
+  }
+  if (provider.status === "warning") {
+    return {
+      tone: "warning",
+      message: provider.message ?? "This provider needs attention.",
+    };
+  }
+  return null;
+}
+
+/** Current, factual provider health for consistent web and mobile rendering. */
+export function providerHealthFacts(provider: ServerProvider, nowMs: number): ProviderHealthFacts {
+  return {
+    authLabel: providerAuthLabel(provider),
+    checkedAt: provider.checkedAt,
+    checkedLabel: checkedAtLabel(provider.checkedAt, nowMs),
+    modelCount: provider.models.length,
+    commandCount: provider.slashCommands.length,
+    skillCount: provider.skills.length,
+    enabledSkillCount: provider.skills.filter((skill) => skill.enabled).length,
+    updateLabel: providerUpdateLabel(provider),
+    notice: providerHealthNotice(provider),
+  };
 }
 
 export function findAgentInstallation(

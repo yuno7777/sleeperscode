@@ -10,6 +10,7 @@ import {
   catalogPrerequisiteStatuses,
   filterAgentCatalog,
   findAgentInstallation,
+  providerHealthFacts,
   providerReadinessLabel,
 } from "./agentHub.js";
 
@@ -173,6 +174,76 @@ describe("Agent Hub logic", () => {
     expect(providerReadinessLabel(provider())).toBe("Routable");
     expect(providerReadinessLabel(provider({ enabled: false }))).toBe("Integrated");
     expect(providerReadinessLabel(provider({ installed: false }))).toBe("Not detected");
+  });
+
+  it("presents current provider health without inventing historical signals", () => {
+    expect(
+      providerHealthFacts(
+        provider({
+          auth: { status: "authenticated", email: "agent@example.com" },
+          models: [
+            {
+              slug: "gpt-5.6",
+              name: "GPT-5.6",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+          slashCommands: [{ name: "review" }, { name: "test" }],
+          skills: [
+            { name: "docs", path: "skills/docs", enabled: true },
+            { name: "deploy", path: "skills/deploy", enabled: false },
+          ],
+          versionAdvisory: {
+            status: "behind_latest",
+            currentVersion: "1.0.0",
+            latestVersion: "1.1.0",
+            updateCommand: null,
+            canUpdate: false,
+            checkedAt: null,
+            message: null,
+          },
+        }),
+        Date.parse("2026-08-09T02:30:00.000Z"),
+      ),
+    ).toEqual({
+      authLabel: "agent@example.com",
+      checkedAt: "2026-08-09T00:00:00.000Z",
+      checkedLabel: "Checked 2h ago",
+      modelCount: 1,
+      commandCount: 2,
+      skillCount: 2,
+      enabledSkillCount: 1,
+      updateLabel: "Update 1.1.0 available",
+      notice: null,
+    });
+  });
+
+  it("prioritizes operational failures and keeps their message", () => {
+    expect(
+      providerHealthFacts(
+        provider({
+          status: "warning",
+          auth: { status: "unknown" },
+          updateState: {
+            status: "failed",
+            startedAt: "2026-08-09T00:00:00.000Z",
+            finishedAt: "2026-08-09T00:01:00.000Z",
+            message: "Package manager exited with code 1.",
+            output: null,
+          },
+        }),
+        Date.parse("2026-08-18T00:00:00.000Z"),
+      ),
+    ).toMatchObject({
+      authLabel: "Auth not confirmed",
+      checkedLabel: "Checked 2026-08-09",
+      updateLabel: "Update failed",
+      notice: {
+        tone: "error",
+        message: "Package manager exited with code 1.",
+      },
+    });
   });
 
   it("presents secure installation progress without overstating completion", () => {
