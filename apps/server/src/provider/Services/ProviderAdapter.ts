@@ -40,7 +40,9 @@ export type ProviderIntegrationTransport =
   /** Official vendor structured protocol spoken to a managed agent process. */
   | "vendor-app-server"
   /** Agent Client Protocol over a subprocess, vendor extensions included. */
-  | "acp";
+  | "acp"
+  /** Vendor-documented newline-delimited JSON emitted by a headless CLI. */
+  | "documented-json-stream";
 
 export interface ProviderAdapterCapabilities {
   /**

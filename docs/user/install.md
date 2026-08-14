@@ -34,15 +34,19 @@ storage, move, update, and removal behavior.
 
 Install and authenticate at least one provider CLI on the computer where Sleepers Code runs.
 
-| Provider    | CLI                                                   | Default binary | Log in with           |
-| :---------- | :---------------------------------------------------- | :------------- | :-------------------- |
-| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)  | `codex`        | `codex login`         |
-| Claude Code | [Claude Code](https://claude.com/product/claude-code) | `claude`       | `claude auth login`   |
-| Cursor      | [Cursor CLI](https://cursor.com/cli)                  | `cursor-agent` | `agent login`         |
-| Grok Build  | [Grok Build CLI](https://x.ai/cli)                    | `grok`         | `grok login`          |
-| OpenCode    | [OpenCode](https://opencode.ai)                       | `opencode`     | `opencode auth login` |
+| Provider    | CLI                                                                      | Default binary | Log in with           |
+| :---------- | :----------------------------------------------------------------------- | :------------- | :-------------------- |
+| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)                     | `codex`        | `codex login`         |
+| Claude Code | [Claude Code](https://claude.com/product/claude-code)                    | `claude`       | `claude auth login`   |
+| Cursor      | [Cursor CLI](https://cursor.com/cli)                                     | `cursor-agent` | `agent login`         |
+| Grok Build  | [Grok Build CLI](https://x.ai/cli)                                       | `grok`         | `grok login`          |
+| OpenCode    | [OpenCode](https://opencode.ai)                                          | `opencode`     | `opencode auth login` |
+| Antigravity | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) | `agy`          | `agy`                 |
 
 Cursor installs the `cursor-agent` binary but uses `agent login` for authentication.
+Run `agy` once to finish Antigravity setup, then use `agy models` to confirm that its models are
+available. See [Using Antigravity](./providers-antigravity.md) for web research and permission-mode
+behavior.
 
 ## Binary discovery
 
@@ -54,6 +58,11 @@ The path belongs to the environment that runs the provider. A browser or mobile 
 a remote environment cannot select a file from its own device.
 
 ## Authentication
+
+When the web app and server are both running on this computer's loopback address, opening the local
+URL creates the browser session automatically. This removes the startup session-key prompt without
+weakening remote access: LAN, tunnel, hosted-web, mobile, and other non-loopback connections still
+use a pairing credential.
 
 Provider authentication is required when starting that provider, not when launching Sleepers Code.
 A missing or signed-out provider appears as unavailable and should not crash the application. Run

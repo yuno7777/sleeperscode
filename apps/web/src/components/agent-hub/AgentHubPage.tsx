@@ -522,15 +522,26 @@ function BuiltInAgentCard({
   );
 }
 
-function ReadinessCell({ label, ready }: { readonly label: string; readonly ready: boolean }) {
+export function ReadinessCell({
+  label,
+  ready,
+}: {
+  readonly label: string;
+  readonly ready: boolean;
+}) {
   return (
     <div className="flex flex-col items-center gap-1 bg-background/90 px-2 py-2.5">
+      <span className="sr-only">
+        {label}: {ready ? "Yes" : "No"}
+      </span>
       {ready ? (
         <CheckCircle2Icon className="size-3.5 text-success-foreground" aria-hidden />
       ) : (
         <CircleAlertIcon className="size-3.5 text-muted-foreground/50" aria-hidden />
       )}
-      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className="text-[10px] text-muted-foreground" aria-hidden>
+        {label}
+      </span>
     </div>
   );
 }

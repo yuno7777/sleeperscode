@@ -1,5 +1,5 @@
 import { useColorScheme } from "react-native";
-import { Path, Svg } from "react-native-svg";
+import { Circle, Path, Svg } from "react-native-svg";
 
 type ProviderIconProps = {
   readonly provider: string | null | undefined;
@@ -54,6 +54,25 @@ export function ProviderIcon(props: ProviderIconProps) {
       <Svg width={size} height={size} viewBox="0 0 32 40" fill="none">
         <Path d="M24 32H8V16H24V32Z" fill={isDarkMode ? "#4B4646" : "#CFCECD"} />
         <Path d="M24 8H8V32H24V8ZM32 40H0V0H32V40Z" fill={isDarkMode ? "#F1ECEC" : "#211E1E"} />
+      </Svg>
+    );
+  }
+
+  if (props.provider === "antigravity") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <Circle cx="12" cy="12" r="3.25" fill="#7C3AED" />
+        <Path
+          d="M4.2 9.2c2.2-3.8 7.4-5.6 11.6-3.8 4.3 1.8 5.4 6.3 3.2 10.1-2.2 3.8-7.4 5.6-11.6 3.8-4.3-1.8-5.4-6.3-3.2-10.1Z"
+          stroke="#22D3EE"
+          strokeWidth="1.6"
+        />
+        <Path
+          d="M7 4.4c3.9-2.1 8.9-.5 11.2 3.5 2.3 4 .9 9-3 11.1-3.9 2.1-8.9.5-11.2-3.5-2.3-4-.9-9 3-11.1Z"
+          stroke={mono}
+          strokeWidth="1.25"
+          strokeOpacity={0.72}
+        />
       </Svg>
     );
   }
