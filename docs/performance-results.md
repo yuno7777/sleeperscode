@@ -338,6 +338,26 @@ developer-experience number, not a product one: shipped surfaces run the bundle.
 startup or memory measurement taken against the source entry is not comparable to one taken against
 the bundle, which is why the entry kind is recorded with every result.
 
+## 2026-08-15 concurrency-three spot check
+
+After the Antigravity and provider-coverage work, the existing production-shaped provider harness
+was rerun with bundled Node 24.19.0:
+
+```powershell
+node scripts/benchmark-provider-concurrency.mjs --backend=node,rust --levels=3 --repeat=2
+```
+
+This was a two-repetition interleaved spot check, not a stable performance gate:
+
+| Backend | Mean elapsed | Mean peak tree RSS | Maximum processes |
+| ------- | -----------: | -----------------: | ----------------: |
+| Node    |      4.977 s |         883.64 MiB |                 7 |
+| Rust    |      5.403 s |         815.47 MiB |                10 |
+
+Rust used 7.7% less mean peak tree RSS but was 8.6% slower. Two repetitions at one concurrency level
+are not enough evidence to revise backend selection, so `auto` continues to resolve to Node and the
+opt-in Rust path retains its Node fallback.
+
 ## Rust release optimisation level
 
 The release profile sets thin LTO, `panic = "abort"`, and stripping, leaving `opt-level` at its

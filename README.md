@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A local-first command center for coding agents.</strong><br />
-  One fast, inspectable workspace for Codex, Claude, Cursor, Grok, and OpenCode.
+  One fast, inspectable workspace for Codex, Claude, Cursor, Grok, OpenCode, and Antigravity.
 </p>
 
 <p align="center">
@@ -30,8 +30,9 @@ runtime bottlenecks move behind small Rust components.
 
 ## What works today
 
-- **Five provider integrations** — Codex, Claude Code, Cursor, Grok Build, and OpenCode, using their
-  structured SDK, app-server, or ACP transports.
+- **Six provider integrations** — Codex, Claude Code, Cursor, Grok Build, OpenCode, and Antigravity,
+  using structured SDK, app-server, ACP, or documented stream-JSON transports. Antigravity sessions
+  surface native web search and URL-reading tools when the CLI advertises them.
 - **Web, desktop, and mobile control surfaces** — the existing remote-ready T3 architecture remains
   compatible across local, LAN, tailnet, relay, and WSL environments.
 - **Fast hybrid runtime** — a versioned Rust sidecar handles bounded processes and streaming ACP
@@ -43,7 +44,11 @@ runtime bottlenecks move behind small Rust components.
 - **A real first run** — authenticated web and desktop hosts open with a restrained setup guide,
   scan live provider state, separate installed, signed-in, and routable status, and hand off directly
   to Agent Hub. The guide can be reopened later instead of becoming a one-way choice.
-- **Usage visibility** — shared web/mobile dashboards aggregate Claude and Codex token and cost data.
+- **Usage visibility** — shared web/mobile dashboards inventory every installed host provider.
+  Claude and Codex contribute transcript-backed token and API-equivalent cost totals. Antigravity
+  contributes durable token totals for turns run through Sleepers Code; its CLI does not expose
+  separate historical sessions or trustworthy API-equivalent pricing. Providers without a durable
+  source are labeled `Totals not reported` instead of showing a fabricated zero.
 - **Agent Hub discovery and secure binary installation** — web, desktop, and mobile review the exact
   artifact, require explicit consent for unverified publishers, enforce HTTPS and SHA-256, activate
   through isolated staging, register the resulting ACP provider, support app-managed uninstall, and
@@ -74,7 +79,7 @@ Task profile -----> budget and permission policy
    |                         |
    v                         v
 Adaptive router -----> provider workers
-   |                  Codex / Claude / Cursor / Grok / OpenCode / local
+   |                  Codex / Claude / Cursor / Grok / OpenCode / Antigravity / local
    v                         |
 Tool broker <---------------+
    |        filesystem / Git / terminal / browser / MCP
@@ -133,8 +138,10 @@ vp i
 vp run dev
 ```
 
-The development runner prints the actual local URL and pairing token. Do not point development at a
-live shared `~/.t3/userdata` directory.
+The development runner prints the actual local URL and a pairing token. Opening that URL directly on
+the same machine now creates a local browser session automatically; there is no session-key prompt
+for a same-origin loopback connection. LAN, tunnel, hosted-web, and other remote clients still require
+pairing. Do not point development at a live shared `~/.t3/userdata` directory.
 
 Desktop development:
 
@@ -178,13 +185,14 @@ cargo test --locked --workspace
 
 Install and authenticate providers independently; proprietary CLIs are not bundled by this project.
 
-| Provider    | Default command | Integration |
-| :---------- | :-------------- | :---------- |
-| Codex       | `codex`         | app server  |
-| Claude Code | `claude`        | vendor SDK  |
-| Cursor      | `cursor-agent`  | ACP         |
-| Grok Build  | `grok`          | ACP         |
-| OpenCode    | `opencode`      | app server  |
+| Provider    | Default command | Integration            |
+| :---------- | :-------------- | :--------------------- |
+| Codex       | `codex`         | app server             |
+| Claude Code | `claude`        | vendor SDK             |
+| Cursor      | `cursor-agent`  | ACP                    |
+| Grok Build  | `grok`          | ACP                    |
+| OpenCode    | `opencode`      | app server             |
+| Antigravity | `agy`           | documented stream JSON |
 
 Every provider accepts a command name or absolute **server-side** binary path in Settings. This is
 deliberately not a browser file picker: remote and WSL environments must resolve files on the machine
@@ -213,6 +221,7 @@ Start with the [internal architecture overview](./docs/internals/overview.md), t
 - [Keyboard shortcuts](./docs/user/keybindings.md)
 - [Source control integrations](./docs/user/source-control.md)
 - [Agent Hub](./docs/user/agent-hub.md)
+- [Antigravity provider](./docs/user/providers-antigravity.md)
 - [Sleepers Code roadmap](./docs/sleepers-code-roadmap.md)
 - [Architecture decisions](./docs/decisions/)
 
