@@ -39,6 +39,9 @@ runtime bottlenecks move behind small Rust components.
   survive normal restarts.
 - **Provider discovery that respects the host** — Windows PATH repair, WinGet/npm/pnpm/user-local
   discovery, safe `.cmd` handling, WSL login-shell paths, and persisted overrides for every provider.
+- **A real first run** — authenticated web and desktop hosts open with a restrained setup guide,
+  scan live provider state, separate installed, signed-in, and routable status, and hand off directly
+  to Agent Hub. The guide can be reopened later instead of becoming a one-way choice.
 - **Usage visibility** — shared web/mobile dashboards aggregate Claude and Codex token and cost data.
 - **Agent Hub discovery and secure binary installation** — web, desktop, and mobile review the exact
   artifact, require explicit consent for unverified publishers, enforce HTTPS and SHA-256, activate

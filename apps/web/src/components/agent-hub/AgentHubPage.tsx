@@ -45,6 +45,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
+import { EMPTY_FIRST_RUN_STATE, FIRST_RUN_STORAGE_KEY, FirstRunState } from "../../firstRun";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
@@ -118,6 +120,11 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
   const [uninstallTarget, setUninstallTarget] = useState<AgentInstallation | null>(null);
   const [publisherAcknowledged, setPublisherAcknowledged] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [, setFirstRunState] = useLocalStorage(
+    FIRST_RUN_STORAGE_KEY,
+    EMPTY_FIRST_RUN_STATE,
+    FirstRunState,
+  );
   const catalogAtom = serverEnvironment.agentCatalog({
     environmentId,
     input: { refresh: true },
@@ -226,14 +233,23 @@ function ConnectedAgentHub({ environmentId }: { readonly environmentId: Environm
               </p>
             </div>
           </div>
-          <Button
-            aria-label="Refresh agent catalog"
-            onClick={() => appAtomRegistry.refresh(catalogAtom)}
-            variant="outline"
-          >
-            <RefreshCwIcon />
-            Refresh catalog
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setFirstRunState({ version: 1, completed: false })}
+              variant="outline"
+            >
+              <SparklesIcon />
+              Setup guide
+            </Button>
+            <Button
+              aria-label="Refresh agent catalog"
+              onClick={() => appAtomRegistry.refresh(catalogAtom)}
+              variant="outline"
+            >
+              <RefreshCwIcon />
+              Refresh catalog
+            </Button>
+          </div>
         </header>
 
         <section className="relative isolate overflow-hidden rounded-2xl border border-border/70 bg-card/75 p-5 shadow-sm sm:p-7">

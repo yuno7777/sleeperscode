@@ -82,6 +82,10 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - Web/desktop and mobile now require explicit confirmation before clearing local task/router history.
   The operate-scoped RPC deletes only the content-free projection, and migration 42 retains a replay
   cutoff so cleared evidence stays cleared without changing conversations or usage transcripts.
+- Authenticated web/desktop hosts now have a persisted Sleepers Code first-run guide. It performs a
+  real provider refresh, distinguishes installation/auth/routing state, links into Agent Hub, and can
+  be reopened from Agent Hub. Hosted relay clients and mobile intentionally keep their connection-led
+  onboarding because agent discovery belongs to the connected server host.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -138,6 +142,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   deduplication have focused coverage. Browser/device visual validation remains a release gate.
 - Task analytics deletion is covered at the contract, migration, repository, service, and
   authorization boundaries; automated UI checks must open but not confirm the destructive dialog.
+- First-run eligibility, factual provider summaries, and readiness ordering pass focused tests. The
+  controlled browser verified welcome, provider scan, completion persistence, reopening, Agent Hub
+  handoff, compact layout, and zero console errors against the isolated worktree server.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.
