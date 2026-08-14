@@ -173,15 +173,17 @@ content, scan it for secrets, and re-check the current remote divergence.
 Do not create a release yet. A release still needs packaging evidence and a deliberate release note;
 the user asked for fewer than six releases, not for speculative releases during development.
 
-## Portable Windows milestone (2026-08-14)
+## Portable Windows milestone (refreshed 2026-08-15)
 
-- `vp run dist:desktop:win:portable:x64` produced
-  `release/Sleepers-Code-0.0.32-x64-portable.exe` in 814.8 seconds.
-- The artifact is 121,512,956 bytes. Its independently calculated SHA-256 is
-  `adc65dbb620cbae473684ff11d0e8f36945e3f1df9aced95707ea4de3a131e8f`, matching
+- The production bundle and portable builder produced
+  `release/Sleepers-Code-0.0.32-x64-portable.exe`; the successful refreshed packaging pass took
+  742.2 seconds.
+- The refreshed artifact is 121,546,894 bytes. Its independently calculated SHA-256 is
+  `c081a2ace5cc4542620ae591d366bcfcc0d03f06c0ce0619c736ec038aec9241`, matching
   `release/SHA256SUMS.txt`.
 - The packaged app launched on the development Windows host and created sibling
-  `Sleepers-Code-Data/desktop` and `Sleepers-Code-Data/userdata` directories. The app was left open.
+  `Sleepers-Code-Data/desktop` and `Sleepers-Code-Data/userdata` directories. Its Electron window
+  responded and the bundled server returned HTTP 200 on `127.0.0.1:3773`; the app was left open.
 - Portable mode does not redirect `HOME` or `APPDATA`; provider CLIs and authentication remain in
   their normal locations. `T3CODE_HOME` remains an explicit override.
 - The affected desktop and packaging suites pass 62 tests across four files; desktop and scripts

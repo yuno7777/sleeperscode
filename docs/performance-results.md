@@ -33,6 +33,7 @@ platform executables were excluded, and the Linux x64 `node-pty` 1.1.0 prebuild 
 | :------------------------------------------------ | ----------: | -----: | :----------------------------------------------------------------- |
 | `Sleepers-Code-0.0.32-x64.exe`                    | 153,933,897 | 146.80 | `0769e5e65316b3db55d5f002868d9ee49bf36c373f8974c9cab55bb373ff0ce1` |
 | `Sleepers-Code-0.0.32-x64.exe.blockmap`           |     161,450 |   0.15 | `32aead37e128d918b932403709b2491d8147d709ec17840a3588da5da5d3a887` |
+| `Sleepers-Code-0.0.32-x64-portable.exe`           | 121,546,894 | 115.92 | `c081a2ace5cc4542620ae591d366bcfcc0d03f06c0ce0619c736ec038aec9241` |
 | Retained `win-unpacked` distribution              | 545,966,344 | 520.67 | Not a single-file artifact                                         |
 | Packaged Rust runtime sidecar                     |   1,434,112 |   1.37 | `bf72ab9898abc8c0d19d2f9bb1c64fd00112f5a490707a8d90d4310dd2e0a05c` |
 | Packaged Linux x64 WSL `node-pty` native prebuild |      79,968 |   0.08 | `0934354174ea1bb78a6e1f89b4e9d48e4167bd470157508ef0ee0bd0fa4ad7f5` |
