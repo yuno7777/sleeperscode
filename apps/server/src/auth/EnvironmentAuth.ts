@@ -37,6 +37,7 @@ import { layerConfig as SqlitePersistenceLayer } from "../persistence/Layers/Sql
 
 export const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
 export const INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT = "administrative-bootstrap";
+export const LOOPBACK_BROWSER_SESSION_SUBJECT = "loopback-browser";
 
 export interface IssuedPairingLink {
   readonly id: string;
@@ -421,6 +422,17 @@ export class EnvironmentAuth extends Context.Service<
       },
       ServerAuthInvalidCredentialError | ServerAuthInternalError
     >;
+    readonly createLoopbackBrowserSession: (input: {
+      readonly requestMetadata: AuthClientMetadata;
+      readonly fetchSite: string | undefined;
+      readonly host: string | undefined;
+    }) => Effect.Effect<
+      {
+        readonly response: AuthBrowserSessionResult;
+        readonly sessionToken: string;
+      },
+      ServerAuthInvalidCredentialError | ServerAuthInternalError
+    >;
     readonly exchangeBootstrapCredentialForAccessToken: (
       credential: string,
       requestedScopes: ReadonlyArray<AuthEnvironmentScope> | undefined,
@@ -512,6 +524,24 @@ const bySessionPriority = (left: AuthClientSession, right: AuthClientSession) =>
   }
   return right.issuedAt.epochMilliseconds - left.issuedAt.epochMilliseconds;
 };
+
+export function isTrustedLoopbackBrowserSessionRequest(input: {
+  readonly policy: ServerAuthDescriptor["policy"];
+  readonly fetchSite: string | undefined;
+  readonly host: string | undefined;
+  readonly ipAddress: string | undefined;
+}): boolean {
+  const literalLoopbackHost =
+    input.host !== undefined &&
+    (/^(?:localhost|127(?:\.\d{1,3}){3})(?::\d+)?$/iu.test(input.host) ||
+      /^\[::1\](?::\d+)?$/u.test(input.host));
+  return (
+    input.policy === "loopback-browser" &&
+    input.fetchSite === "same-origin" &&
+    literalLoopbackHost &&
+    (input.ipAddress === "::1" || input.ipAddress?.startsWith("127.") === true)
+  );
+}
 
 export function toBootstrapExchangeError(
   cause: PairingGrantStore.BootstrapCredentialError,
@@ -652,6 +682,31 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.getSessionState"),
     );
 
+  const issueBrowserSession = Effect.fn("EnvironmentAuth.issueBrowserSession")(function* (input: {
+    readonly subject: string;
+    readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
+    readonly requestMetadata: AuthClientMetadata;
+  }) {
+    const session = yield* sessions
+      .issue({
+        method: "browser-session-cookie",
+        subject: input.subject,
+        scopes: input.scopes,
+        client: input.requestMetadata,
+      })
+      .pipe(Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })));
+
+    return {
+      response: {
+        authenticated: true,
+        scopes: session.scopes,
+        sessionMethod: session.method,
+        expiresAt: DateTime.toUtc(session.expiresAt),
+      } satisfies AuthBrowserSessionResult,
+      sessionToken: session.token,
+    } satisfies BootstrapExchangeResult;
+  });
+
   const createBrowserSession: EnvironmentAuth["Service"]["createBrowserSession"] = (
     credential,
     requestMetadata,
@@ -659,34 +714,37 @@ export const make = Effect.gen(function* () {
     bootstrapCredentials.consume(credential).pipe(
       Effect.mapError(toBootstrapExchangeError),
       Effect.flatMap((grant) =>
-        sessions
-          .issue({
-            method: "browser-session-cookie",
-            subject: grant.subject,
-            scopes: grant.scopes,
-            client: {
-              ...requestMetadata,
-              ...(grant.label ? { label: grant.label } : {}),
-            },
-          })
-          .pipe(
-            Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })),
-          ),
-      ),
-      Effect.map(
-        (session) =>
-          ({
-            response: {
-              authenticated: true,
-              scopes: session.scopes,
-              sessionMethod: session.method,
-              expiresAt: DateTime.toUtc(session.expiresAt),
-            } satisfies AuthBrowserSessionResult,
-            sessionToken: session.token,
-          }) satisfies BootstrapExchangeResult,
+        issueBrowserSession({
+          subject: grant.subject,
+          scopes: grant.scopes,
+          requestMetadata: {
+            ...requestMetadata,
+            ...(grant.label ? { label: grant.label } : {}),
+          },
+        }),
       ),
       Effect.withSpan("EnvironmentAuth.createBrowserSession"),
     );
+
+  const createLoopbackBrowserSession: EnvironmentAuth["Service"]["createLoopbackBrowserSession"] = (
+    input,
+  ) =>
+    isTrustedLoopbackBrowserSessionRequest({
+      policy: descriptor.policy,
+      fetchSite: input.fetchSite,
+      host: input.host,
+      ipAddress: input.requestMetadata.ipAddress,
+    })
+      ? issueBrowserSession({
+          subject: LOOPBACK_BROWSER_SESSION_SUBJECT,
+          scopes: AuthAdministrativeScopes,
+          requestMetadata: input.requestMetadata,
+        }).pipe(Effect.withSpan("EnvironmentAuth.createLoopbackBrowserSession"))
+      : Effect.fail(
+          new ServerAuthInvalidCredentialError({
+            diagnostic: "Loopback browser bootstrap requires a same-origin loopback request.",
+          }),
+        );
 
   const exchangeBootstrapCredentialForAccessToken: EnvironmentAuth["Service"]["exchangeBootstrapCredentialForAccessToken"] =
     (credential, requestedScopes, requestMetadata, input) =>
@@ -965,6 +1023,7 @@ export const make = Effect.gen(function* () {
       Effect.succeed(descriptor).pipe(Effect.withSpan("EnvironmentAuth.getDescriptor")),
     getSessionState,
     createBrowserSession,
+    createLoopbackBrowserSession,
     exchangeBootstrapCredentialForAccessToken,
     createPairingLink,
     issuePairingCredential,

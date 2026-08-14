@@ -8,6 +8,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  type AuthBrowserSessionResult,
   EnvironmentAuthInvalidError,
   type EnvironmentAuthInvalidReason,
   EnvironmentHttpApi,
@@ -203,6 +204,28 @@ export const authHttpApiLayer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const sessions = yield* SessionStore.SessionStore;
+    const finishBrowserSession = Effect.fn("environment.auth.finishBrowserSession")(function* (
+      result: {
+        readonly response: AuthBrowserSessionResult;
+        readonly sessionToken: string;
+      },
+      sameSite: "lax" | "strict",
+    ) {
+      const sessionCookies = yield* Effect.fromResult(
+        Cookies.set(Cookies.empty, sessions.cookieName, result.sessionToken, {
+          expires: DateTime.toDate(result.response.expiresAt),
+          httpOnly: true,
+          path: "/",
+          sameSite,
+        }),
+      ).pipe(Effect.catch(() => failEnvironmentInternal("browser_session_cookie_failed")));
+
+      yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+        Effect.succeed(HttpServerResponse.mergeCookies(response, sessionCookies)),
+      );
+      yield* appendCredentialResponseHeaders;
+      return result.response;
+    });
 
     return handlers
       .handle(
@@ -228,20 +251,28 @@ export const authHttpApiLayer = HttpApiBuilder.group(
               args.payload.credential,
               deriveAuthClientMetadata({ request }),
             );
-            const sessionCookies = yield* Effect.fromResult(
-              Cookies.set(Cookies.empty, sessions.cookieName, result.sessionToken, {
-                expires: DateTime.toDate(result.response.expiresAt),
-                httpOnly: true,
-                path: "/",
-                sameSite: "lax",
-              }),
-            ).pipe(Effect.catch(() => failEnvironmentInternal("browser_session_cookie_failed")));
-
-            yield* HttpEffect.appendPreResponseHandler((_request, response) =>
-              Effect.succeed(HttpServerResponse.mergeCookies(response, sessionCookies)),
-            );
-            yield* appendCredentialResponseHeaders;
-            return result.response;
+            return yield* finishBrowserSession(result, "lax");
+          },
+          Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
+            failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error)),
+          ),
+          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+            failEnvironmentInternal("browser_session_issuance_failed", error),
+          ),
+        ),
+      )
+      .handle(
+        "loopbackBrowserSession",
+        Effect.fn("environment.auth.loopbackBrowserSession")(
+          function* (args) {
+            yield* annotateEnvironmentRequest(args.endpoint.name);
+            const request = yield* HttpServerRequest.HttpServerRequest;
+            const result = yield* serverAuth.createLoopbackBrowserSession({
+              requestMetadata: deriveAuthClientMetadata({ request }),
+              fetchSite: request.headers["sec-fetch-site"],
+              host: request.headers.host,
+            });
+            return yield* finishBrowserSession(result, "strict");
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
             failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error)),

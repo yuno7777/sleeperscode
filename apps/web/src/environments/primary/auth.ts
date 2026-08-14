@@ -25,6 +25,7 @@ import { runPrimaryHttp } from "../../lib/runtime";
 const PrimaryEnvironmentRequestOperation = Schema.Literals([
   "fetch-session-state",
   "exchange-bootstrap-credential",
+  "create-loopback-browser-session",
   "fetch-environment-descriptor",
   "create-pairing-credential",
   "list-pairing-links",
@@ -255,6 +256,23 @@ async function exchangeBootstrapCredential(credential: string): Promise<AuthBrow
   });
 }
 
+async function createLoopbackBrowserSession(): Promise<AuthBrowserSessionResult> {
+  return retryTransientBootstrap(async () => {
+    try {
+      return await runPrimaryHttp(
+        PrimaryEnvironmentHttpClient.pipe(
+          Effect.flatMap((client) => client.auth.loopbackBrowserSession({})),
+        ),
+      );
+    } catch (error) {
+      throw PrimaryEnvironmentRequestError.fromCause({
+        operation: "create-loopback-browser-session",
+        cause: error,
+      });
+    }
+  });
+}
+
 async function waitForAuthenticatedSessionAfterBootstrap(): Promise<AuthSessionState> {
   const startedAt = Date.now();
 
@@ -324,7 +342,8 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     return { status: "authenticated" };
   }
 
-  if (!bootstrapCredential) {
+  const supportsLoopbackAuto = currentSession.auth.bootstrapMethods.includes("loopback-auto");
+  if (!bootstrapCredential && !supportsLoopbackAuto) {
     return {
       status: "requires-auth",
       auth: currentSession.auth,
@@ -332,7 +351,11 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
   }
 
   try {
-    await exchangeBootstrapCredential(bootstrapCredential);
+    if (bootstrapCredential) {
+      await exchangeBootstrapCredential(bootstrapCredential);
+    } else {
+      await createLoopbackBrowserSession();
+    }
     await waitForAuthenticatedSessionAfterBootstrap();
     return { status: "authenticated" };
   } catch (error) {

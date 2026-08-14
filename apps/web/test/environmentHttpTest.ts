@@ -32,6 +32,10 @@ interface EnvironmentHttpTestScenario {
   readonly descriptor?: () => Effect.Effect<ExecutionEnvironmentDescriptor>;
   readonly session?: () => Effect.Effect<AuthSessionState>;
   readonly browserSession?: BrowserSessionHandler;
+  readonly loopbackBrowserSession?: () => Effect.Effect<
+    AuthBrowserSessionResult,
+    EnvironmentAuthInvalidError
+  >;
   readonly pairingCredential?: (
     payload: AuthCreatePairingCredentialInput,
   ) => Effect.Effect<AuthPairingCredentialResult>;
@@ -41,6 +45,7 @@ export interface EnvironmentHttpTestCalls {
   descriptor: number;
   session: number;
   browserSession: Array<AuthBrowserSessionRequest>;
+  loopbackBrowserSession: number;
   pairingCredential: Array<AuthCreatePairingCredentialInput>;
 }
 
@@ -65,6 +70,7 @@ export async function installEnvironmentHttpTest(scenario: EnvironmentHttpTestSc
     descriptor: 0,
     session: 0,
     browserSession: [],
+    loopbackBrowserSession: 0,
     pairingCredential: [],
   };
 
@@ -96,6 +102,16 @@ export async function installEnvironmentHttpTest(scenario: EnvironmentHttpTestSc
                 calls.browserSession.push(payload);
                 return yield* (
                   scenario.browserSession?.(payload) ?? unexpectedEndpoint("auth.browserSession")
+                );
+              }),
+            )
+            .handle(
+              "loopbackBrowserSession",
+              Effect.fn("test.environment.auth.loopbackBrowserSession")(function* () {
+                calls.loopbackBrowserSession += 1;
+                return yield* (
+                  scenario.loopbackBrowserSession?.() ??
+                    unexpectedEndpoint("auth.loopbackBrowserSession")
                 );
               }),
             )

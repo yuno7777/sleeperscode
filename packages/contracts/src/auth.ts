@@ -44,10 +44,16 @@ export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
  * Current methods:
  * - `desktop-bootstrap`: a trusted local desktop handoff, used so the desktop
  *   shell can pair the renderer without a login screen
+ * - `loopback-auto`: a same-origin browser handoff accepted only by a
+ *   loopback-only web server, used to avoid a manual key prompt on this machine
  * - `one-time-token`: a short-lived pairing token, suitable for manual pairing
  *   flows such as `/pair?token=...`
  */
-export const ServerAuthBootstrapMethod = Schema.Literals(["desktop-bootstrap", "one-time-token"]);
+export const ServerAuthBootstrapMethod = Schema.Literals([
+  "desktop-bootstrap",
+  "loopback-auto",
+  "one-time-token",
+]);
 export type ServerAuthBootstrapMethod = typeof ServerAuthBootstrapMethod.Type;
 
 /**

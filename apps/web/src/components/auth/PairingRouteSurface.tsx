@@ -303,11 +303,17 @@ function describeAuthGate(bootstrapMethods: ReadonlyArray<string>): string {
   if (bootstrapMethods.includes("desktop-bootstrap")) {
     return "This environment expects a trusted pairing credential before the app can connect.";
   }
+  if (bootstrapMethods.includes("loopback-auto")) {
+    return "Automatic local access did not complete. Paste a one-time token to recover this session.";
+  }
 
   return "Enter a pairing token to start a session with this environment.";
 }
 
 function describeSupportedMethods(bootstrapMethods: ReadonlyArray<string>): string {
+  if (bootstrapMethods.includes("loopback-auto")) {
+    return "Local startup normally opens without a key. One-time pairing tokens remain available as a recovery path.";
+  }
   if (
     bootstrapMethods.includes("desktop-bootstrap") &&
     bootstrapMethods.includes("one-time-token")

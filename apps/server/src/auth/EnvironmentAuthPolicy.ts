@@ -31,7 +31,9 @@ export const make = Effect.gen(function* () {
       ? ["desktop-bootstrap"]
       : config.mode === "desktop" && policy === "remote-reachable"
         ? ["desktop-bootstrap", "one-time-token"]
-        : ["one-time-token"];
+        : policy === "loopback-browser"
+          ? ["loopback-auto", "one-time-token"]
+          : ["one-time-token"];
 
   const descriptor: ServerAuthDescriptor = {
     policy,

@@ -6,6 +6,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hos
 
 import {
   AuthAccessTokenType,
+  AuthAdministrativeScopes,
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
@@ -1573,6 +1574,48 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Desktop, so port-scoped: instances scan for a free port and share
       // 127.0.0.1, and cookies are not scoped by port.
       assert.isTrue(body.auth.sessionCookieName.startsWith("t3_session_"));
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("bootstraps same-origin loopback browsers without a manual key", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: {
+          mode: "web",
+          desktopBootstrapToken: undefined,
+        },
+      });
+
+      const bootstrapUrl = yield* getHttpServerUrl("/api/auth/loopback-session");
+      const bootstrapResponse = yield* fetchEffect(bootstrapUrl, {
+        method: "POST",
+        headers: {
+          "sec-fetch-site": "same-origin",
+        },
+      });
+      const bootstrapBody = yield* responseJsonEffect<{
+        readonly authenticated: boolean;
+        readonly scopes: ReadonlyArray<string>;
+      }>(bootstrapResponse);
+      const setCookie = bootstrapResponse.headers["set-cookie"];
+
+      assert.equal(bootstrapResponse.status, 200);
+      assert.equal(bootstrapBody.authenticated, true);
+      assert.deepEqual(bootstrapBody.scopes, AuthAdministrativeScopes);
+      assert.include(setCookie ?? "", "SameSite=Strict");
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const sessionResponse = yield* fetchEffect(sessionUrl, {
+        headers: {
+          cookie: setCookie?.split(";")[0] ?? "",
+        },
+      });
+      const sessionBody = yield* responseJsonEffect<{
+        readonly authenticated: boolean;
+      }>(sessionResponse);
+
+      assert.equal(sessionResponse.status, 200);
+      assert.equal(sessionBody.authenticated, true);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

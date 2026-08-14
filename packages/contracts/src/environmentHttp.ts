@@ -393,6 +393,12 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
     }),
   )
   .add(
+    HttpApiEndpoint.post("loopbackBrowserSession", "/api/auth/loopback-session", {
+      success: AuthBrowserSessionResult,
+      error: EnvironmentSessionCreationErrors,
+    }),
+  )
+  .add(
     HttpApiEndpoint.post("token", "/oauth/token", {
       headers: OptionalDpopProofHeaders,
       payload: AuthTokenExchangeRequest,

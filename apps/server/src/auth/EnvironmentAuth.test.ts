@@ -109,6 +109,81 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
+  it.effect("opens a full local browser session without a manual pairing key", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+
+      const exchanged = yield* serverAuth.createLoopbackBrowserSession({
+        fetchSite: "same-origin",
+        host: "localhost:5733",
+        requestMetadata: {
+          ...requestMetadata,
+          ipAddress: "127.0.0.1",
+        },
+      });
+      const verified = yield* serverAuth.authenticateHttpRequest(
+        makeCookieRequest(sessions.cookieName, exchanged.sessionToken),
+      );
+
+      expect(verified.subject).toBe(EnvironmentAuth.LOOPBACK_BROWSER_SESSION_SUBJECT);
+      expect(verified.scopes).toEqual(AuthAdministrativeScopes);
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
+  it.effect("rejects cross-origin and remotely reachable keyless browser sessions", () =>
+    Effect.gen(function* () {
+      const loopbackAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const crossOriginError = yield* loopbackAuth
+        .createLoopbackBrowserSession({
+          fetchSite: "same-site",
+          host: "localhost:5733",
+          requestMetadata: {
+            ...requestMetadata,
+            ipAddress: "127.0.0.1",
+          },
+        })
+        .pipe(Effect.flip);
+      const reboundHostError = yield* loopbackAuth
+        .createLoopbackBrowserSession({
+          fetchSite: "same-origin",
+          host: "attacker.example:5733",
+          requestMetadata: {
+            ...requestMetadata,
+            ipAddress: "127.0.0.1",
+          },
+        })
+        .pipe(Effect.flip);
+
+      expect(crossOriginError._tag).toBe("ServerAuthInvalidCredentialError");
+      expect(reboundHostError._tag).toBe("ServerAuthInvalidCredentialError");
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
+  it.effect("rejects keyless browser sessions when the server is remotely reachable", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const error = yield* serverAuth
+        .createLoopbackBrowserSession({
+          fetchSite: "same-origin",
+          host: "localhost:5733",
+          requestMetadata: {
+            ...requestMetadata,
+            ipAddress: "127.0.0.1",
+          },
+        })
+        .pipe(Effect.flip);
+
+      expect(error._tag).toBe("ServerAuthInvalidCredentialError");
+    }).pipe(
+      Effect.provide(
+        makeEnvironmentAuthLayer({
+          host: "0.0.0.0",
+        }),
+      ),
+    ),
+  );
+
   it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;

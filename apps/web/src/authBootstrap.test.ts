@@ -28,6 +28,11 @@ const LOOPBACK_AUTH = {
   sessionCookieName: "t3_session",
 } as const;
 
+const LOOPBACK_AUTO_AUTH = {
+  ...LOOPBACK_AUTH,
+  bootstrapMethods: ["loopback-auto", "one-time-token"],
+} as const;
+
 const DESKTOP_AUTH = {
   policy: "desktop-managed-local",
   bootstrapMethods: ["desktop-bootstrap"],
@@ -98,6 +103,10 @@ async function installAuthApi(input: {
   readonly browserSession?: (
     credential: string,
   ) => Effect.Effect<AuthBrowserSessionResult, EnvironmentAuthInvalidError>;
+  readonly loopbackBrowserSession?: () => Effect.Effect<
+    AuthBrowserSessionResult,
+    EnvironmentAuthInvalidError
+  >;
   readonly pairingCredential?: (payload: AuthCreatePairingCredentialInput) => Effect.Effect<{
     readonly id: string;
     readonly credential: string;
@@ -109,6 +118,9 @@ async function installAuthApi(input: {
     ...(input.session ? { session: () => Effect.succeed(input.session!()) } : {}),
     ...(input.browserSession
       ? { browserSession: (payload) => input.browserSession!(payload.credential) }
+      : {}),
+    ...(input.loopbackBrowserSession
+      ? { loopbackBrowserSession: () => input.loopbackBrowserSession!() }
       : {}),
     ...(input.pairingCredential
       ? { pairingCredential: (payload) => input.pairingCredential!(payload) }
@@ -236,6 +248,26 @@ describe("resolveInitialServerAuthGateState", () => {
       status: "requires-auth",
       auth: LOOPBACK_AUTH,
     });
+  });
+
+  it("opens a loopback browser session without asking for a manual key", async () => {
+    const nextSession = sequence(
+      unauthenticatedSession(LOOPBACK_AUTO_AUTH),
+      authenticatedSession(LOOPBACK_AUTO_AUTH),
+    );
+    const testApi = await installAuthApi({
+      session: nextSession,
+      loopbackBrowserSession: () =>
+        Effect.succeed(browserSession(["orchestration:read", "access:write"])),
+    });
+    const { resolveInitialServerAuthGateState } = await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+    expect(testApi.calls.loopbackBrowserSession).toBe(1);
+    expect(testApi.calls.browserSession).toEqual([]);
+    expect(testApi.calls.session).toBe(2);
   });
 
   it("retries transient auth session bootstrap failures after restart", async () => {
