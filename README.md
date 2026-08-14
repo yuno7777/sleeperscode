@@ -23,7 +23,8 @@ runtime bottlenecks move behind small Rust components.
 
 > [!IMPORTANT]
 > Sleepers Code is under active alpha development. A Windows x64 NSIS installer now builds locally,
-> but it has not completed clean-machine launch, upgrade, uninstall, or signing validation and is not
+> and a portable build has passed a local packaged launch. Clean-machine, upgrade, uninstall, and
+> signing validation are still incomplete, so this is not
 > a public release. Build from source for this fork; upstream `npx t3`, App Store, package-manager,
 > and hosted-app links install T3 Code, not Sleepers Code.
 
@@ -153,8 +154,15 @@ Windows x64 alpha installer build:
 vp run dist:desktop:win:x64
 ```
 
+Windows x64 portable build:
+
+```powershell
+vp run dist:desktop:win:portable:x64
+```
+
 The release builder stages production dependencies, Rust helper binaries, Electron assets, the NSIS
-installer, differential-update blockmap, and `SHA256SUMS.txt` into `release/`. A complete WSL-capable
+installer or portable executable, differential-update blockmap, and `SHA256SUMS.txt` into `release/`.
+A complete WSL-capable
 local build also needs a Linux x64 `node-pty` prebuild passed through `--wsl-prebuild`; CI builds that
 binary on Linux. An unsigned local artifact is for testing, not publication.
 
@@ -199,6 +207,7 @@ Start with the [internal architecture overview](./docs/internals/overview.md), t
 ## Documentation
 
 - [Install and first run](./docs/user/install.md)
+- [Portable Windows build](./docs/user/portable-windows.md)
 - [Remote access](./docs/user/remote-access.md)
 - [Permission modes](./docs/user/permission-modes.md)
 - [Keyboard shortcuts](./docs/user/keybindings.md)

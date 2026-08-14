@@ -132,6 +132,23 @@ export function isDesktopReleaseArtifact(fileName: string): boolean {
   return fileName !== "builder-debug.yml" && fileName !== "SHA256SUMS.txt";
 }
 
+export function selectDesktopReleaseArtifactNames(
+  fileNames: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  return fileNames
+    .filter(isDesktopReleaseArtifact)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export function resolveDesktopArtifactName(
+  platform: typeof BuildPlatform.Type,
+  target: string,
+): string {
+  return platform === "win" && target.toLowerCase() === "portable"
+    ? "Sleepers-Code-${version}-${arch}-portable.${ext}"
+    : "Sleepers-Code-${version}-${arch}.${ext}";
+}
+
 export function renderSha256Sums(entries: ReadonlyArray<DesktopArtifactChecksum>): string {
   return `${[...entries]
     .sort((left, right) => left.fileName.localeCompare(right.fileName))
@@ -1298,6 +1315,7 @@ const runCommand = Effect.fn("runCommand")(function* (
 
 const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
   readonly repoRoot: string;
+  readonly cargoTargetDir: string;
   readonly stageResourcesDir: string;
   readonly platform: typeof BuildPlatform.Type;
   readonly arch: typeof BuildArch.Type;
@@ -1323,6 +1341,8 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
     yield* runCommand(
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         cwd: input.repoRoot,
+        env: { CARGO_TARGET_DIR: input.cargoTargetDir },
+        extendEnv: true,
         shell: spawnCommand.shell,
       }),
       {
@@ -1331,13 +1351,7 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
       },
     );
 
-    const binaryPath = path.join(
-      input.repoRoot,
-      "native/resource-monitor/target",
-      rustTarget,
-      "release",
-      executableName,
-    );
+    const binaryPath = path.join(input.cargoTargetDir, rustTarget, "release", executableName);
     if (!(yield* fs.exists(binaryPath))) {
       return yield* new ResourceMonitorBuildOutputMissingError({
         binaryPath,
@@ -1373,6 +1387,7 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
 
 export const stageRuntimeSidecar = Effect.fn("stageRuntimeSidecar")(function* (input: {
   readonly repoRoot: string;
+  readonly cargoTargetDir: string;
   readonly stageResourcesDir: string;
   readonly platform: typeof BuildPlatform.Type;
   readonly arch: typeof BuildArch.Type;
@@ -1399,6 +1414,8 @@ export const stageRuntimeSidecar = Effect.fn("stageRuntimeSidecar")(function* (i
     yield* runCommand(
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         cwd: input.repoRoot,
+        env: { CARGO_TARGET_DIR: input.cargoTargetDir },
+        extendEnv: true,
         shell: spawnCommand.shell,
       }),
       {
@@ -1407,7 +1424,7 @@ export const stageRuntimeSidecar = Effect.fn("stageRuntimeSidecar")(function* (i
       },
     );
 
-    const binaryPath = path.join(input.repoRoot, "target", rustTarget, "release", executableName);
+    const binaryPath = path.join(input.cargoTargetDir, rustTarget, "release", executableName);
     if (!(yield* fs.exists(binaryPath))) {
       return yield* new RuntimeSidecarBuildOutputMissingError({
         binaryPath,
@@ -1726,7 +1743,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "Sleepers-Code-${version}-${arch}.${ext}",
+    artifactName: resolveDesktopArtifactName(platform, target),
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [...DESKTOP_FILE_EXCLUSIONS],
     directories: {
@@ -1987,6 +2004,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   });
 
   const stageAppDir = path.join(stageRoot, "app");
+  const cargoTargetRoot = path.join(stageRoot, "cargo-target");
   const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
   const distDirs = {
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
@@ -2043,6 +2061,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
   yield* stageResourceMonitor({
     repoRoot,
+    cargoTargetDir: path.join(cargoTargetRoot, "resource-monitor"),
     stageResourcesDir,
     platform: options.platform,
     arch: options.arch,
@@ -2050,6 +2069,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   });
   yield* stageRuntimeSidecar({
     repoRoot,
+    cargoTargetDir: path.join(cargoTargetRoot, "runtime-sidecar"),
     stageResourcesDir,
     platform: options.platform,
     arch: options.arch,
@@ -2294,8 +2314,16 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     });
   }
 
+  const checksumArtifactPaths: string[] = [];
+  const outputEntries = yield* fs.readDirectory(options.outputDir);
+  for (const entry of selectDesktopReleaseArtifactNames(outputEntries)) {
+    const artifactPath = path.join(options.outputDir, entry);
+    const stat = yield* fs.stat(artifactPath).pipe(Effect.orElseSucceed(() => null));
+    if (stat?.type === "File") checksumArtifactPaths.push(artifactPath);
+  }
+
   const checksums = yield* Effect.forEach(
-    copiedArtifacts,
+    checksumArtifactPaths,
     (artifactPath) =>
       sha256File(artifactPath).pipe(
         Effect.map((sha256) => ({
@@ -2321,7 +2349,7 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
   ),
   target: Flag.string("target").pipe(
     Flag.withDescription(
-      "Artifact target, for example dmg/AppImage/nsis (env: T3CODE_DESKTOP_TARGET).",
+      "Artifact target, for example dmg/AppImage/nsis/portable (env: T3CODE_DESKTOP_TARGET).",
     ),
     Flag.optional,
   ),

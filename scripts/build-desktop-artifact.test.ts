@@ -39,7 +39,9 @@ import {
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
   resolveResourceMonitorRustTargets,
+  selectDesktopReleaseArtifactNames,
   renderSha256Sums,
+  resolveDesktopArtifactName,
   resourceMonitorExecutableName,
   runtimeSidecarExecutableName,
   resolveGitHubPublishConfig,
@@ -97,8 +99,32 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.isTrue(isDesktopReleaseArtifact("Sleepers-Code-0.0.32-x64.exe"));
     assert.isTrue(isDesktopReleaseArtifact("Sleepers-Code-0.0.32-x64.exe.blockmap"));
     assert.isTrue(isDesktopReleaseArtifact("latest.yml"));
+    assert.isTrue(isDesktopReleaseArtifact("Sleepers-Code-0.0.32-x64-portable.exe"));
     assert.isFalse(isDesktopReleaseArtifact("builder-debug.yml"));
     assert.isFalse(isDesktopReleaseArtifact("SHA256SUMS.txt"));
+  });
+
+  it("selects every visible artifact for a combined checksum manifest", () => {
+    assert.deepStrictEqual(
+      selectDesktopReleaseArtifactNames([
+        "Sleepers-Code-0.0.32-x64-portable.exe",
+        "builder-debug.yml",
+        "Sleepers-Code-0.0.32-x64.exe",
+        "SHA256SUMS.txt",
+      ]),
+      ["Sleepers-Code-0.0.32-x64-portable.exe", "Sleepers-Code-0.0.32-x64.exe"],
+    );
+  });
+
+  it("gives Windows portable builds a collision-free artifact name", () => {
+    assert.equal(
+      resolveDesktopArtifactName("win", "portable"),
+      "Sleepers-Code-${version}-${arch}-portable.${ext}",
+    );
+    assert.equal(
+      resolveDesktopArtifactName("win", "nsis"),
+      "Sleepers-Code-${version}-${arch}.${ext}",
+    );
   });
 
   it("renders a stable lowercase SHA-256 manifest", () => {
@@ -407,16 +433,27 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
         undefined,
       );
+      const portable = yield* createBuildConfig(
+        "win",
+        "portable",
+        "1.2.3",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
 
       assert.notProperty(mac, "asarUnpack");
       assert.notProperty(linux, "asarUnpack");
       assert.deepStrictEqual(win.asarUnpack, WINDOWS_ASAR_UNPACK);
+      assert.equal(portable.artifactName, "Sleepers-Code-${version}-${arch}-portable.${ext}");
+      assert.deepStrictEqual((portable.win as Record<string, unknown>).target, ["portable"]);
       // Linux must register the renderer schemes so the generated .desktop
       // entry advertises MimeType=x-scheme-handler/t3code; for OAuth deep links.
       assert.deepStrictEqual((linux.linux as Record<string, unknown>).protocols, [
         { name: "Sleepers Code", schemes: ["t3code", "t3code-dev"] },
       ]);
-      for (const config of [mac, linux, win]) {
+      for (const config of [mac, linux, win, portable]) {
         assert.deepStrictEqual(config.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
         assert.deepStrictEqual(config.files, DESKTOP_FILE_EXCLUSIONS);
       }
@@ -649,9 +686,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         prefix: "t3-runtime-sidecar-stage-test-",
       });
       const stageResourcesDir = path.join(repoRoot, "stage/resources");
+      const cargoTargetDir = path.join(repoRoot, "isolated-cargo-target");
       const builtBinary = path.join(
-        repoRoot,
-        "target/x86_64-pc-windows-msvc/release/t3-runtime-sidecar.exe",
+        cargoTargetDir,
+        "x86_64-pc-windows-msvc/release/t3-runtime-sidecar.exe",
       );
       yield* fileSystem.makeDirectory(path.dirname(builtBinary), { recursive: true });
       yield* fileSystem.writeFileString(builtBinary, "runtime-sidecar");
@@ -679,6 +717,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
       yield* stageRuntimeSidecar({
         repoRoot,
+        cargoTargetDir,
         stageResourcesDir,
         platform: "win",
         arch: "x64",

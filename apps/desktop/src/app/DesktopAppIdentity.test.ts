@@ -5,6 +5,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
+import * as Path from "effect/Path";
 
 import type * as Electron from "electron";
 
@@ -90,6 +91,7 @@ const makeEnvironmentLayer = (overrides: TestEnvironmentInput = {}) => {
         DesktopConfig.layerTest({
           ...env,
         }),
+        Path.layer,
       ),
     ),
   );
@@ -143,6 +145,25 @@ const withIdentity = <A, E, R>(
 };
 
 describe("DesktopAppIdentity", () => {
+  it.effect("keeps portable Electron data inside the portable base directory", () =>
+    withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        const userDataPath = yield* identity.resolveUserDataPath;
+
+        assert.equal(userDataPath, "/portable/Sleepers-Code-Data/desktop");
+      }),
+      {
+        legacyPathExists: true,
+        environment: {
+          platform: "win32",
+          isPackaged: true,
+          env: { PORTABLE_EXECUTABLE_DIR: "/portable" },
+        },
+      },
+    ),
+  );
+
   it.effect("keeps using the legacy userData path when it already exists", () =>
     withIdentity(
       Effect.gen(function* () {

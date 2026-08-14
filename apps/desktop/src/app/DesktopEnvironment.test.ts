@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
@@ -26,7 +27,9 @@ const makeEnvironmentLayer = (
   DesktopEnvironment.layer({
     ...defaultInput,
     ...overrides,
-  }).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest(env))));
+  }).pipe(
+    Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest(env), Path.layer)),
+  );
 
 const makeEnvironment = (
   overrides: Partial<DesktopEnvironment.MakeDesktopEnvironmentInput> = {},
@@ -97,6 +100,59 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.logDir, "/tmp/t3/userdata/logs");
       assert.equal(environment.browserArtifactsDir, "/tmp/t3/userdata/browser-artifacts");
       assert.equal(environment.serverSettingsPath, "/tmp/t3/userdata/settings.json");
+    }),
+  );
+
+  it.effect("keeps packaged portable state beside the executable without replacing user HOME", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        { platform: "win32", isPackaged: true },
+        { PORTABLE_EXECUTABLE_DIR: " /portable " },
+      );
+
+      assert.equal(environment.isPortable, true);
+      assert.deepEqual(environment.portableExecutableDir, Option.some("/portable"));
+      assert.equal(environment.homeDirectory, "/Users/alice");
+      assert.equal(environment.appDataDirectory, "/Users/alice/AppData/Roaming");
+      assert.equal(environment.baseDir, "/portable/Sleepers-Code-Data");
+      assert.equal(environment.stateDir, "/portable/Sleepers-Code-Data/userdata");
+      assert.equal(
+        environment.browserArtifactsDir,
+        "/portable/Sleepers-Code-Data/userdata/browser-artifacts",
+      );
+    }),
+  );
+
+  it.effect("lets an explicit T3CODE_HOME override the portable data location", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        { platform: "win32", isPackaged: true },
+        {
+          PORTABLE_EXECUTABLE_DIR: "/portable",
+          T3CODE_HOME: "/explicit-data",
+        },
+      );
+
+      assert.equal(environment.isPortable, true);
+      assert.equal(environment.baseDir, "/explicit-data");
+      assert.equal(environment.stateDir, "/explicit-data/userdata");
+    }),
+  );
+
+  it.effect("ignores a portable marker outside packaged Windows production", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        { platform: "win32", isPackaged: true },
+        {
+          PORTABLE_EXECUTABLE_DIR: "/portable",
+          VITE_DEV_SERVER_URL: "http://localhost:5173",
+        },
+      );
+
+      assert.equal(environment.isPortable, false);
+      assert.deepEqual(environment.portableExecutableDir, Option.none());
+      assert.equal(environment.baseDir, "/Users/alice/.t3");
+      assert.equal(environment.stateDir, "/Users/alice/.t3/dev");
     }),
   );
 

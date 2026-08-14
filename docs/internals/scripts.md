@@ -83,6 +83,11 @@ authenticated.
   variants exist. Publishable artifacts receive stable `Sleepers-Code-<version>-<arch>` names and a
   generated `SHA256SUMS.txt`; Electron Builder's internal `builder-debug.yml` is not copied into the
   release set.
+- `vp run dist:desktop:win:portable:x64`: Builds the no-install Windows executable with a distinct
+  `Sleepers-Code-<version>-x64-portable.exe` name. The checksum manifest covers every installer,
+  blockmap, and portable executable present in `release/`.
+- Native helper compilation uses build-scoped Cargo target directories, so packaging cannot overwrite
+  helpers held open by a running development or packaged app.
 - Windows artifacts that support the WSL backend require a Linux `node-pty` native binary. CI builds
   it on Linux; local packaging passes it with `--wsl-prebuild <path-to-pty.node>`. Omitting it keeps
   the general desktop build usable but intentionally reports WSL as unavailable.

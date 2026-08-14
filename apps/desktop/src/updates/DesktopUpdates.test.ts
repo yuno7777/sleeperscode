@@ -208,6 +208,20 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
 }
 
 describe("DesktopUpdates", () => {
+  it("disables in-place auto-update for portable executables", () => {
+    assert.equal(
+      DesktopUpdates.getAutoUpdateDisabledReason({
+        isDevelopment: false,
+        isPackaged: true,
+        isPortable: true,
+        platform: "win32",
+        disabledByEnv: false,
+        hasUpdateFeedConfig: true,
+      }),
+      "Automatic updates are not available in portable builds; download a replacement portable executable.",
+    );
+  });
+
   it("preserves complete causes for update poller and event failures", () => {
     const cause = Cause.combine(
       Cause.fail(new Error("updater failed")),

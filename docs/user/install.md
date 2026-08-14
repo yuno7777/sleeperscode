@@ -27,6 +27,9 @@ The installer contains the Sleepers Code application, its Node server bundle, Ru
 resource monitor, web assets, database migrations, and WSL terminal dependency. Provider CLIs are
 separate and remain under their publishers' installers and terms.
 
+Prefer a no-install copy? See the [portable Windows guide](./portable-windows.md) for checksum,
+storage, move, update, and removal behavior.
+
 ## Providers
 
 Install and authenticate at least one provider CLI on the computer where Sleepers Code runs.

@@ -32,6 +32,14 @@ This document covers the unified release workflow for stable and nightly desktop
   - nightly releases are aliased to the `nightly` hosted app channel
 - Signing is optional and auto-detected per platform from secrets.
 
+## Portable Windows candidate
+
+The local `vp run dist:desktop:win:portable:x64` target produces an unsigned, no-install candidate.
+Its artifact name is distinct from the NSIS installer, and `SHA256SUMS.txt` covers both targets when
+they share the release directory. Portable builds disable Electron auto-update and keep application
+state in a sibling `Sleepers-Code-Data` directory. The release workflow does not publish this target
+until clean-machine qualification is complete.
+
 ## Required release credentials
 
 Stable releases require these GitHub Actions secrets in addition to the platform and deployment

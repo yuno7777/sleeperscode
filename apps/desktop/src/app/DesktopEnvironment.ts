@@ -36,12 +36,14 @@ export class DesktopEnvironment extends Context.Service<
     readonly platform: NodeJS.Platform;
     readonly processArch: string;
     readonly isPackaged: boolean;
+    readonly isPortable: boolean;
     readonly isDevelopment: boolean;
     readonly appVersion: string;
     readonly appPath: string;
     readonly resourcesPath: string;
     readonly homeDirectory: string;
     readonly appDataDirectory: string;
+    readonly portableExecutableDir: Option.Option<string>;
     readonly baseDir: string;
     readonly stateDir: string;
     readonly desktopSettingsPath: string;
@@ -142,6 +144,14 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const homeDirectory = input.homeDirectory;
   const devServerUrl = config.devServerUrl;
   const isDevelopment = Option.isSome(devServerUrl);
+  const portableExecutableDir =
+    input.platform === "win32" && input.isPackaged && !isDevelopment
+      ? config.portableExecutableDir
+      : Option.none<string>();
+  const isPortable = Option.isSome(portableExecutableDir);
+  const effectiveT3Home = Option.orElse(config.t3Home, () =>
+    Option.map(portableExecutableDir, (directory) => path.join(directory, "Sleepers-Code-Data")),
+  );
   const appDataDirectory =
     input.platform === "win32"
       ? Option.getOrElse(config.appDataDirectory, () =>
@@ -153,7 +163,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const baseDir = resolveDesktopBaseDir({
     homeDirectory,
     joinPath: path.join,
-    t3Home: config.t3Home,
+    t3Home: effectiveT3Home,
   });
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;
@@ -166,7 +176,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     baseDir,
     isDevelopment,
     joinPath: path.join,
-    t3Home: config.t3Home,
+    t3Home: effectiveT3Home,
   });
   const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
   const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
@@ -182,12 +192,14 @@ const make = Effect.fn("desktop.environment.make")(function* (
     platform: input.platform,
     processArch: input.processArch,
     isPackaged: input.isPackaged,
+    isPortable,
     isDevelopment,
     appVersion: input.appVersion,
     appPath: input.appPath,
     resourcesPath,
     homeDirectory,
     appDataDirectory,
+    portableExecutableDir,
     baseDir,
     stateDir,
     desktopSettingsPath: path.join(stateDir, "desktop-settings.json"),
