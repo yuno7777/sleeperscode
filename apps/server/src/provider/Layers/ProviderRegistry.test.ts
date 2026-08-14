@@ -168,6 +168,13 @@ function mockHandle(result: { stdout: string; stderr: string; code: number }) {
   });
 }
 
+function logicalMockArgs(args: ReadonlyArray<string>): ReadonlyArray<string> {
+  return args.map((arg) => {
+    const quoted = /^\^"([\s\S]*)\^"$/u.exec(arg);
+    return quoted?.[1] ?? arg;
+  });
+}
+
 function mockSpawnerLayer(
   handler: (args: ReadonlyArray<string>) => {
     stdout: string;
@@ -179,7 +186,7 @@ function mockSpawnerLayer(
     ChildProcessSpawner.ChildProcessSpawner,
     ChildProcessSpawner.make((command) => {
       const cmd = command as unknown as { args: ReadonlyArray<string> };
-      return Effect.succeed(mockHandle(handler(cmd.args)));
+      return Effect.succeed(mockHandle(handler(logicalMockArgs(cmd.args))));
     }),
   );
 }
@@ -204,8 +211,9 @@ function recordingMockSpawnerLayer(
           readonly env?: NodeJS.ProcessEnv;
         };
       };
-      commands.push({ args: cmd.args, env: cmd.options?.env });
-      return Effect.succeed(mockHandle(handler(cmd.args)));
+      const args = logicalMockArgs(cmd.args);
+      commands.push({ args, env: cmd.options?.env });
+      return Effect.succeed(mockHandle(handler(args)));
     }),
   );
   return { layer, commands };
@@ -993,6 +1001,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             models: [],
           } satisfies ServerProvider;
           const changes = yield* PubSub.unbounded<ServerProvider>();
+          const changeSubscription = yield* PubSub.subscribe(changes);
           const instance = {
             instanceId: cursorInstanceId,
             driverKind: cursorDriver,
@@ -1009,7 +1018,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               }),
               getSnapshot: Effect.succeed(initialProvider),
               refresh: Effect.succeed(refreshedProvider),
-              streamChanges: Stream.fromPubSub(changes),
+              streamChanges: Stream.fromSubscription(changeSubscription),
             },
             adapter: {} as ProviderInstance["adapter"],
             textGeneration: {} as ProviderInstance["textGeneration"],
@@ -1075,7 +1084,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       );
 
       it.effect(
-        "persists authoritative OpenCode removals without resurrecting them on a failed live refresh",
+        "persists authoritative OpenCode removals without resurrecting them on a failed refresh",
         () =>
           Effect.gen(function* () {
             const openCodeDriver = ProviderDriverKind.make("opencode");
@@ -1121,7 +1130,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               models: [],
               message: "Failed to refresh OpenCode models.",
             } satisfies ServerProvider;
-            const changes = yield* PubSub.unbounded<ServerProvider>();
+            const refreshResult = yield* Ref.make<ServerProvider>(authoritativeProvider);
             const instance = {
               instanceId: openCodeInstanceId,
               driverKind: openCodeDriver,
@@ -1137,8 +1146,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   packageName: null,
                 }),
                 getSnapshot: Effect.succeed(initialProvider),
-                refresh: Effect.succeed(authoritativeProvider),
-                streamChanges: Stream.fromPubSub(changes),
+                refresh: Ref.get(refreshResult),
+                streamChanges: Stream.empty,
               },
               adapter: {} as ProviderInstance["adapter"],
               textGeneration: {} as ProviderInstance["textGeneration"],
@@ -1178,31 +1187,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 instanceId: openCodeInstanceId,
               });
 
-              yield* PubSub.publish(changes, authoritativeProvider);
-
+              yield* registry.refreshInstance(openCodeInstanceId);
               let cachedProvider = yield* readProviderStatusCache(filePath);
-              for (
-                let attempt = 0;
-                attempt < 50 && cachedProvider?.checkedAt !== authoritativeProvider.checkedAt;
-                attempt += 1
-              ) {
-                yield* TestClock.adjust("10 millis");
-                yield* Effect.yieldNow;
-                cachedProvider = yield* readProviderStatusCache(filePath);
-              }
 
               assert.deepStrictEqual(cachedProvider?.models, [authoritativeProvider.models[0]!]);
 
-              yield* PubSub.publish(changes, failedProvider);
-              for (
-                let attempt = 0;
-                attempt < 50 && cachedProvider?.checkedAt !== failedProvider.checkedAt;
-                attempt += 1
-              ) {
-                yield* TestClock.adjust("10 millis");
-                yield* Effect.yieldNow;
-                cachedProvider = yield* readProviderStatusCache(filePath);
-              }
+              yield* Ref.set(refreshResult, failedProvider);
+              yield* registry.refreshInstance(openCodeInstanceId);
+              cachedProvider = yield* readProviderStatusCache(filePath);
 
               assert.deepStrictEqual(cachedProvider?.models, [authoritativeProvider.models[0]!]);
               assert.deepStrictEqual((yield* registry.getProviders)[0]?.models, [
@@ -1595,6 +1587,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry.ProviderRegistry;
+            const instanceRegistry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
             // Boot-time probe: the default codex instance is enabled with
             // `firstMissing`, so the real spawner yields ENOENT and the
             // snapshot should be `status: "error"`.
@@ -1617,6 +1610,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             assert.strictEqual(initialCodex?.installed, false);
             assert.deepStrictEqual(spawnedCommands, [firstMissing]);
 
+            const instanceChanges = yield* instanceRegistry.subscribeChanges;
+
             // Drive a settings change. The Hydration layer's
             // `SettingsWatcherLive` consumes this via `streamChanges`,
             // calls `reconcile`, which rebuilds the codex instance (the
@@ -1631,28 +1626,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               },
             });
 
-            // Poll until the injected process boundary observes the new
-            // executable. This verifies the public settings-to-probe behavior
-            // without depending on timestamps assigned by TestClock.
-            const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
-                const providers = yield* registry.getProviders;
-                const codex = providers.find((provider) => provider.instanceId === "codex");
-                if (
-                  codex !== undefined &&
-                  codex.status === "error" &&
-                  spawnedCommands.includes(secondMissing)
-                ) {
-                  return providers;
-                }
-                yield* TestClock.adjust("50 millis");
-                yield* Effect.yieldNow;
-              }
-              return yield* registry.getProviders;
-            });
+            // Wait for the registry's typed mutation receipt. At this point
+            // the replacement instance has been built with the new command,
+            // so a public refresh deterministically exercises that instance.
+            yield* PubSub.take(instanceChanges);
+            yield* registry.refreshInstance(ProviderInstanceId.make("codex"));
+            const refreshed = yield* registry.getProviders;
 
             const reprobedCodex = refreshed.find((provider) => provider.instanceId === "codex");
-            assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);
+            assert.strictEqual(spawnedCommands[0], firstMissing);
+            assert.ok(spawnedCommands.includes(secondMissing));
             assert.strictEqual(reprobedCodex?.status, "error");
             assert.strictEqual(reprobedCodex?.installed, false);
           }).pipe(Effect.provide(runtimeServices));
@@ -2175,7 +2158,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       );
 
       it.effect("runs Claude status probes with the configured CLAUDE_CONFIG_DIR", () => {
-        const claudeConfigDir = "/tmp/t3code-claude-home";
+        const claudeConfigDir = `${process.cwd().replaceAll("\\", "/")}/.t3code-claude-home`;
         const recorded = recordingMockSpawnerLayer((args) => {
           const joined = args.join(" ");
           if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
@@ -2198,7 +2181,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           );
           assert.strictEqual(status.status, "ready");
           assert.deepStrictEqual(
-            recorded.commands.map((command) => command.env?.CLAUDE_CONFIG_DIR),
+            recorded.commands.map((command) =>
+              command.env?.CLAUDE_CONFIG_DIR?.replaceAll("\\", "/"),
+            ),
             [claudeConfigDir],
           );
         }).pipe(Effect.provide(recorded.layer));

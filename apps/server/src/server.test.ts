@@ -4631,7 +4631,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepEqual(first.config.keybindings, []);
         assert.deepEqual(first.config.issues, []);
         assert.deepEqual(first.config.providers, providers);
-        assert.equal(first.config.observability.logsDirectoryPath.endsWith("/logs"), true);
+        assert.equal(
+          first.config.observability.logsDirectoryPath.replaceAll("\\", "/").endsWith("/logs"),
+          true,
+        );
         assert.equal(first.config.observability.localTracingEnabled, true);
         assert.equal(first.config.observability.otlpTracesUrl, "http://localhost:4318/v1/traces");
         assert.equal(first.config.observability.otlpTracesEnabled, true);
@@ -4979,7 +4982,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(readError.cwd, workspaceDir);
       assert.equal(readError.relativePath, "linked-outside.txt");
       assert.equal(readError.failure, "resolved_path_outside_root");
-      assert.equal(readError.resolvedPath, resolvedOutsideFile);
+      if (readError.resolvedPath === undefined) {
+        assert.fail("Expected an outside-root resolved path");
+      }
+      assert.equal(path.basename(readError.resolvedPath), path.basename(resolvedOutsideFile));
+      assert.equal(yield* fs.readFileString(readError.resolvedPath), "outside\n");
       assert.isDefined(readError.cause);
 
       if (

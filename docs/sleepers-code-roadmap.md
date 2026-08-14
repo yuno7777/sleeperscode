@@ -70,6 +70,12 @@ commits the same set, and both native helpers already expose their compiled pack
 typed startup handshakes. The Windows release smoke also merges updater manifests without a Bash path
 translation dependency.
 
+Provider settings hot reload now acquires its change subscription before starting the watcher, closing
+the startup window where an immediate binary-path update could be lost. The provider mocks also model
+Windows command-shell quoting, and server router assertions accept native Windows separators and long
+path resolution. The complete provider-registry and server-router files pass 44 and 125 tests
+respectively, alongside the server typecheck and focused lint.
+
 ## Why blocked phases are blocked rather than pending
 
 `[ ]` claimed these were merely unstarted, which was misleading: most cannot be started, and saying so

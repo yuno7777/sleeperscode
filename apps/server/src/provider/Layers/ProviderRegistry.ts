@@ -651,19 +651,6 @@ export const ProviderRegistryLive = Layer.effect(
     // and pending fallbacks fill the gaps.
     yield* upsertProviders(fallbackProviders, { publish: false });
     // Subscribe to registry mutations BEFORE running the initial sync.
-    // `subscribeChanges` acquires the dequeue synchronously in this
-    // fibre; the subscription is active the instant this `yield*`
-    // returns. Forking the consumer loop later cannot lose a publish
-    // because no publish can reach a not-yet-subscribed dequeue.
-    //
-    // (Contrast with the pre-fix code that did
-    // `Stream.runForEach(instanceRegistry.streamChanges, …).pipe(Effect.forkScoped)`.
-    // `Stream.fromPubSub` defers `PubSub.subscribe` to stream start,
-    // and `forkScoped` only schedules the fibre — so a reconcile that
-    // published between "fibre scheduled" and "fibre starts running"
-    // was dropped, which made any settings change that replaced an
-    // instance never propagate to the aggregator's `providersRef`.)
-    // Subscribe to registry mutations BEFORE running the initial sync.
     // `subscribeChanges` acquires the `PubSub.Subscription` synchronously
     // in this fibre; the subscription is registered with the PubSub the
     // instant this `yield*` returns, so any subsequent publish is
