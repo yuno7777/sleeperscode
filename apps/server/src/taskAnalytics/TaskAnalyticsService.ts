@@ -7,7 +7,9 @@ import * as NodeOS from "node:os";
 import {
   TASK_ANALYTICS_CONTRACT_VERSION,
   TASK_ANALYTICS_MAX_RECORDS,
+  TaskAnalyticsMutationError,
   TaskAnalyticsReadError,
+  type TaskAnalyticsClearResult,
   type TaskAnalyticsPrimaryDomain,
   type TaskAnalyticsRecord,
   type TaskAnalyticsSummary,
@@ -32,6 +34,7 @@ export interface TaskAnalyticsServiceShape {
   readonly readSummary: (
     input: TaskAnalyticsSummaryInput,
   ) => Effect.Effect<TaskAnalyticsSummary, TaskAnalyticsReadError>;
+  readonly clearHistory: Effect.Effect<TaskAnalyticsClearResult, TaskAnalyticsMutationError>;
 }
 
 export class TaskAnalyticsService extends Context.Service<
@@ -154,7 +157,19 @@ const make = (sourceFingerprint: string) =>
       } satisfies TaskAnalyticsSummary;
     });
 
-    return TaskAnalyticsService.of({ readSummary });
+    const clearHistory = repository.clearHistory().pipe(
+      Effect.map(({ deletedRecords }) => ({ deletedRecords }) satisfies TaskAnalyticsClearResult),
+      Effect.mapError(
+        (cause) =>
+          new TaskAnalyticsMutationError({
+            reason: "clearFailed",
+            detail: "The local task and router history could not be cleared.",
+            cause,
+          }),
+      ),
+    );
+
+    return TaskAnalyticsService.of({ readSummary, clearHistory });
   });
 
 export const layerTest = (sourceFingerprint = "task-analytics-test-source") =>

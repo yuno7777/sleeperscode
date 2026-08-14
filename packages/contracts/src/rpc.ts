@@ -166,6 +166,9 @@ import {
 } from "./resourceTelemetry.ts";
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import {
+  TaskAnalyticsClearInput,
+  TaskAnalyticsClearResult,
+  TaskAnalyticsMutationError,
   TaskAnalyticsReadError,
   TaskAnalyticsSummary,
   TaskAnalyticsSummaryInput,
@@ -269,6 +272,7 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverGetTaskAnalytics: "server.getTaskAnalytics",
+  serverClearTaskAnalytics: "server.clearTaskAnalytics",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -447,6 +451,12 @@ export const WsServerGetTaskAnalyticsRpc = Rpc.make(WS_METHODS.serverGetTaskAnal
   payload: TaskAnalyticsSummaryInput,
   success: TaskAnalyticsSummary,
   error: Schema.Union([EnvironmentAuthorizationError, TaskAnalyticsReadError]),
+});
+
+export const WsServerClearTaskAnalyticsRpc = Rpc.make(WS_METHODS.serverClearTaskAnalytics, {
+  payload: TaskAnalyticsClearInput,
+  success: TaskAnalyticsClearResult,
+  error: Schema.Union([EnvironmentAuthorizationError, TaskAnalyticsMutationError]),
 });
 
 export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
@@ -894,6 +904,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
   WsServerGetTaskAnalyticsRpc,
+  WsServerClearTaskAnalyticsRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,

@@ -894,5 +894,13 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId }) => environmentId,
       },
     }),
+    clearTaskAnalytics: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:clear-task-analytics",
+      tag: WS_METHODS.serverClearTaskAnalytics,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
   };
 }

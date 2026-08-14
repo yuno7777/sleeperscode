@@ -1,4 +1,9 @@
-import { RouterDecision, TaskOutcomeObservation, TaskProfile } from "@t3tools/contracts";
+import {
+  NonNegativeInt,
+  RouterDecision,
+  TaskOutcomeObservation,
+  TaskProfile,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -14,6 +19,7 @@ import {
   ProjectionPendingTaskRun,
   ProjectionTaskRun,
   ProjectionTaskRunRepository,
+  ProjectionTaskRunSequenceInput,
   RecordProjectionTaskOutcomeInput,
   type ProjectionTaskRunRepositoryShape,
 } from "../Services/ProjectionTaskRuns.ts";
@@ -25,6 +31,15 @@ const ProjectionTaskRunDbRow = ProjectionTaskRun.mapFields(
     outcome: Schema.NullOr(Schema.fromJsonString(TaskOutcomeObservation)),
   }),
 );
+
+const ClearTaskRunStats = Schema.Struct({
+  deletedRecords: NonNegativeInt,
+  clearedThroughSequence: NonNegativeInt,
+});
+
+const TaskAnalyticsCutoff = Schema.Struct({
+  clearedThroughSequence: NonNegativeInt,
+});
 
 function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: string) {
   return (cause: unknown) =>
@@ -128,6 +143,54 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
     `,
   });
 
+  const readClearStats = SqlSchema.findOne({
+    Request: Schema.Void,
+    Result: ClearTaskRunStats,
+    execute: () => sql`
+      SELECT
+        (SELECT COUNT(*) FROM projection_task_runs) AS "deletedRecords",
+        COALESCE((SELECT MAX(sequence) FROM orchestration_events), 0) AS "clearedThroughSequence"
+    `,
+  });
+
+  const upsertPrivacyCutoff = SqlSchema.void({
+    Request: ClearTaskRunStats,
+    execute: ({ clearedThroughSequence }) => sql`
+      INSERT INTO task_analytics_privacy (
+        singleton_id,
+        cleared_through_sequence,
+        cleared_at
+      ) VALUES (
+        1,
+        ${clearedThroughSequence},
+        strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      )
+      ON CONFLICT (singleton_id)
+      DO UPDATE SET
+        cleared_through_sequence = MAX(
+          task_analytics_privacy.cleared_through_sequence,
+          excluded.cleared_through_sequence
+        ),
+        cleared_at = excluded.cleared_at
+    `,
+  });
+
+  const deleteAllRows = SqlSchema.void({
+    Request: Schema.Void,
+    execute: () => sql`DELETE FROM projection_task_runs`,
+  });
+
+  const readPrivacyCutoff = SqlSchema.findOne({
+    Request: ProjectionTaskRunSequenceInput,
+    Result: TaskAnalyticsCutoff,
+    execute: () => sql`
+      SELECT COALESCE(
+        (SELECT cleared_through_sequence FROM task_analytics_privacy WHERE singleton_id = 1),
+        0
+      ) AS "clearedThroughSequence"
+    `,
+  });
+
   const replacePending: ProjectionTaskRunRepositoryShape["replacePending"] = (row) =>
     sql
       .withTransaction(
@@ -174,12 +237,44 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
       Effect.map((rows) => rows as ReadonlyArray<ProjectionTaskRun>),
     );
 
+  const clearHistory: ProjectionTaskRunRepositoryShape["clearHistory"] = () =>
+    sql
+      .withTransaction(
+        readClearStats(undefined).pipe(
+          Effect.tap(upsertPrivacyCutoff),
+          Effect.tap(() => deleteAllRows(undefined)),
+        ),
+      )
+      .pipe(
+        Effect.mapError(
+          toPersistenceSqlOrDecodeError(
+            "ProjectionTaskRunRepository.clearHistory:query",
+            "ProjectionTaskRunRepository.clearHistory:decodeStats",
+          ),
+        ),
+      );
+
+  const shouldProjectSequence: ProjectionTaskRunRepositoryShape["shouldProjectSequence"] = (
+    input,
+  ) =>
+    readPrivacyCutoff(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProjectionTaskRunRepository.shouldProjectSequence:query",
+          "ProjectionTaskRunRepository.shouldProjectSequence:decodeCutoff",
+        ),
+      ),
+      Effect.map((row) => input.sequence > row.clearedThroughSequence),
+    );
+
   return {
     replacePending,
     bindPendingTurn,
     recordOutcome,
     listByThreadId,
     listWindow,
+    clearHistory,
+    shouldProjectSequence,
   } satisfies ProjectionTaskRunRepositoryShape;
 });
 

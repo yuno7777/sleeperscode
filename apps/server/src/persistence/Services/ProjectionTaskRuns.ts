@@ -8,6 +8,7 @@
 import {
   IsoDateTime,
   MessageId,
+  NonNegativeInt,
   RouterDecision,
   TaskOutcomeObservation,
   TaskProfile,
@@ -66,6 +67,16 @@ export const ListProjectionTaskRunsWindowInput = Schema.Struct({
 });
 export type ListProjectionTaskRunsWindowInput = typeof ListProjectionTaskRunsWindowInput.Type;
 
+export const ProjectionTaskRunSequenceInput = Schema.Struct({
+  sequence: NonNegativeInt,
+});
+export type ProjectionTaskRunSequenceInput = typeof ProjectionTaskRunSequenceInput.Type;
+
+export interface ClearProjectionTaskRunsResult {
+  readonly deletedRecords: number;
+  readonly clearedThroughSequence: number;
+}
+
 export interface ProjectionTaskRunRepositoryShape {
   readonly replacePending: (
     row: ProjectionPendingTaskRun,
@@ -82,6 +93,13 @@ export interface ProjectionTaskRunRepositoryShape {
   readonly listWindow: (
     input: ListProjectionTaskRunsWindowInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionTaskRun>, ProjectionRepositoryError>;
+  readonly clearHistory: () => Effect.Effect<
+    ClearProjectionTaskRunsResult,
+    ProjectionRepositoryError
+  >;
+  readonly shouldProjectSequence: (
+    input: ProjectionTaskRunSequenceInput,
+  ) => Effect.Effect<boolean, ProjectionRepositoryError>;
 }
 
 export class ProjectionTaskRunRepository extends Context.Service<

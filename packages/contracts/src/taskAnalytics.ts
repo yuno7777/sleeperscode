@@ -89,6 +89,14 @@ export const TaskAnalyticsSummary = Schema.Struct({
 });
 export type TaskAnalyticsSummary = typeof TaskAnalyticsSummary.Type;
 
+export const TaskAnalyticsClearInput = Schema.Struct({});
+export type TaskAnalyticsClearInput = typeof TaskAnalyticsClearInput.Type;
+
+export const TaskAnalyticsClearResult = Schema.Struct({
+  deletedRecords: NonNegativeInt,
+});
+export type TaskAnalyticsClearResult = typeof TaskAnalyticsClearResult.Type;
+
 export class TaskAnalyticsReadError extends Schema.TaggedErrorClass<TaskAnalyticsReadError>()(
   "TaskAnalyticsReadError",
   {
@@ -99,5 +107,18 @@ export class TaskAnalyticsReadError extends Schema.TaggedErrorClass<TaskAnalytic
 ) {
   override get message(): string {
     return `Task analytics read failed (${this.reason}): ${this.detail}`;
+  }
+}
+
+export class TaskAnalyticsMutationError extends Schema.TaggedErrorClass<TaskAnalyticsMutationError>()(
+  "TaskAnalyticsMutationError",
+  {
+    reason: Schema.Literal("clearFailed"),
+    detail: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Task analytics mutation failed (${this.reason}): ${this.detail}`;
   }
 }

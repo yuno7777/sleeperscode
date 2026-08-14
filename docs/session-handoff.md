@@ -79,6 +79,9 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - A bounded, read-only task analytics RPC now exposes that content-free evidence to web/desktop and
   mobile. The Usage page has Overview, Tasks, and Router views, deduplicates identical local stores,
   and labels completion as lifecycle rather than quality; routing remains shadow-only.
+- Web/desktop and mobile now require explicit confirmation before clearing local task/router history.
+  The operate-scoped RPC deletes only the content-free projection, and migration 42 retains a replay
+  cutoff so cleared evidence stays cleared without changing conversations or usage transcripts.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -133,6 +136,8 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   server, web, and mobile typechecks pass; only the existing Effect suggestions remain.
 - Task/router analytics contracts, merge, zoned-window repository/service, and cross-environment
   deduplication have focused coverage. Browser/device visual validation remains a release gate.
+- Task analytics deletion is covered at the contract, migration, repository, service, and
+  authorization boundaries; automated UI checks must open but not confirm the destructive dialog.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.

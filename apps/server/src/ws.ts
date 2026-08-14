@@ -1617,6 +1617,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetTaskAnalytics, taskAnalytics.readSummary(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverClearTaskAnalytics]: (_input) =>
+          observeRpcEffect(WS_METHODS.serverClearTaskAnalytics, taskAnalytics.clearHistory, {
+            "rpc.aggregate": "server",
+          }),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",

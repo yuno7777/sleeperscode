@@ -1,6 +1,6 @@
 import type { UsageProviderKind } from "@t3tools/contracts";
 import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowLeftIcon, CheckIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, CheckIcon, RefreshCwIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
@@ -15,6 +15,16 @@ import {
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { ScrollArea } from "../ui/scroll-area";
+import { Button } from "../ui/button";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { UsageChartLegend, UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
 import { TaskAnalyticsPanel, type UsageAnalyticsView } from "./TaskAnalyticsPanel";
 import { PROVIDER_COLOR, PROVIDER_LABEL, PROVIDER_MARK, PROVIDER_ORDER } from "./usageProviders";
@@ -30,6 +40,9 @@ export function UsagePage() {
   const [metric, setMetric] = useState<UsageChartMetric>("cost");
   const [breakdown, setBreakdown] = useState<"model" | "day">("model");
   const [view, setView] = useState<"overview" | UsageAnalyticsView>("overview");
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearNotice, setClearNotice] = useState<string | null>(null);
   const canGoBack = useCanGoBack();
   const navigate = useNavigate();
   const router = useRouter();
@@ -92,6 +105,16 @@ export function UsagePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive-outline"
+              disabled={taskAnalytics.environments.length === 0 || isClearing}
+              onClick={() => setClearConfirmOpen(true)}
+            >
+              <Trash2Icon />
+              Clear history
+            </Button>
             <div className="flex overflow-hidden rounded-md border border-border">
               {WINDOW_OPTIONS.map((option) => (
                 <button
@@ -140,6 +163,12 @@ export function UsagePage() {
             </button>
           ))}
         </nav>
+
+        {clearNotice === null ? null : (
+          <p className="-mt-5 text-xs text-muted-foreground" role="status" aria-live="polite">
+            {clearNotice}
+          </p>
+        )}
 
         {view === "overview" ? (
           settling ? (
@@ -405,6 +434,49 @@ export function UsagePage() {
             ]}
           />
         )}
+
+        <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear task and router history?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently removes the content-free task profiles, shadow routing decisions,
+                and terminal observations stored by every connected environment. Conversations and
+                provider usage transcripts are not changed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />} disabled={isClearing}>
+                Cancel
+              </AlertDialogClose>
+              <Button
+                variant="destructive"
+                disabled={isClearing}
+                onClick={() => {
+                  setIsClearing(true);
+                  setClearNotice(null);
+                  void taskAnalytics
+                    .clearHistory()
+                    .then((deletedRecords) => {
+                      setClearNotice(
+                        deletedRecords === 1
+                          ? "Cleared 1 local task record."
+                          : `Cleared ${deletedRecords} local task records.`,
+                      );
+                      setClearConfirmOpen(false);
+                    })
+                    .catch(() => {
+                      setClearNotice("Task history could not be cleared from every environment.");
+                    })
+                    .finally(() => setIsClearing(false));
+                }}
+              >
+                <Trash2Icon />
+                {isClearing ? "Clearing…" : "Clear history"}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
       </div>
     </ScrollArea>
   );

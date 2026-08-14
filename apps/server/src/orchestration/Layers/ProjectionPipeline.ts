@@ -1489,6 +1489,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const applyTaskRunsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyTaskRunsProjection",
     )(function* (event, _attachmentSideEffects) {
+      if (
+        event.type !== "thread.turn-start-requested" &&
+        event.type !== "thread.session-set" &&
+        event.type !== "thread.turn-outcome-recorded"
+      ) {
+        return;
+      }
+      const shouldProject = yield* projectionTaskRunRepository.shouldProjectSequence({
+        sequence: event.sequence,
+      });
+      if (!shouldProject) return;
+
       switch (event.type) {
         case "thread.turn-start-requested":
           yield* projectionTaskRunRepository.replacePending({

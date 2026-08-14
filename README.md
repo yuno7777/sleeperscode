@@ -51,7 +51,9 @@ runtime bottlenecks move behind small Rust components.
   needs, but its contract cannot override the provider or model selected by the user. Neither record
   stores prompt excerpts or repository paths. A local task-run ledger now joins this bounded evidence
   to factual provider terminal states without calling completion “success,” and the Usage page exposes
-  compact Tasks and Router views across connected environments.
+  compact Tasks and Router views across connected environments. A confirmed clear-history control
+  removes that local evidence without touching conversations or provider usage transcripts, and a
+  durable replay cutoff prevents cleared evidence from reappearing after projection rebuilds.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 

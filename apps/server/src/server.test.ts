@@ -844,6 +844,7 @@ const buildAppUnderTest = (options?: {
                 records: [],
                 truncated: false,
               }),
+            clearHistory: Effect.succeed({ deletedRecords: 0 }),
           }),
         ),
       ),

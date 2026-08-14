@@ -26,12 +26,14 @@ import {
   type MergedTaskAnalytics,
 } from "@t3tools/shared/taskAnalyticsMerge";
 import * as Option from "effect/Option";
+import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
+import { useAtomCommand } from "./use-atom-command";
 
 export interface EnvironmentUsageStatus {
   readonly environmentId: EnvironmentId;
@@ -170,6 +172,7 @@ export interface TaskAnalyticsView {
   readonly isPending: boolean;
   readonly isPartial: boolean;
   readonly refresh: () => void;
+  readonly clearHistory: () => Promise<number>;
 }
 
 export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalyticsView {
@@ -183,6 +186,9 @@ export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalytic
     [input.sinceDay, input.untilDay, input.timeZone],
   );
   const environments = useAtomValue(taskAnalyticsByWindowAtom(windowKey));
+  const clearCommand = useAtomCommand(serverEnvironment.clearTaskAnalytics, {
+    reportFailure: false,
+  });
 
   const refresh = useCallback(() => {
     const input = JSON.parse(windowKey) as TaskAnalyticsSummaryInput;
@@ -208,6 +214,26 @@ export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalytic
     return mergeTaskAnalytics(answered, TASK_ANALYTICS_CONTRACT_VERSION);
   }, [environments]);
 
+  const clearHistory = useCallback(async () => {
+    const targets = new Map<string, EnvironmentId>();
+    for (const environment of environments) {
+      targets.set(
+        environment.summary?.sourceFingerprint ?? environment.environmentId,
+        environment.environmentId,
+      );
+    }
+    const results = await Promise.all(
+      [...targets.values()].map((environmentId) => clearCommand({ environmentId, input: {} })),
+    );
+    let deletedRecords = 0;
+    for (const result of results) {
+      if (result._tag === "Failure") throw Cause.squash(result.cause);
+      deletedRecords += result.value.deletedRecords;
+    }
+    refresh();
+    return deletedRecords;
+  }, [clearCommand, environments, refresh]);
+
   const answeredCount = environments.filter((environment) => environment.summary !== null).length;
   const stillReporting = environments.filter(
     (environment) => environment.summary === null && environment.error === null,
@@ -218,5 +244,6 @@ export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalytic
     isPending: answeredCount === 0 && stillReporting > 0,
     isPartial: answeredCount > 0 && stillReporting > 0,
     refresh,
+    clearHistory,
   };
 }

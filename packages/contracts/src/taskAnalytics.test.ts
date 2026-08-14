@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   TASK_ANALYTICS_MAX_RECORDS,
+  TaskAnalyticsClearResult,
   TaskAnalyticsSummary,
   TaskAnalyticsSummaryInput,
 } from "./taskAnalytics.ts";
@@ -97,5 +98,13 @@ describe("TaskAnalyticsSummaryInput", () => {
     expect(() =>
       decode({ sinceDay: "2026-08-01", untilDay: "2026-08-12", timeZone: "x".repeat(129) }),
     ).toThrow();
+  });
+});
+
+describe("TaskAnalyticsClearResult", () => {
+  it("accepts only a non-negative deletion count", () => {
+    const decode = Schema.decodeUnknownSync(TaskAnalyticsClearResult);
+    expect(decode({ deletedRecords: 3 })).toEqual({ deletedRecords: 3 });
+    expect(() => decode({ deletedRecords: -1 })).toThrow();
   });
 });

@@ -10,11 +10,12 @@ import {
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { useMemo, useState } from "react";
-import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Alert, Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
+import { showConfirmDialog } from "../../components/ConfirmDialogHost";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { SettingsSection } from "../settings/components/SettingsSection";
@@ -37,6 +38,8 @@ export function UsageRouteScreen() {
   const [windowDays, setWindowDays] = useState<number>(30);
   const [metric, setMetric] = useState<UsageChartMetric>("cost");
   const [view, setView] = useState<"overview" | MobileUsageAnalyticsView>("overview");
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearNotice, setClearNotice] = useState<string | null>(null);
 
   // Recomputed only when the window length changes, so a re-render does not
   // shift the range and refetch every environment.
@@ -55,6 +58,42 @@ export function UsageRouteScreen() {
   const refreshing =
     environments.some((entry) => entry.isPending && entry.summary !== null) ||
     taskAnalytics.environments.some((entry) => entry.isPending && entry.summary !== null);
+
+  const clearHistory = () => {
+    setIsClearing(true);
+    setClearNotice(null);
+    void taskAnalytics
+      .clearHistory()
+      .then((deletedRecords) => {
+        setClearNotice(
+          deletedRecords === 1
+            ? "Cleared 1 local task record."
+            : `Cleared ${deletedRecords} local task records.`,
+        );
+      })
+      .catch(() => setClearNotice("Task history could not be cleared from every environment."))
+      .finally(() => setIsClearing(false));
+  };
+
+  const confirmClearHistory = () => {
+    const title = "Clear task and router history?";
+    const message =
+      "This permanently removes content-free task profiles, shadow routing decisions, and terminal observations from every connected environment. Conversations and usage transcripts are not changed.";
+    if (process.env.EXPO_OS === "ios") {
+      Alert.alert(title, message, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Clear history", style: "destructive", onPress: clearHistory },
+      ]);
+      return;
+    }
+    showConfirmDialog({
+      title,
+      message,
+      confirmText: "Clear history",
+      destructive: true,
+      onConfirm: clearHistory,
+    });
+  };
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -97,6 +136,24 @@ export function UsageRouteScreen() {
           selected={windowDays}
           onSelect={setWindowDays}
         />
+
+        {view === "overview" ? null : (
+          <View className="gap-2">
+            <Pressable
+              accessibilityRole="button"
+              disabled={taskAnalytics.environments.length === 0 || isClearing}
+              onPress={confirmClearHistory}
+              className="items-center rounded-full border-continuous bg-card px-4 py-2.5 disabled:opacity-50"
+            >
+              <Text className="font-t3-medium text-danger-foreground">
+                {isClearing ? "Clearing…" : "Clear task history"}
+              </Text>
+            </Pressable>
+            {clearNotice === null ? null : (
+              <Text className="text-center text-sm text-foreground-muted">{clearNotice}</Text>
+            )}
+          </View>
+        )}
 
         {view === "overview" ? (
           <UsageCoverageNotice environments={environments} merged={merged} isPartial={isPartial} />

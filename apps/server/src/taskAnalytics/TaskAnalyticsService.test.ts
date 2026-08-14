@@ -107,6 +107,8 @@ it.effect("TaskAnalyticsService returns bounded factual evidence with zoned wind
           observedInput = input;
           return [row];
         }),
+      clearHistory: () => Effect.succeed({ deletedRecords: 4, clearedThroughSequence: 12 }),
+      shouldProjectSequence: () => Effect.succeed(true),
     }),
   );
 
@@ -138,6 +140,7 @@ it.effect("TaskAnalyticsService returns bounded factual evidence with zoned wind
     assert.notProperty(record ?? {}, "messageId");
     assert.notProperty(record ?? {}, "prompt");
     assert.notProperty(record ?? {}, "quality");
+    assert.deepEqual(yield* service.clearHistory, { deletedRecords: 4 });
   }).pipe(Effect.provide(testLayer));
 });
 

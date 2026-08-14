@@ -10,6 +10,7 @@ import {
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { SqlitePersistenceMemory } from "./Sqlite.ts";
 import { ProjectionTaskRunRepository } from "../Services/ProjectionTaskRuns.ts";
@@ -133,6 +134,43 @@ layer("ProjectionTaskRunRepository", (it) => {
       });
       assert.equal(latest.length, 1);
       assert.equal(latest[0]?.messageId, "message-task-run-second");
+    }),
+  );
+
+  it.effect("clears rows and prevents old event sequences from recreating them", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionTaskRunRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-task-run-clear");
+
+      yield* sql`
+        INSERT INTO orchestration_events (
+          event_id, aggregate_kind, stream_id, stream_version, event_type, occurred_at,
+          actor_kind, payload_json, metadata_json
+        ) VALUES (
+          'event-task-run-clear', 'thread', ${threadId}, 1, 'thread.turn-start-requested',
+          '2026-08-14T12:00:00.000Z', 'system', '{}', '{}'
+        )
+      `;
+      yield* repository.replacePending({
+        threadId,
+        messageId: MessageId.make("message-task-run-clear"),
+        taskProfile,
+        routerDecision,
+        requestedAt: "2026-08-14T12:00:00.000Z",
+      });
+
+      const before = yield* repository.listWindow({
+        since: "2000-01-01T00:00:00.000Z",
+        until: "2100-01-01T00:00:00.000Z",
+        limit: 1_000,
+      });
+      const result = yield* repository.clearHistory();
+      assert.equal(result.deletedRecords, before.length);
+      assert.equal(result.clearedThroughSequence, 1);
+      assert.isFalse(yield* repository.shouldProjectSequence({ sequence: 1 }));
+      assert.isTrue(yield* repository.shouldProjectSequence({ sequence: 2 }));
+      assert.isEmpty(yield* repository.listByThreadId({ threadId }));
     }),
   );
 });
