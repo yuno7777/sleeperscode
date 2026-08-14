@@ -15,16 +15,50 @@
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 /**
  * Bumped whenever the shape of {@link UsageSummary} changes incompatibly. The
  * client renders partial coverage when an environment reports an older version
  * rather than failing the whole page.
  */
-export const USAGE_CONTRACT_VERSION = 3 as const;
+export const USAGE_CONTRACT_VERSION = 4 as const;
 
-export const UsageProviderKind = Schema.Literals(["claude", "codex"]);
+export const UsageProviderKind = Schema.Literals([
+  "claude",
+  "codex",
+  "cursor",
+  "grok",
+  "opencode",
+  "antigravity",
+]);
 export type UsageProviderKind = typeof UsageProviderKind.Type;
+
+/** How this provider contributes to the totals on this host. */
+export const UsageReportingKind = Schema.Literals(["transcript", "runtimeEvents", "notReported"]);
+export type UsageReportingKind = typeof UsageReportingKind.Type;
+
+/**
+ * Provider availability is reported separately from token buckets.
+ *
+ * Not every provider exposes a durable, trustworthy usage transcript. Keeping
+ * this inventory separate lets clients show every installed host provider
+ * without presenting an absent integration as zero tokens or zero cost.
+ */
+export const UsageProviderCoverage = Schema.Struct({
+  hostId: TrimmedNonEmptyString,
+  instanceId: ProviderInstanceId,
+  provider: ProviderDriverKind,
+  displayName: TrimmedNonEmptyString,
+  installed: Schema.Boolean,
+  enabled: Schema.Boolean,
+  authStatus: Schema.Literals(["authenticated", "unauthenticated", "unknown"]),
+  routable: Schema.Boolean,
+  reporting: UsageReportingKind,
+  observed: Schema.Boolean,
+  message: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type UsageProviderCoverage = typeof UsageProviderCoverage.Type;
 
 /**
  * A calendar day in the reporting time zone, formatted `YYYY-MM-DD`.
@@ -176,6 +210,8 @@ export const UsageSummary = Schema.Struct({
   untilDay: UsageDay,
   buckets: Schema.Array(UsageBucket),
   sources: Schema.Array(UsageSource),
+  /** Every installed provider instance detected on this host. */
+  providerCoverage: Schema.Array(UsageProviderCoverage),
   pricing: UsagePricing,
   /** Wall-clock cost of the scan, surfaced in diagnostics. */
   scanDurationMs: NonNegativeInt,

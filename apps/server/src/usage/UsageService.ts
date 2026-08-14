@@ -15,7 +15,12 @@ import * as NodeOS from "node:os";
 
 import {
   USAGE_CONTRACT_VERSION,
+  deriveAgentStatusLevels,
+  type ProviderDriverKind,
+  type ServerProvider,
+  type UsageBucket,
   type UsageProviderKind,
+  type UsageProviderCoverage,
   type UsageSource,
   type UsageSummary,
   type UsageSummaryInput,
@@ -32,6 +37,8 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import { ServerConfig } from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -68,6 +75,75 @@ const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
 /** Longest window the UI offers, plus slack. Older entries are pruned. */
 const CACHE_RETENTION_DAYS = 90;
 
+const usageProviderFromDriver = (driver: ProviderDriverKind): UsageProviderKind | null => {
+  switch (String(driver)) {
+    case "claudeAgent":
+      return "claude";
+    case "codex":
+    case "cursor":
+    case "grok":
+    case "opencode":
+    case "antigravity":
+      return String(driver) as UsageProviderKind;
+    default:
+      return null;
+  }
+};
+
+const providerDisplayName = (driver: ProviderDriverKind): string => {
+  switch (String(driver)) {
+    case "claudeAgent":
+      return "Claude Code";
+    case "codex":
+      return "Codex";
+    case "cursor":
+      return "Cursor";
+    case "grok":
+      return "Grok";
+    case "opencode":
+      return "OpenCode";
+    case "antigravity":
+      return "Antigravity";
+    default:
+      return driver;
+  }
+};
+
+export function makeUsageProviderCoverage(
+  hostId: string,
+  providers: ReadonlyArray<ServerProvider>,
+  buckets: ReadonlyArray<UsageBucket>,
+): ReadonlyArray<UsageProviderCoverage> {
+  const observedProviders = new Set(buckets.map((bucket) => bucket.provider));
+  return providers
+    .filter((provider) => provider.installed)
+    .map((provider) => {
+      const usageProvider = usageProviderFromDriver(provider.driver);
+      const reporting =
+        usageProvider === "claude" || usageProvider === "codex"
+          ? ("transcript" as const)
+          : usageProvider === "antigravity"
+            ? ("runtimeEvents" as const)
+            : ("notReported" as const);
+      return {
+        hostId,
+        instanceId: provider.instanceId,
+        provider: provider.driver,
+        displayName: provider.displayName ?? providerDisplayName(provider.driver),
+        installed: provider.installed,
+        enabled: provider.enabled,
+        authStatus: provider.auth.status,
+        routable: deriveAgentStatusLevels(provider).routable,
+        reporting,
+        observed: usageProvider !== null && observedProviders.has(usageProvider),
+        message:
+          reporting !== "notReported"
+            ? null
+            : "This provider does not expose trustworthy durable usage totals yet.",
+      };
+    });
+}
+
 /** On-disk shape of the rate snapshot. */
 const RatesCacheFile = Schema.Struct({
   fetchedAtMs: Schema.Number,
@@ -84,6 +160,43 @@ const encodeRatesCache = Schema.encodeEffect(
 const ScanCacheJson = Schema.fromJsonString(Schema.Unknown as unknown as Schema.Codec<unknown>);
 const decodeScanCacheFile = Schema.decodeUnknownEffect(ScanCacheJson);
 const encodeScanCacheFile = Schema.encodeEffect(ScanCacheJson);
+
+const RuntimeUsageActivityRow = Schema.Struct({
+  activityId: Schema.String,
+  threadId: Schema.String,
+  turnId: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  model: Schema.String,
+  payloadJson: Schema.String,
+});
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+function parseRuntimeUsagePayload(payloadJson: string): {
+  readonly usedTokens: number;
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningTokens: number;
+} | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payloadJson);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const payload = parsed as Record<string, unknown>;
+  return {
+    usedTokens: nonNegativeInteger(payload.usedTokens),
+    inputTokens: nonNegativeInteger(payload.inputTokens),
+    cachedInputTokens: nonNegativeInteger(payload.cachedInputTokens),
+    outputTokens: nonNegativeInteger(payload.outputTokens),
+    reasoningTokens: nonNegativeInteger(payload.reasoningOutputTokens),
+  };
+}
 
 export class UsageService extends Context.Service<
   UsageService,
@@ -105,6 +218,7 @@ export const layerTest = Layer.succeed(
         untilDay: input.untilDay,
         buckets: [],
         sources: [],
+        providerCoverage: [],
         pricing: {
           status: "unavailable",
           source: LITELLM_RATES_URL,
@@ -122,6 +236,35 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const httpClient = yield* HttpClient.HttpClient;
+  const sql = yield* SqlClient.SqlClient;
+
+  const listAntigravityRuntimeUsage = SqlSchema.findAll({
+    Request: Schema.Struct({ since: Schema.String, until: Schema.String }),
+    Result: RuntimeUsageActivityRow,
+    execute: ({ since, until }) => sql`
+      SELECT
+        activity.activity_id AS "activityId",
+        activity.thread_id AS "threadId",
+        activity.turn_id AS "turnId",
+        activity.created_at AS "createdAt",
+        COALESCE(
+          json_extract(activity.payload_json, '$.usageModel'),
+          json_extract(thread.model_selection_json, '$.model'),
+          'antigravity'
+        ) AS "model",
+        activity.payload_json AS "payloadJson"
+      FROM projection_thread_activities AS activity
+      INNER JOIN projection_threads AS thread ON thread.thread_id = activity.thread_id
+      WHERE activity.kind = 'context-window.updated'
+        AND activity.created_at >= ${since}
+        AND activity.created_at <= ${until}
+        AND COALESCE(
+          json_extract(activity.payload_json, '$.usageProvider'),
+          json_extract(thread.model_selection_json, '$.provider')
+        ) = 'antigravity'
+      ORDER BY activity.created_at ASC, activity.activity_id ASC
+    `,
+  });
 
   const fileCache: ScanCache = new Map();
   let cacheDirty = false;
@@ -325,6 +468,76 @@ export const make = Effect.gen(function* () {
     const livePaths = new Set<string>();
     const walkedRoots: string[] = [];
 
+    const runtimeWindowEnd = DateTime.make(`${input.untilDay}T23:59:59.999Z`);
+    const runtimeRows = Option.isNone(runtimeWindowEnd)
+      ? null
+      : yield* listAntigravityRuntimeUsage({
+          since: DateTime.formatIso(
+            DateTime.makeUnsafe(DateTime.toEpochMillis(windowStart.value) - MTIME_SLACK_MS),
+          ),
+          until: DateTime.formatIso(
+            DateTime.makeUnsafe(DateTime.toEpochMillis(runtimeWindowEnd.value) + MTIME_SLACK_MS),
+          ),
+        }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+    const runtimeSessions = new Set<string>();
+    if (runtimeRows !== null) {
+      for (const row of runtimeRows) {
+        const usage = parseRuntimeUsagePayload(row.payloadJson);
+        if (usage === null) continue;
+        const inputIncludesCacheDistance = Math.abs(
+          usage.usedTokens - (usage.inputTokens + usage.outputTokens),
+        );
+        const inputExcludesCacheDistance = Math.abs(
+          usage.usedTokens - (usage.inputTokens + usage.cachedInputTokens + usage.outputTokens),
+        );
+        const uncachedInputTokens =
+          inputIncludesCacheDistance <= inputExcludesCacheDistance
+            ? Math.max(0, usage.inputTokens - usage.cachedInputTokens)
+            : usage.inputTokens;
+        const fallbackUncachedTokens =
+          uncachedInputTokens + usage.cachedInputTokens + usage.outputTokens === 0
+            ? usage.usedTokens
+            : uncachedInputTokens;
+        const sessionId = `${row.threadId}:${row.turnId ?? row.activityId}`;
+        if (
+          aggregator.add({
+            provider: "antigravity",
+            timestampMs: Date.parse(row.createdAt),
+            model: row.model,
+            sessionId,
+            totals: {
+              uncachedInputTokens: fallbackUncachedTokens,
+              cachedInputTokens: usage.cachedInputTokens,
+              cacheCreationTokens: 0,
+              outputTokens: usage.outputTokens,
+              reasoningTokens: usage.reasoningTokens,
+            },
+            reportedCostUsd: null,
+            dedupeKey: `runtime-activity:${row.activityId}`,
+          })
+        ) {
+          runtimeSessions.add(sessionId);
+        }
+      }
+    }
+    sources.push({
+      fingerprint: {
+        hostId,
+        provider: "antigravity",
+        resolvedHomePath: `${config.dbPath}#runtime-usage`,
+        volumeId: yield* Effect.promise(() => readDirectoryVolumeId(config.stateDir)),
+      },
+      status: runtimeRows === null ? "failed" : "partial",
+      scannedFiles: runtimeRows === null ? 0 : 1,
+      skippedFiles: 0,
+      malformedRecords: 0,
+      distinctSessions: runtimeSessions.size,
+      message:
+        runtimeRows === null
+          ? "The local runtime usage ledger could not be read."
+          : "Includes Antigravity turns run through Sleepers Code; external CLI sessions are not available.",
+    });
+
     for (const { provider, dir } of dirs) {
       const volumeId = yield* Effect.promise(() => readDirectoryVolumeId(dir));
       const exists = yield* fileSystem
@@ -401,6 +614,7 @@ export const make = Effect.gen(function* () {
       untilDay: input.untilDay,
       buckets: aggregated.buckets,
       sources,
+      providerCoverage: [],
       pricing: {
         status: ratesStatus,
         source: LITELLM_RATES_URL,

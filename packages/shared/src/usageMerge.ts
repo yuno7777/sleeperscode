@@ -9,6 +9,7 @@
 import type {
   EnvironmentId,
   UsageBucket,
+  UsageProviderCoverage,
   UsageProviderKind,
   UsageSourceFingerprint,
   UsageSummary,
@@ -52,6 +53,10 @@ export interface CostQuality {
   readonly cacheSavingsUsd: number;
 }
 
+export interface MergedProviderCoverage extends UsageProviderCoverage {
+  readonly environmentLabels: readonly string[];
+}
+
 export interface MergedUsage {
   readonly costUsd: number;
   readonly uncachedInputTokens: number;
@@ -63,6 +68,7 @@ export interface MergedUsage {
   readonly records: number;
   readonly sessions: number;
   readonly providers: readonly ProviderTotals[];
+  readonly providerCoverage: readonly MergedProviderCoverage[];
   readonly models: readonly ModelTotals[];
   readonly daily: readonly DailyTotals[];
   readonly costQuality: CostQuality;
@@ -155,6 +161,21 @@ function bucketTokens(bucket: UsageBucket): number {
   );
 }
 
+function usageProviderFromCoverage(coverage: UsageProviderCoverage): UsageProviderKind | undefined {
+  const provider = String(coverage.provider);
+  if (provider === "claudeAgent") return "claude";
+  if (
+    provider === "codex" ||
+    provider === "cursor" ||
+    provider === "grok" ||
+    provider === "opencode" ||
+    provider === "antigravity"
+  ) {
+    return provider;
+  }
+  return undefined;
+}
+
 const EMPTY_MERGED: MergedUsage = {
   costUsd: 0,
   uncachedInputTokens: 0,
@@ -166,6 +187,7 @@ const EMPTY_MERGED: MergedUsage = {
   records: 0,
   sessions: 0,
   providers: [],
+  providerCoverage: [],
   models: [],
   daily: [],
   costQuality: {
@@ -203,6 +225,34 @@ export function mergeUsage(
   }
 
   const { ownerByFingerprint, duplicates } = claimSources(current);
+  const providerCoverageByKey = new Map<string, MergedProviderCoverage>();
+  for (const environment of current) {
+    for (const coverage of environment.summary.providerCoverage) {
+      const key = `${coverage.hostId}\0${coverage.instanceId}`;
+      const existing = providerCoverageByKey.get(key);
+      if (existing === undefined) {
+        providerCoverageByKey.set(key, {
+          ...coverage,
+          environmentLabels: [environment.label],
+        });
+        continue;
+      }
+      providerCoverageByKey.set(key, {
+        ...existing,
+        routable: existing.routable || coverage.routable,
+        observed: existing.observed || coverage.observed,
+        reporting:
+          existing.reporting === "transcript" || coverage.reporting === "transcript"
+            ? "transcript"
+            : existing.reporting === "runtimeEvents" || coverage.reporting === "runtimeEvents"
+              ? "runtimeEvents"
+              : "notReported",
+        environmentLabels: existing.environmentLabels.includes(environment.label)
+          ? existing.environmentLabels
+          : [...existing.environmentLabels, environment.label],
+      });
+    }
+  }
 
   let costUsd = 0;
   let uncachedInputTokens = 0;
@@ -295,6 +345,14 @@ export function mergeUsage(
 
   const totalTokens = uncachedInputTokens + cachedInputTokens + cacheCreationTokens + outputTokens;
 
+  for (const coverage of providerCoverageByKey.values()) {
+    if (coverage.reporting === "notReported") continue;
+    const provider = usageProviderFromCoverage(coverage);
+    if (provider !== undefined && !providerAccumulator.has(provider)) {
+      providerAccumulator.set(provider, { costUsd: 0, totalTokens: 0, records: 0 });
+    }
+  }
+
   const providers: ProviderTotals[] = [...providerAccumulator.entries()]
     .map(([provider, totals]) => ({
       provider,
@@ -337,6 +395,10 @@ export function mergeUsage(
     records,
     sessions,
     providers,
+    providerCoverage: [...providerCoverageByKey.values()].sort(
+      (a, b) =>
+        a.displayName.localeCompare(b.displayName) || a.instanceId.localeCompare(b.instanceId),
+    ),
     models,
     daily,
     costQuality: {

@@ -858,7 +858,7 @@ describe("ProviderRuntimeIngestion", () => {
       ): event is Extract<(typeof events)[number], { type: "thread.turn-outcome-recorded" }> =>
         event.type === "thread.turn-outcome-recorded",
     );
-    expect(outcomes.map((event) => event.payload.turnId)).toEqual(["turn-guarded-main"]);
+    expect(outcomes.map((event) => event.payload.turnId)).toEqual(["turn-claude-placeholder"]);
   });
 
   it("ignores auxiliary turn completions from a different provider thread", async () => {
@@ -3083,6 +3083,7 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(usageActivity).toBeDefined();
     expect(usageActivity?.payload).toMatchObject({
+      usageProvider: "codex",
       usedTokens: 1075,
       totalProcessedTokens: 10_200,
       maxTokens: 128_000,

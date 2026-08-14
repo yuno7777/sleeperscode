@@ -1,3 +1,5 @@
+import * as NodeOS from "node:os";
+
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -1610,9 +1612,22 @@ const makeWsRpcLayer = (
             },
           ),
         [WS_METHODS.serverGetUsageSummary]: (input) =>
-          observeRpcEffect(WS_METHODS.serverGetUsageSummary, usage.readSummary(input), {
-            "rpc.aggregate": "server",
-          }),
+          observeRpcEffect(
+            WS_METHODS.serverGetUsageSummary,
+            Effect.all([usage.readSummary(input), providerRegistry.getProviders]).pipe(
+              Effect.map(([summary, providers]) => ({
+                ...summary,
+                providerCoverage: UsageService.makeUsageProviderCoverage(
+                  NodeOS.hostname(),
+                  providers,
+                  summary.buckets,
+                ),
+              })),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
         [WS_METHODS.serverGetTaskAnalytics]: (input) =>
           observeRpcEffect(WS_METHODS.serverGetTaskAnalytics, taskAnalytics.readSummary(input), {
             "rpc.aggregate": "server",

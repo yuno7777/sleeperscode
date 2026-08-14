@@ -4,7 +4,7 @@
  *
  * @module usageFormat
  */
-import { UsageDay, type UsageSummaryInput } from "@t3tools/contracts";
+import { UsageDay, type UsageProviderKind, type UsageSummaryInput } from "@t3tools/contracts";
 
 const CURRENCY = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -17,6 +17,11 @@ const INTEGER = new Intl.NumberFormat("en-US");
 
 export function formatUsd(value: number): string {
   return CURRENCY.format(value);
+}
+
+/** Providers whose usage ledger currently has a maintained API-rate estimate. */
+export function hasUsageCostEstimate(provider: UsageProviderKind): boolean {
+  return provider === "claude" || provider === "codex";
 }
 
 export function formatCount(value: number): string {

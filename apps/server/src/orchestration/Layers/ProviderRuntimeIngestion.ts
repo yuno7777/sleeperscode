@@ -255,6 +255,19 @@ function buildContextWindowActivityPayload(
   return event.payload.usage;
 }
 
+function usageModelFromRuntimeEvent(event: ProviderRuntimeEvent): string | undefined {
+  if (event.type !== "thread.token-usage.updated") return undefined;
+  const rawPayload =
+    typeof event.raw?.payload === "object" &&
+    event.raw.payload !== null &&
+    !Array.isArray(event.raw.payload)
+      ? (event.raw.payload as Record<string, unknown>)
+      : undefined;
+  return typeof rawPayload?.model === "string" && rawPayload.model.trim().length > 0
+    ? rawPayload.model.trim()
+    : undefined;
+}
+
 function normalizeRuntimeTurnState(
   value: string | undefined,
 ): "completed" | "failed" | "interrupted" | "cancelled" {
@@ -790,7 +803,16 @@ export function runtimeEventToActivities(
           tone: "info",
           kind: "context-window.updated",
           summary: "Context window updated",
-          payload,
+          payload: {
+            ...payload,
+            usageProvider: event.provider,
+            ...(event.providerInstanceId === undefined
+              ? {}
+              : { usageProviderInstanceId: event.providerInstanceId }),
+            ...(usageModelFromRuntimeEvent(event) === undefined
+              ? {}
+              : { usageModel: usageModelFromRuntimeEvent(event) }),
+          },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
         },

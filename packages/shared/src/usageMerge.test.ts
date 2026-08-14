@@ -4,6 +4,7 @@ import {
   type UsageBucket,
   type UsageDay,
   type UsageProviderKind,
+  type UsageProviderCoverage,
   type UsageSummary,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -42,6 +43,7 @@ function summary(
     distinctSessions?: number;
   }[],
   contractVersion: number = USAGE_CONTRACT_VERSION,
+  providerCoverage: readonly UsageProviderCoverage[] = [],
 ): UsageSummary {
   return {
     contractVersion,
@@ -64,6 +66,7 @@ function summary(
       distinctSessions: source.distinctSessions ?? 1,
       message: null,
     })),
+    providerCoverage,
     pricing: { status: "fresh", source: "litellm", fetchedAt: null, knownModels: 10 },
     scanDurationMs: 1,
   };
@@ -254,5 +257,61 @@ describe("mergeUsage", () => {
     const merged = mergeUsage([], USAGE_CONTRACT_VERSION);
     expect(merged.costUsd).toBe(0);
     expect(merged.daily).toHaveLength(0);
+  });
+
+  it("keeps installed provider coverage while de-duplicating the same host instance", () => {
+    const coverage: UsageProviderCoverage = {
+      hostId: "workstation",
+      instanceId: "antigravity" as UsageProviderCoverage["instanceId"],
+      provider: "antigravity" as UsageProviderCoverage["provider"],
+      displayName: "Antigravity",
+      installed: true,
+      enabled: true,
+      authStatus: "unknown",
+      routable: false,
+      reporting: "notReported",
+      observed: false,
+      message: "This provider does not expose trustworthy durable usage totals yet.",
+    };
+    const merged = mergeUsage(
+      [
+        environment("env-a", summary([], [], USAGE_CONTRACT_VERSION, [coverage])),
+        environment("env-b", summary([], [], USAGE_CONTRACT_VERSION, [coverage])),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.providerCoverage).toHaveLength(1);
+    expect(merged.providerCoverage[0]?.displayName).toBe("Antigravity");
+    expect(merged.providerCoverage[0]?.environmentLabels).toEqual(["env-a", "env-b"]);
+  });
+
+  it("keeps a runtime-backed provider in quantitative breakdowns before its first turn", () => {
+    const coverage: UsageProviderCoverage = {
+      hostId: "workstation",
+      instanceId: "antigravity" as UsageProviderCoverage["instanceId"],
+      provider: "antigravity" as UsageProviderCoverage["provider"],
+      displayName: "Antigravity",
+      installed: true,
+      enabled: true,
+      authStatus: "unknown",
+      routable: false,
+      reporting: "runtimeEvents",
+      observed: false,
+      message: null,
+    };
+    const merged = mergeUsage(
+      [environment("env-a", summary([], [], USAGE_CONTRACT_VERSION, [coverage]))],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.providers).toContainEqual({
+      provider: "antigravity",
+      costUsd: 0,
+      totalTokens: 0,
+      records: 0,
+      costShare: 0,
+      tokenShare: 0,
+    });
   });
 });

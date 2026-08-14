@@ -1,4 +1,5 @@
 import type { UsageProviderKind } from "@t3tools/contracts";
+import type { MergedProviderCoverage } from "@t3tools/shared/usageMerge";
 import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon, CheckIcon, RefreshCwIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -12,6 +13,7 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
+  hasUsageCostEstimate,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { ScrollArea } from "../ui/scroll-area";
@@ -184,6 +186,8 @@ export function UsagePage() {
                 staleEnvironments={merged.staleEnvironments}
               />
 
+              <ProviderCoverageSection providers={merged.providerCoverage} />
+
               {/* Cost first: the financial answer, then the provider split. */}
               <section className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
                 {/* The summary follows the chart toggle, so the headline and the
@@ -207,6 +211,7 @@ export function UsagePage() {
 
                   {orderedProviders.map((provider) => {
                     const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+                    const hasCost = hasUsageCostEstimate(provider.provider);
                     return (
                       <div key={provider.provider} className="flex flex-col gap-1.5">
                         <div className="flex items-baseline justify-between">
@@ -216,7 +221,9 @@ export function UsagePage() {
                           </span>
                           <span className="text-sm text-foreground tabular-nums">
                             {metric === "cost"
-                              ? formatUsd(provider.costUsd)
+                              ? hasCost
+                                ? formatUsd(provider.costUsd)
+                                : "N/A"
                               : formatTokens(provider.totalTokens)}
                           </span>
                         </div>
@@ -231,8 +238,12 @@ export function UsagePage() {
                         </div>
                         <span className="text-xs text-muted-foreground">
                           {metric === "cost"
-                            ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                            : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                            ? hasCost
+                              ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
+                              : `Cost unavailable · ${formatTokens(provider.totalTokens)} tokens`
+                            : hasCost
+                              ? `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`
+                              : `${formatPercent(share)} of tokens · cost unavailable`}
                         </span>
                       </div>
                     );
@@ -353,10 +364,14 @@ export function UsagePage() {
                               </span>
                             </td>
                             <td className="py-2 text-right text-foreground tabular-nums">
-                              {formatUsd(model.costUsd)}
+                              {hasUsageCostEstimate(model.provider)
+                                ? formatUsd(model.costUsd)
+                                : "N/A"}
                             </td>
                             <td className="py-2 text-right text-muted-foreground tabular-nums">
-                              {formatPercent(model.costShare)}
+                              {hasUsageCostEstimate(model.provider)
+                                ? formatPercent(model.costShare)
+                                : "N/A"}
                             </td>
                             <td className="py-2 text-right text-muted-foreground tabular-nums">
                               {formatTokens(model.totalTokens)}
@@ -383,7 +398,10 @@ export function UsagePage() {
                     <tbody>
                       {recentDays.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                          <td
+                            colSpan={PROVIDER_ORDER.length + 3}
+                            className="py-6 text-center text-muted-foreground"
+                          >
                             No activity in this window.
                           </td>
                         </tr>
@@ -479,6 +497,73 @@ export function UsagePage() {
         </AlertDialog>
       </div>
     </ScrollArea>
+  );
+}
+
+function ProviderCoverageSection({
+  providers,
+}: {
+  readonly providers: readonly MergedProviderCoverage[];
+}) {
+  if (providers.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-sm font-medium text-foreground">Providers on connected hosts</h2>
+        <p className="text-xs text-muted-foreground">
+          Installed providers stay visible even when their CLI does not expose trustworthy usage
+          totals.
+        </p>
+      </div>
+      <div className="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+        {providers.map((provider) => (
+          <div
+            key={`${provider.hostId}:${provider.instanceId}`}
+            className="flex min-w-0 flex-col gap-2 bg-background px-3 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm text-foreground">{provider.displayName}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {provider.hostId} · {provider.instanceId}
+                </div>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full border px-2 py-0.5 text-[10px]",
+                  provider.observed
+                    ? "border-success/40 text-success"
+                    : provider.reporting !== "notReported"
+                      ? "border-border text-muted-foreground"
+                      : "border-warning/40 text-warning",
+                )}
+              >
+                {provider.observed
+                  ? "Usage observed"
+                  : provider.reporting !== "notReported"
+                    ? "No usage in range"
+                    : "Totals not reported"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>{provider.enabled ? "Enabled" : "Disabled"}</span>
+              <span>{provider.routable ? "Routable" : "Manual selection"}</span>
+              <span>
+                {provider.authStatus === "authenticated"
+                  ? "Signed in"
+                  : provider.authStatus === "unauthenticated"
+                    ? "Sign-in required"
+                    : "Sign-in unconfirmed"}
+              </span>
+            </div>
+            {provider.message === null ? null : (
+              <p className="text-xs text-muted-foreground">{provider.message}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

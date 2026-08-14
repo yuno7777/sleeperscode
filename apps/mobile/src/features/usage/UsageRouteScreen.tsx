@@ -7,6 +7,7 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
+  hasUsageCostEstimate,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { useMemo, useState } from "react";
@@ -170,6 +171,7 @@ export function UsageRouteScreen() {
             </Text>
           ) : (
             <>
+              <ProviderCoverageSection merged={merged} />
               <ChartCard
                 merged={merged}
                 days={days}
@@ -207,6 +209,57 @@ export function UsageRouteScreen() {
         )}
       </ScrollView>
     </View>
+  );
+}
+
+function ProviderCoverageSection({ merged }: { readonly merged: MergedUsage }) {
+  if (merged.providerCoverage.length === 0) return null;
+
+  return (
+    <SettingsSection title="Providers on this host" card>
+      {merged.providerCoverage.map((provider, index) => (
+        <View
+          key={`${provider.hostId}:${provider.instanceId}`}
+          className={index === 0 ? "gap-1 p-4" : "gap-1 border-t border-border-subtle p-4"}
+        >
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="min-w-0 flex-1">
+              <Text className="text-base text-foreground">{provider.displayName}</Text>
+              <Text className="text-xs text-foreground-tertiary">
+                {provider.hostId} · {provider.instanceId}
+              </Text>
+            </View>
+            <Text
+              className={
+                provider.observed
+                  ? "text-xs text-success-foreground"
+                  : provider.reporting !== "notReported"
+                    ? "text-xs text-foreground-muted"
+                    : "text-xs text-warning-foreground"
+              }
+            >
+              {provider.observed
+                ? "Usage observed"
+                : provider.reporting !== "notReported"
+                  ? "No usage in range"
+                  : "Totals not reported"}
+            </Text>
+          </View>
+          <Text className="text-sm text-foreground-muted">
+            {provider.enabled ? "Enabled" : "Disabled"} ·{" "}
+            {provider.routable ? "Routable" : "Manual selection"} ·{" "}
+            {provider.authStatus === "authenticated"
+              ? "Signed in"
+              : provider.authStatus === "unauthenticated"
+                ? "Sign-in required"
+                : "Sign-in unconfirmed"}
+          </Text>
+          {provider.message === null ? null : (
+            <Text className="text-sm text-foreground-muted">{provider.message}</Text>
+          )}
+        </View>
+      ))}
+    </SettingsSection>
   );
 }
 
@@ -361,6 +414,7 @@ function ProviderSection(props: {
     <SettingsSection title="Providers" card>
       {ordered.map((provider, index) => {
         const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+        const hasCost = hasUsageCostEstimate(provider.provider);
         return (
           <View
             key={provider.provider}
@@ -376,7 +430,9 @@ function ProviderSection(props: {
               </View>
               <Text className="text-lg tabular-nums text-foreground">
                 {metric === "cost"
-                  ? formatUsd(provider.costUsd)
+                  ? hasCost
+                    ? formatUsd(provider.costUsd)
+                    : "N/A"
                   : formatTokens(provider.totalTokens)}
               </Text>
             </View>
@@ -389,8 +445,12 @@ function ProviderSection(props: {
             </View>
             <Text className="text-sm text-foreground-muted">
               {metric === "cost"
-                ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                ? hasCost
+                  ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
+                  : `Cost unavailable · ${formatTokens(provider.totalTokens)} tokens`
+                : hasCost
+                  ? `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`
+                  : `${formatPercent(share)} of tokens · cost unavailable`}
             </Text>
           </View>
         );
@@ -487,10 +547,14 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
               {model.model}
             </Text>
             <Text className="text-sm text-foreground-muted">
-              {formatPercent(model.costShare)} of cost · {formatTokens(model.totalTokens)} tokens
+              {hasUsageCostEstimate(model.provider)
+                ? `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`
+                : `Cost unavailable · ${formatTokens(model.totalTokens)} tokens`}
             </Text>
           </View>
-          <Text className="text-base tabular-nums text-foreground">{formatUsd(model.costUsd)}</Text>
+          <Text className="text-base tabular-nums text-foreground">
+            {hasUsageCostEstimate(model.provider) ? formatUsd(model.costUsd) : "N/A"}
+          </Text>
         </View>
       ))}
     </SettingsSection>
