@@ -86,6 +86,10 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
   real provider refresh, distinguishes installation/auth/routing state, links into Agent Hub, and can
   be reopened from Agent Hub. Hosted relay clients and mobile intentionally keep their connection-led
   onboarding because agent discovery belongs to the connected server host.
+- Release versioning now updates seven product/native manifests plus both Cargo locks in one command.
+  The release workflow commits those native changes, so locked builds cannot silently package a Rust
+  helper with a stale product version. The cross-platform release smoke no longer depends on Bash
+  understanding Windows filesystem paths when merging updater manifests.
 
 ## Confirmed Claude mistakes and corrections
 
@@ -145,6 +149,10 @@ desktop, and mobile. Adaptive routing and local-model execution are not wired in
 - First-run eligibility, factual provider summaries, and readiness ordering pass focused tests. The
   controlled browser verified welcome, provider scan, completion persistence, reopening, Agent Hub
   handoff, compact layout, and zero console errors against the isolated worktree server.
+- Release version synchronization passes 15 focused cases across semantic-version validation,
+  package manifests, Cargo manifests, Cargo locks, CLI output, and failure context. Root and
+  resource-monitor locked Cargo checks pass,
+  scripts typecheck passes, and the complete release smoke passes on Windows.
 - Contracts typecheck: passed.
 - Server typecheck: passed. Only pre-existing Effect suggestions remain.
 - Focused release-candidate regression: **134 tests passed across 9 files**.

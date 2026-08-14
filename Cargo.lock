@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "t3-runtime-protocol"
-version = "0.1.0"
+version = "0.0.32"
 dependencies = [
  "serde",
  "serde_json",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "t3-runtime-sidecar"
-version = "0.1.0"
+version = "0.0.32"
 dependencies = [
  "base64",
  "serde",

@@ -70,6 +70,10 @@ authenticated.
 
 ## Desktop artifacts
 
+- `node scripts/update-release-package-versions.ts <version>`: Synchronizes the server, desktop,
+  web, contracts, Rust runtime, resource monitor, and both Cargo lockfiles to one semantic release
+  version. Release jobs run this before builds so `cargo --locked` and packaged helper handshakes
+  remain traceable to the application version.
 - `vp run dist:desktop:artifact --platform <mac|linux|win> --target <target> --arch <arch>`: Builds a desktop artifact for a specific platform/target/arch.
 - `vp run dist:desktop:dmg`: Builds a shareable macOS `.dmg` into `./release`. Architecture defaults
   to the host, so this produces an arm64 DMG on Apple Silicon. Use `dist:desktop:dmg:arm64` or

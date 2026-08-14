@@ -59,6 +59,9 @@ runtime bottlenecks move behind small Rust components.
   durable replay cutoff prevents cleared evidence from reappearing after projection rebuilds.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
+- **Traceable release components** — one release command synchronizes web, server, desktop,
+  contracts, both runtime crates, the resource monitor, and their lockfiles. Packaged native helpers
+  report that same semantic version through their typed startup handshake.
 
 ## The direction
 

@@ -134,8 +134,9 @@ visiting `/__t3code/channel?channel=latest` or
 `t3code_web_channel` cookie and rewrites future requests on `app.t3.codes` to
 the matching channel alias.
 
-The release deploy job rewrites release package versions before upload so the
-hosted app's About panel renders the release version. Stable deploys alias the
+The release deploy job rewrites product package versions, all three Rust package versions, and their
+Cargo lock entries before upload. This keeps the hosted About panel, desktop metadata, native helper
+handshakes, and locked Rust builds on one release version. Stable deploys alias the
 same deployment to both the `latest` channel and the router domain so the router
 rules stay current. Nightly deploys only alias the `nightly` channel. The job
 also passes `VITE_HOSTED_APP_CHANNEL=latest|nightly`, which renders the hosted

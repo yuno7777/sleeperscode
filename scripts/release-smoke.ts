@@ -20,6 +20,11 @@ const vitePlusEnvironment = {
 
 const workspaceFiles = [
   "package.json",
+  "Cargo.lock",
+  "crates/runtime-protocol/Cargo.toml",
+  "crates/runtime-sidecar/Cargo.toml",
+  "native/resource-monitor/Cargo.lock",
+  "native/resource-monitor/Cargo.toml",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "apps/server/package.json",
@@ -188,6 +193,17 @@ function assertPackageVersion(path: string, version: string): void {
   }
 }
 
+function assertCargoPackageVersion(path: string, packageName: string, version: string): void {
+  const contents = NodeFS.readFileSync(path, "utf8");
+  const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const actual = new RegExp(`name = "${escapedName}"\\r?\\nversion = "([^"]+)"`).exec(
+    contents,
+  )?.[1];
+  if (actual !== version) {
+    throw new Error(`Expected ${path} package ${packageName} to have version ${version}.`);
+  }
+}
+
 function assertMissing(path: string, message: string): void {
   if (NodeFS.existsSync(path)) {
     throw new Error(message);
@@ -235,6 +251,21 @@ try {
     "packages/contracts/package.json",
   ]) {
     assertPackageVersion(NodePath.resolve(tempRoot, relativePath), "9.9.9-smoke.0");
+  }
+
+  for (const [relativePath, packageName] of [
+    ["crates/runtime-protocol/Cargo.toml", "t3-runtime-protocol"],
+    ["crates/runtime-sidecar/Cargo.toml", "t3-runtime-sidecar"],
+    ["native/resource-monitor/Cargo.toml", "t3-resource-monitor"],
+    ["Cargo.lock", "t3-runtime-protocol"],
+    ["Cargo.lock", "t3-runtime-sidecar"],
+    ["native/resource-monitor/Cargo.lock", "t3-resource-monitor"],
+  ] as const) {
+    assertCargoPackageVersion(
+      NodePath.resolve(tempRoot, relativePath),
+      packageName,
+      "9.9.9-smoke.0",
+    );
   }
 
   const nightlyReleaseMetadata = NodeChildProcess.execFileSync(
@@ -312,45 +343,33 @@ try {
   const mergedPreviewWindowsManifestPath = NodePath.resolve(tempRoot, "release-assets/preview.yml");
   const { arm64Path: winDebugArm64Path, x64Path: winDebugX64Path } =
     writeWindowsBuilderDebugFixtures(tempRoot);
-  NodeChildProcess.execFileSync(
-    "bash",
-    [
-      "-lc",
-      `
-        release_assets_dir=${JSON.stringify(NodePath.resolve(tempRoot, "release-assets"))}
-        shopt -s nullglob
-        found_windows_manifest=false
-        for x64_manifest in "$release_assets_dir"/*-win-x64.yml; do
-          if [[ "$(basename "$x64_manifest")" == builder-debug-* ]]; then
-            continue
-          fi
-
-          arm64_manifest="\${x64_manifest/-x64.yml/-arm64.yml}"
-          output_manifest="\${x64_manifest/-win-x64.yml/.yml}"
-          if [[ ! -f "$arm64_manifest" ]]; then
-            echo "Missing matching arm64 Windows manifest for $x64_manifest" >&2
-            exit 1
-          fi
-
-          found_windows_manifest=true
-          ${JSON.stringify(process.execPath)} ${JSON.stringify(NodePath.resolve(repoRoot, "scripts/merge-update-manifests.ts"))} --platform win \
-            "$arm64_manifest" \
-            "$x64_manifest" \
-            "$output_manifest"
-          rm -f "$arm64_manifest" "$x64_manifest"
-        done
-
-        if [[ "$found_windows_manifest" != true ]]; then
-          echo "No Windows updater manifests found to merge." >&2
-          exit 1
-        fi
-      `,
-    ],
-    {
-      cwd: repoRoot,
-      stdio: "inherit",
-    },
-  );
+  const releaseAssetsDirectory = NodePath.resolve(tempRoot, "release-assets");
+  const x64WindowsManifests = NodeFS.readdirSync(releaseAssetsDirectory)
+    .filter((fileName) => fileName.endsWith("-win-x64.yml"))
+    .filter((fileName) => !fileName.startsWith("builder-debug-"));
+  if (x64WindowsManifests.length === 0) {
+    throw new Error("No Windows updater manifests found to merge.");
+  }
+  for (const fileName of x64WindowsManifests) {
+    const x64Manifest = NodePath.resolve(releaseAssetsDirectory, fileName);
+    const arm64Manifest = x64Manifest.replace(/-x64\.yml$/, "-arm64.yml");
+    const outputManifest = x64Manifest.replace(/-win-x64\.yml$/, ".yml");
+    assertExists(arm64Manifest, `Missing matching arm64 Windows manifest for ${x64Manifest}`);
+    NodeChildProcess.execFileSync(
+      process.execPath,
+      [
+        NodePath.resolve(repoRoot, "scripts/merge-update-manifests.ts"),
+        "--platform",
+        "win",
+        arm64Manifest,
+        x64Manifest,
+        outputManifest,
+      ],
+      { cwd: repoRoot, stdio: "inherit" },
+    );
+    NodeFS.rmSync(arm64Manifest, { force: true });
+    NodeFS.rmSync(x64Manifest, { force: true });
+  }
 
   const mergedWindowsManifest = NodeFS.readFileSync(mergedWindowsManifestPath, "utf8");
   assertContains(

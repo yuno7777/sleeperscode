@@ -13,10 +13,15 @@ import * as TestConsole from "effect/testing/TestConsole";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 
 import {
+  InvalidReleaseVersionError,
   ReleaseGitHubOutputConfigurationError,
   ReleaseGitHubOutputWriteError,
   ReleasePackageManifestError,
+  releaseCargoLockPackages,
+  releaseCargoPackageFiles,
   releasePackageFiles,
+  updateCargoLockPackageVersionsText,
+  updateCargoPackageVersionText,
   updateReleasePackageVersions,
   updateReleasePackageVersionsCommand,
 } from "./update-release-package-versions.ts";
@@ -47,6 +52,26 @@ const writePackageJsonFixtures = Effect.fn("writePackageJsonFixtures")(function*
       })}\n`,
     );
   }
+
+  for (const relativePath of releaseCargoPackageFiles) {
+    const filePath = path.join(rootDir, relativePath);
+    yield* fs.makeDirectory(path.dirname(filePath), { recursive: true });
+    yield* fs.writeFileString(
+      filePath,
+      `[package]\nname = "${path.basename(path.dirname(relativePath))}"\nversion = "${version}"\nedition = "2024"\n`,
+    );
+  }
+
+  for (const lockPackage of releaseCargoLockPackages) {
+    const filePath = path.join(rootDir, lockPackage.filePath);
+    yield* fs.makeDirectory(path.dirname(filePath), { recursive: true });
+    yield* fs.writeFileString(
+      filePath,
+      `${lockPackage.packageNames
+        .map((name) => `[[package]]\nname = "${name}"\nversion = "${version}"\n`)
+        .join("\n")}\n`,
+    );
+  }
 });
 
 const readReleaseVersions = Effect.fn("readReleaseVersions")(function* (rootDir: string) {
@@ -58,6 +83,24 @@ const readReleaseVersions = Effect.fn("readReleaseVersions")(function* (rootDir:
     const filePath = path.join(rootDir, relativePath);
     const packageJson = yield* fs.readFileString(filePath).pipe(Effect.flatMap(decodePackageJson));
     versions.set(relativePath, String(packageJson.version));
+  }
+
+  for (const relativePath of releaseCargoPackageFiles) {
+    const filePath = path.join(rootDir, relativePath);
+    const cargoToml = yield* fs.readFileString(filePath);
+    const version = /^version\s*=\s*"([^"]+)"$/m.exec(cargoToml)?.[1];
+    versions.set(relativePath, String(version));
+  }
+  for (const lockPackage of releaseCargoLockPackages) {
+    const filePath = path.join(rootDir, lockPackage.filePath);
+    const cargoLock = yield* fs.readFileString(filePath);
+    for (const packageName of lockPackage.packageNames) {
+      const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const version = new RegExp(`name = "${escapedName}"\\nversion = "([^"]+)"`).exec(
+        cargoLock,
+      )?.[1];
+      versions.set(`${lockPackage.filePath}#${packageName}`, String(version));
+    }
   }
 
   return versions;
@@ -73,6 +116,52 @@ const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   });
 
 it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
+  it.effect("rejects non-semver versions before reading any manifests", () =>
+    Effect.gen(function* () {
+      const error = yield* updateReleasePackageVersions("latest", {
+        rootDir: "missing-release-root",
+      }).pipe(Effect.flip);
+
+      assert.instanceOf(error, InvalidReleaseVersionError);
+      assert.equal(error.version, "latest");
+      assert.equal(error.message, "Release version 'latest' is not exact semantic version syntax.");
+    }),
+  );
+
+  it("updates only the package version in a Cargo manifest", () => {
+    assert.deepStrictEqual(
+      updateCargoPackageVersionText(
+        `[workspace.package]\nversion = "9.9.9"\n\n[package]\nname = "helper"\nversion = "0.1.0" # release\n\n[dependencies]\nother = "1.0.0"\n`,
+        "1.2.3",
+      ),
+      {
+        changed: true,
+        contents: `[workspace.package]\nversion = "9.9.9"\n\n[package]\nname = "helper"\nversion = "1.2.3" # release\n\n[dependencies]\nother = "1.0.0"\n`,
+      },
+    );
+  });
+
+  it("rejects a Cargo manifest without a package version", () => {
+    assert.throws(
+      () => updateCargoPackageVersionText(`[package]\nname = "helper"\n`, "1.2.3"),
+      /missing a double-quoted \[package\]\.version/,
+    );
+  });
+
+  it("updates only selected packages in a Cargo lockfile", () => {
+    assert.deepStrictEqual(
+      updateCargoLockPackageVersionsText(
+        `[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n[[package]]\nname = "helper"\nversion = "0.1.0"\n`,
+        ["helper"],
+        "1.2.3",
+      ),
+      {
+        changed: true,
+        contents: `[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n[[package]]\nname = "helper"\nversion = "1.2.3"\n`,
+      },
+    );
+  });
+
   it.effect("updates all release package versions under the provided root", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -86,10 +175,15 @@ it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
       const versions = yield* readReleaseVersions(baseDir);
 
       assert.deepStrictEqual(result, { changed: true });
-      assert.deepStrictEqual(
-        Array.from(versions.entries()),
-        releasePackageFiles.map((relativePath) => [relativePath, "1.2.3"]),
-      );
+      assert.deepStrictEqual(Array.from(versions.entries()), [
+        ...[...releasePackageFiles, ...releaseCargoPackageFiles].map((relativePath) => [
+          relativePath,
+          "1.2.3",
+        ]),
+        ...releaseCargoLockPackages.flatMap(({ filePath, packageNames }) =>
+          packageNames.map((packageName) => [`${filePath}#${packageName}`, "1.2.3"]),
+        ),
+      ]);
     }),
   );
 
@@ -145,6 +239,7 @@ it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
         rootDir: baseDir,
       }).pipe(Effect.flip);
 
+      assert.instanceOf(error, ReleasePackageManifestError);
       assert.equal(error.operation, "decode");
       assert.equal(error.filePath, filePath);
       assert.isTrue(Schema.isSchemaError(error.cause));
@@ -168,6 +263,7 @@ it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
         rootDir: baseDir,
       }).pipe(Effect.flip, Effect.ensuring(fs.chmod(filePath, 0o600).pipe(Effect.orDie)));
 
+      assert.instanceOf(error, ReleasePackageManifestError);
       assert.equal(error.operation, "write");
       assert.equal(error.filePath, filePath);
       assert.instanceOf(error.cause, PlatformError.PlatformError);
@@ -216,7 +312,7 @@ it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
       }),
     ).pipe(
       Effect.tap(({ logs }) => {
-        assert.deepStrictEqual(logs, ["All package.json versions already match release version."]);
+        assert.deepStrictEqual(logs, ["All release manifest versions already match."]);
         return Effect.void;
       }),
     ),
