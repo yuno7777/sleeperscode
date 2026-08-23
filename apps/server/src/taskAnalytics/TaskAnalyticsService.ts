@@ -10,6 +10,8 @@ import {
   TaskAnalyticsMutationError,
   TaskAnalyticsReadError,
   type TaskAnalyticsClearResult,
+  type TaskAnalyticsFeedbackInput,
+  type TaskAnalyticsFeedbackResult,
   type TaskAnalyticsPrimaryDomain,
   type TaskAnalyticsRecord,
   type TaskAnalyticsSummary,
@@ -35,6 +37,9 @@ export interface TaskAnalyticsServiceShape {
     input: TaskAnalyticsSummaryInput,
   ) => Effect.Effect<TaskAnalyticsSummary, TaskAnalyticsReadError>;
   readonly clearHistory: Effect.Effect<TaskAnalyticsClearResult, TaskAnalyticsMutationError>;
+  readonly setFeedback: (
+    input: TaskAnalyticsFeedbackInput,
+  ) => Effect.Effect<TaskAnalyticsFeedbackResult, TaskAnalyticsMutationError>;
 }
 
 export class TaskAnalyticsService extends Context.Service<
@@ -71,6 +76,7 @@ function toAnalyticsRecord(row: ProjectionTaskRun): TaskAnalyticsRecord {
     threadId: row.threadId,
     requestedAt: row.requestedAt,
     ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+    feedback: row.feedback,
     profile:
       row.taskProfile === null
         ? null
@@ -181,7 +187,44 @@ const make = (sourceFingerprint: string) =>
       ),
     );
 
-    return TaskAnalyticsService.of({ readSummary, clearHistory });
+    const setFeedback = Effect.fn("TaskAnalyticsService.setFeedback")(function* (
+      input: TaskAnalyticsFeedbackInput,
+    ) {
+      const now = yield* DateTime.now;
+      const feedback =
+        input.feedback === null
+          ? null
+          : {
+              version: 1 as const,
+              value: input.feedback,
+              observedAt: DateTime.formatIso(now),
+            };
+      const updated = yield* repository
+        .setFeedback({
+          threadId: input.threadId,
+          requestedAt: input.requestedAt,
+          feedback,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new TaskAnalyticsMutationError({
+                reason: "feedbackFailed",
+                detail: "The local task feedback could not be saved.",
+                cause,
+              }),
+          ),
+        );
+      if (!updated) {
+        return yield* new TaskAnalyticsMutationError({
+          reason: "taskNotFound",
+          detail: "The selected task record is no longer available.",
+        });
+      }
+      return { feedback } satisfies TaskAnalyticsFeedbackResult;
+    });
+
+    return TaskAnalyticsService.of({ readSummary, clearHistory, setFeedback });
   });
 
 export const layerTest = (sourceFingerprint = "task-analytics-test-source") =>

@@ -61,11 +61,29 @@ export const TaskAnalyticsRoute = Schema.Struct({
 });
 export type TaskAnalyticsRoute = typeof TaskAnalyticsRoute.Type;
 
+/**
+ * Direct, user-supplied quality evidence for one task run.
+ *
+ * This intentionally stays coarse and content-free. It is neither inferred
+ * from provider lifecycle state nor treated as proof that a task was correct.
+ */
+export const TaskFeedbackValue = Schema.Literals(["accepted", "needs-repair", "rejected"]);
+export type TaskFeedbackValue = typeof TaskFeedbackValue.Type;
+
+export const TaskFeedbackObservation = Schema.Struct({
+  version: Schema.Literal(1),
+  value: TaskFeedbackValue,
+  observedAt: IsoDateTime,
+});
+export type TaskFeedbackObservation = typeof TaskFeedbackObservation.Type;
+
 export const TaskAnalyticsRecord = Schema.Struct({
   threadId: ThreadId,
   requestedAt: IsoDateTime,
   /** Request-to-terminal elapsed time. Absent for pending rows and older servers. */
   elapsedMs: Schema.optionalKey(NonNegativeInt),
+  /** Absent when an older server does not support explicit task feedback. */
+  feedback: Schema.optionalKey(Schema.NullOr(TaskFeedbackObservation)),
   profile: Schema.NullOr(TaskAnalyticsProfile),
   route: Schema.NullOr(TaskAnalyticsRoute),
   outcome: Schema.NullOr(TaskOutcomeObservation),
@@ -99,6 +117,19 @@ export const TaskAnalyticsClearResult = Schema.Struct({
 });
 export type TaskAnalyticsClearResult = typeof TaskAnalyticsClearResult.Type;
 
+export const TaskAnalyticsFeedbackInput = Schema.Struct({
+  threadId: ThreadId,
+  requestedAt: IsoDateTime,
+  /** `null` removes an earlier observation. */
+  feedback: Schema.NullOr(TaskFeedbackValue),
+});
+export type TaskAnalyticsFeedbackInput = typeof TaskAnalyticsFeedbackInput.Type;
+
+export const TaskAnalyticsFeedbackResult = Schema.Struct({
+  feedback: Schema.NullOr(TaskFeedbackObservation),
+});
+export type TaskAnalyticsFeedbackResult = typeof TaskAnalyticsFeedbackResult.Type;
+
 export class TaskAnalyticsReadError extends Schema.TaggedErrorClass<TaskAnalyticsReadError>()(
   "TaskAnalyticsReadError",
   {
@@ -115,7 +146,7 @@ export class TaskAnalyticsReadError extends Schema.TaggedErrorClass<TaskAnalytic
 export class TaskAnalyticsMutationError extends Schema.TaggedErrorClass<TaskAnalyticsMutationError>()(
   "TaskAnalyticsMutationError",
   {
-    reason: Schema.Literal("clearFailed"),
+    reason: Schema.Literals(["clearFailed", "feedbackFailed", "taskNotFound"]),
     detail: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
     cause: Schema.optional(Schema.Defect()),
   },

@@ -124,8 +124,38 @@ layer("ProjectionTaskRunRepository", (it) => {
         assert.equal(row.taskProfile?.complexity.band, "medium");
         assert.equal(row.routerDecision?.applied, false);
         assert.equal(row.outcome?.terminalState, "completed");
+        assert.equal(row.feedback, null);
         assert.equal(row.observedAt, observedAt);
       }
+
+      const acceptedAt = "2026-08-12T12:02:00.000Z";
+      assert.isTrue(
+        yield* repository.setFeedback({
+          threadId,
+          requestedAt: secondAt,
+          feedback: { version: 1, value: "accepted", observedAt: acceptedAt },
+        }),
+      );
+      let updatedRows = yield* repository.listByThreadId({ threadId });
+      assert.equal(updatedRows[1]?.feedback?.value, "accepted");
+      assert.equal(updatedRows[1]?.feedback?.observedAt, acceptedAt);
+
+      assert.isTrue(
+        yield* repository.setFeedback({
+          threadId,
+          requestedAt: secondAt,
+          feedback: null,
+        }),
+      );
+      updatedRows = yield* repository.listByThreadId({ threadId });
+      assert.equal(updatedRows[1]?.feedback, null);
+      assert.isFalse(
+        yield* repository.setFeedback({
+          threadId,
+          requestedAt: "2026-08-12T12:03:00.000Z",
+          feedback: { version: 1, value: "rejected", observedAt: acceptedAt },
+        }),
+      );
 
       const latest = yield* repository.listWindow({
         since: "2026-08-12T00:00:00.000Z",
@@ -159,6 +189,17 @@ layer("ProjectionTaskRunRepository", (it) => {
         routerDecision,
         requestedAt: "2026-08-14T12:00:00.000Z",
       });
+      assert.isFalse(
+        yield* repository.setFeedback({
+          threadId,
+          requestedAt: "2026-08-14T12:00:00.000Z",
+          feedback: {
+            version: 1,
+            value: "accepted",
+            observedAt: "2026-08-14T12:01:00.000Z",
+          },
+        }),
+      );
 
       const before = yield* repository.listWindow({
         since: "2000-01-01T00:00:00.000Z",

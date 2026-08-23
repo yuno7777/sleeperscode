@@ -14,6 +14,7 @@ import {
   USAGE_CONTRACT_VERSION,
   TASK_ANALYTICS_CONTRACT_VERSION,
   type EnvironmentId,
+  type TaskFeedbackValue,
   type TaskAnalyticsSummary,
   type TaskAnalyticsSummaryInput,
   type UsageSummary,
@@ -173,6 +174,12 @@ export interface TaskAnalyticsView {
   readonly isPartial: boolean;
   readonly refresh: () => void;
   readonly clearHistory: () => Promise<number>;
+  readonly setFeedback: (
+    environmentId: EnvironmentId,
+    threadId: TaskAnalyticsSummary["records"][number]["threadId"],
+    requestedAt: TaskAnalyticsSummary["records"][number]["requestedAt"],
+    feedback: TaskFeedbackValue | null,
+  ) => Promise<void>;
 }
 
 export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalyticsView {
@@ -187,6 +194,9 @@ export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalytic
   );
   const environments = useAtomValue(taskAnalyticsByWindowAtom(windowKey));
   const clearCommand = useAtomCommand(serverEnvironment.clearTaskAnalytics, {
+    reportFailure: false,
+  });
+  const feedbackCommand = useAtomCommand(serverEnvironment.setTaskFeedback, {
     reportFailure: false,
   });
 
@@ -234,6 +244,24 @@ export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalytic
     return deletedRecords;
   }, [clearCommand, environments, refresh]);
 
+  const setFeedback = useCallback(
+    async (
+      environmentId: EnvironmentId,
+      threadId: TaskAnalyticsSummary["records"][number]["threadId"],
+      requestedAt: TaskAnalyticsSummary["records"][number]["requestedAt"],
+      feedback: TaskFeedbackValue | null,
+    ) => {
+      const result = await feedbackCommand({
+        environmentId,
+        input: { threadId, requestedAt, feedback },
+      });
+      if (result._tag === "Failure") throw Cause.squash(result.cause);
+      const input = JSON.parse(windowKey) as TaskAnalyticsSummaryInput;
+      appAtomRegistry.refresh(serverEnvironment.taskAnalytics({ environmentId, input }));
+    },
+    [feedbackCommand, windowKey],
+  );
+
   const answeredCount = environments.filter((environment) => environment.summary !== null).length;
   const stillReporting = environments.filter(
     (environment) => environment.summary === null && environment.error === null,
@@ -245,5 +273,6 @@ export function useTaskAnalytics(input: TaskAnalyticsSummaryInput): TaskAnalytic
     isPartial: answeredCount > 0 && stillReporting > 0,
     refresh,
     clearHistory,
+    setFeedback,
   };
 }

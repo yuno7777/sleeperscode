@@ -9,6 +9,7 @@ import {
   type TaskAnalyticsRecord,
   type TaskAnalyticsSummary,
   type TaskComplexityBand,
+  type TaskFeedbackValue,
   type TaskKind,
   type TaskOutcomeTerminalState,
 } from "@t3tools/contracts";
@@ -30,9 +31,11 @@ export interface MergedTaskAnalytics {
   readonly routedTasks: number;
   readonly terminalTasks: number;
   readonly timedTasks: number;
+  readonly feedbackTasks: number;
   readonly totalElapsedMs: number;
   readonly averageElapsedMs: number | null;
   readonly limitedRoutes: number;
+  readonly feedback: readonly { readonly value: TaskFeedbackValue; readonly count: number }[];
   readonly terminalStates: readonly {
     readonly state: TaskOutcomeTerminalState;
     readonly count: number;
@@ -109,10 +112,12 @@ export function mergeTaskAnalytics(
   const complexities = new Map<TaskComplexityBand, number>();
   const recommendations = new Map<RouterRecommendationOutcome, number>();
   const eligibilities = new Map<RouterCandidateEligibility, number>();
+  const feedback = new Map<TaskFeedbackValue, number>();
   let profiledTasks = 0;
   let routedTasks = 0;
   let terminalTasks = 0;
   let timedTasks = 0;
+  let feedbackTasks = 0;
   let totalElapsedMs = 0;
   let limitedRoutes = 0;
 
@@ -138,6 +143,10 @@ export function mergeTaskAnalytics(
       timedTasks += 1;
       totalElapsedMs += record.elapsedMs;
     }
+    if (record.feedback !== undefined && record.feedback !== null) {
+      feedbackTasks += 1;
+      increment(feedback, record.feedback.value);
+    }
   }
 
   return {
@@ -146,9 +155,11 @@ export function mergeTaskAnalytics(
     routedTasks,
     terminalTasks,
     timedTasks,
+    feedbackTasks,
     totalElapsedMs,
     averageElapsedMs: timedTasks === 0 ? null : Math.round(totalElapsedMs / timedTasks),
     limitedRoutes,
+    feedback: descending(feedback).map(([value, count]) => ({ value, count })),
     terminalStates: descending(terminalStates).map(([state, count]) => ({ state, count })),
     providers: descending(providers).map(([driver, count]) => ({ driver, count })),
     kinds: descending(kinds).map(([kind, count]) => ({ kind, count })),

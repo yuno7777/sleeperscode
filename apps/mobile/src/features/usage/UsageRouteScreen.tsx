@@ -197,6 +197,14 @@ export function UsageRouteScreen() {
           <TaskAnalyticsSections
             view={view}
             analytics={taskAnalytics.merged}
+            onSetFeedback={(record, feedback) =>
+              taskAnalytics.setFeedback(
+                record.environmentId,
+                record.threadId,
+                record.requestedAt,
+                feedback,
+              )
+            }
             notices={[
               ...taskAnalytics.environments
                 .filter((environment) => environment.error !== null)

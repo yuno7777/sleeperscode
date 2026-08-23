@@ -902,5 +902,14 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId }) => environmentId,
       },
     }),
+    setTaskFeedback: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:set-task-feedback",
+      tag: WS_METHODS.serverSetTaskFeedback,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          `${environmentId}:${input.threadId}:${input.requestedAt}`,
+      },
+    }),
   };
 }

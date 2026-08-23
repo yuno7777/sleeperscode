@@ -30,6 +30,11 @@ function environment(
           threadId: ThreadId.make(`thread-${id}`),
           requestedAt: `2026-08-12T1${id === "alpha" ? "1" : "0"}:00:00.000Z`,
           elapsedMs: 3_600_000,
+          feedback: {
+            version: 1,
+            value: "accepted",
+            observedAt: "2026-08-12T12:01:00.000Z",
+          },
           profile: {
             kinds: ["implementation"],
             complexity: "medium",
@@ -74,6 +79,11 @@ describe("mergeTaskAnalytics", () => {
             threadId: ThreadId.make("thread-beta"),
             requestedAt: "2026-08-12T10:00:00.000Z",
             elapsedMs: 60_000,
+            feedback: {
+              version: 1,
+              value: "needs-repair",
+              observedAt: "2026-08-12T10:02:00.000Z",
+            },
             profile: null,
             route: null,
             outcome: {
@@ -95,6 +105,11 @@ describe("mergeTaskAnalytics", () => {
     expect(merged.timedTasks).toBe(2);
     expect(merged.totalElapsedMs).toBe(3_660_000);
     expect(merged.averageElapsedMs).toBe(1_830_000);
+    expect(merged.feedbackTasks).toBe(2);
+    expect(merged.feedback).toEqual([
+      { value: "accepted", count: 1 },
+      { value: "needs-repair", count: 1 },
+    ]);
     expect(merged.terminalStates).toEqual([
       { state: "completed", count: 1 },
       { state: "failed", count: 1 },

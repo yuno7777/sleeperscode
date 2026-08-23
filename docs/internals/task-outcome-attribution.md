@@ -15,6 +15,9 @@ The `projection_task_runs` table follows the existing event-sourced turn lifecyc
    session lifecycle.
 4. The server emits `thread.turn-outcome-recorded`, and the task-run projection records its
    versioned `TaskOutcomeObservation`.
+5. After a terminal observation exists, a user may attach one coarse `TaskFeedbackObservation`:
+   `accepted`, `needs-repair`, or `rejected`. Selecting the same value again sends `null` and removes
+   it. The server owns the observation timestamp.
 
 The projection has its own replay cursor. Existing databases receive it through migration 41, and
 the projector can rebuild it from the durable event log. Historical turns created before task
@@ -36,6 +39,10 @@ Version 1 records only:
 correct, tests passed, the changes survived, or the user was satisfied. The contract intentionally
 has no `success`, quality score, free-form error, or stop-reason field.
 
+Explicit task feedback is direct user evidence, not an inferred success label. `accepted` means only
+that a user chose that mark in the Usage page; it does not prove tests passed or changes survived.
+Feedback is replaceable and removable so a mistaken mark is never a one-way state transition.
+
 ## Privacy and bounds
 
 The task-run projection stores closed-enum task metadata, the bounded shadow decision, and the
@@ -44,6 +51,7 @@ content-free terminal observation. It does not duplicate:
 - prompts or assistant messages;
 - filenames, repository paths, diffs, or manifest content;
 - provider error text or abort reasons;
+- free-form feedback text or inferred quality scores;
 - credentials or account identity; or
 - raw usage payloads.
 
@@ -54,11 +62,13 @@ cost remain in the usage ledger until a tested attribution join exists.
 
 `server.getTaskAnalytics` exposes at most 200 newest records per environment and reporting window.
 The payload contains only compact profile categories, shadow-decision reason codes, provider identity,
-terminal state, and optional elapsed milliseconds. It uses an opaque local-store fingerprint so
+terminal state, optional elapsed milliseconds, and optional coarse user feedback. It uses an opaque local-store fingerprint so
 clients can avoid double-counting the same database through multiple connections. Web/desktop and
 mobile merge those bounded summaries into Tasks and Router views on the Usage page, showing timing
-coverage, average elapsed time, and per-task elapsed time. The views deliberately label terminal
-state as lifecycle evidence and shadow decisions as unapplied.
+coverage, average elapsed time, per-task elapsed time, and feedback counts. Feedback mutations target
+only the environment that owns the selected row. Controls appear only for terminal records on servers
+that advertise the optional feedback field. The views deliberately label terminal state as lifecycle
+evidence and shadow decisions as unapplied.
 
 ## Current limits
 
@@ -66,10 +76,10 @@ state as lifecycle evidence and shadow decisions as unapplied.
   provider completion without a preceding pending row remains in the event log but is not invented
   into a task profile.
 - Request-to-terminal elapsed time is available, but queue time and provider execution are not split.
-- There is no quality label, test-result ingestion, user rating, repair count, change-survival signal,
-  or usage/cost join yet.
+- Coarse user feedback exists, but there is no test-result ingestion, repair-attempt count,
+  change-survival signal, or usage/cost join yet.
 - No router score or provider selection consumes these rows.
 - There is no analytics export or automatic retention policy yet.
 
-Router scoring must wait for independent quality evidence and a defensible evaluation dataset. A
-terminal-state count alone is not a model leaderboard.
+Router scoring must wait for more independent quality evidence and a defensible evaluation dataset.
+Terminal-state counts and selectively supplied user feedback are not a model leaderboard.

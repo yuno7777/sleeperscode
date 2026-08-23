@@ -1,6 +1,7 @@
 import {
   NonNegativeInt,
   RouterDecision,
+  TaskFeedbackObservation,
   TaskOutcomeObservation,
   TaskProfile,
 } from "@t3tools/contracts";
@@ -21,6 +22,7 @@ import {
   ProjectionTaskRunRepository,
   ProjectionTaskRunSequenceInput,
   RecordProjectionTaskOutcomeInput,
+  SetProjectionTaskFeedbackInput,
   type ProjectionTaskRunRepositoryShape,
 } from "../Services/ProjectionTaskRuns.ts";
 
@@ -29,8 +31,13 @@ const ProjectionTaskRunDbRow = ProjectionTaskRun.mapFields(
     taskProfile: Schema.NullOr(Schema.fromJsonString(TaskProfile)),
     routerDecision: Schema.NullOr(Schema.fromJsonString(RouterDecision)),
     outcome: Schema.NullOr(Schema.fromJsonString(TaskOutcomeObservation)),
+    feedback: Schema.NullOr(Schema.fromJsonString(TaskFeedbackObservation)),
   }),
 );
+
+const TaskFeedbackTargetStats = Schema.Struct({
+  matchingRows: NonNegativeInt,
+});
 
 const ClearTaskRunStats = Schema.Struct({
   deletedRecords: NonNegativeInt,
@@ -69,6 +76,7 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
         task_profile_json,
         router_decision_json,
         outcome_json,
+        feedback_json,
         requested_at,
         observed_at
       ) VALUES (
@@ -77,6 +85,7 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
         ${row.messageId},
         ${row.taskProfile === null ? null : JSON.stringify(row.taskProfile)},
         ${row.routerDecision === null ? null : JSON.stringify(row.routerDecision)},
+        NULL,
         NULL,
         ${row.requestedAt},
         NULL
@@ -104,6 +113,27 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
     `,
   });
 
+  const readFeedbackTargetStats = SqlSchema.findOne({
+    Request: SetProjectionTaskFeedbackInput,
+    Result: TaskFeedbackTargetStats,
+    execute: ({ threadId, requestedAt }) => sql`
+      SELECT COUNT(*) AS "matchingRows"
+      FROM projection_task_runs
+      WHERE thread_id = ${threadId}
+        AND requested_at = ${requestedAt}
+        AND outcome_json IS NOT NULL
+    `,
+  });
+
+  const updateFeedback = SqlSchema.void({
+    Request: SetProjectionTaskFeedbackInput,
+    execute: ({ threadId, requestedAt, feedback }) => sql`
+      UPDATE projection_task_runs
+      SET feedback_json = ${feedback === null ? null : JSON.stringify(feedback)}
+      WHERE thread_id = ${threadId} AND requested_at = ${requestedAt}
+    `,
+  });
+
   const listRows = SqlSchema.findAll({
     Request: ListProjectionTaskRunsInput,
     Result: ProjectionTaskRunDbRow,
@@ -115,6 +145,7 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
         task_profile_json AS "taskProfile",
         router_decision_json AS "routerDecision",
         outcome_json AS "outcome",
+        feedback_json AS "feedback",
         requested_at AS "requestedAt",
         observed_at AS "observedAt"
       FROM projection_task_runs
@@ -134,6 +165,7 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
         task_profile_json AS "taskProfile",
         router_decision_json AS "routerDecision",
         outcome_json AS "outcome",
+        feedback_json AS "feedback",
         requested_at AS "requestedAt",
         observed_at AS "observedAt"
       FROM projection_task_runs
@@ -215,6 +247,26 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
       Effect.mapError(toPersistenceSqlError("ProjectionTaskRunRepository.recordOutcome:query")),
     );
 
+  const setFeedback: ProjectionTaskRunRepositoryShape["setFeedback"] = (input) =>
+    sql
+      .withTransaction(
+        readFeedbackTargetStats(input).pipe(
+          Effect.flatMap(({ matchingRows }) =>
+            matchingRows === 1
+              ? updateFeedback(input).pipe(Effect.as(true))
+              : Effect.succeed(false),
+          ),
+        ),
+      )
+      .pipe(
+        Effect.mapError(
+          toPersistenceSqlOrDecodeError(
+            "ProjectionTaskRunRepository.setFeedback:query",
+            "ProjectionTaskRunRepository.setFeedback:decodeTarget",
+          ),
+        ),
+      );
+
   const listByThreadId: ProjectionTaskRunRepositoryShape["listByThreadId"] = (input) =>
     listRows(input).pipe(
       Effect.mapError(
@@ -271,6 +323,7 @@ const makeProjectionTaskRunRepository = Effect.gen(function* () {
     replacePending,
     bindPendingTurn,
     recordOutcome,
+    setFeedback,
     listByThreadId,
     listWindow,
     clearHistory,

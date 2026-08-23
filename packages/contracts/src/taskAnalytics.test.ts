@@ -5,6 +5,7 @@ import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   TASK_ANALYTICS_MAX_RECORDS,
   TaskAnalyticsClearResult,
+  TaskAnalyticsFeedbackInput,
   TaskAnalyticsSummary,
   TaskAnalyticsSummaryInput,
 } from "./taskAnalytics.ts";
@@ -26,6 +27,11 @@ describe("TaskAnalyticsSummary", () => {
           threadId: ThreadId.make("thread-analytics"),
           requestedAt: "2026-08-12T11:58:00.000Z",
           elapsedMs: 120_000,
+          feedback: {
+            version: 1,
+            value: "accepted",
+            observedAt: "2026-08-12T12:01:00.000Z",
+          },
           profile: {
             kinds: ["implementation"],
             complexity: "medium",
@@ -64,10 +70,36 @@ describe("TaskAnalyticsSummary", () => {
 
     expect(summary.records).toHaveLength(1);
     expect(summary.records[0]?.elapsedMs).toBe(120_000);
+    expect(summary.records[0]?.feedback?.value).toBe("accepted");
     expect(summary).not.toHaveProperty("prompt");
     expect(summary).not.toHaveProperty("providerError");
     expect(summary).not.toHaveProperty("quality");
     expect(summary).not.toHaveProperty("success");
+  });
+
+  it("keeps explicit feedback optional for older servers and bounds its values", () => {
+    const decode = Schema.decodeUnknownSync(TaskAnalyticsFeedbackInput);
+    expect(
+      decode({
+        threadId: ThreadId.make("thread-analytics"),
+        requestedAt: "2026-08-12T11:58:00.000Z",
+        feedback: "needs-repair",
+      }).feedback,
+    ).toBe("needs-repair");
+    expect(
+      decode({
+        threadId: ThreadId.make("thread-analytics"),
+        requestedAt: "2026-08-12T11:58:00.000Z",
+        feedback: null,
+      }).feedback,
+    ).toBeNull();
+    expect(() =>
+      decode({
+        threadId: ThreadId.make("thread-analytics"),
+        requestedAt: "2026-08-12T11:58:00.000Z",
+        feedback: "great",
+      }),
+    ).toThrow();
   });
 
   it("rejects oversized record payloads", () => {

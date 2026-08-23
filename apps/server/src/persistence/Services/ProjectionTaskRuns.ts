@@ -10,6 +10,7 @@ import {
   MessageId,
   NonNegativeInt,
   RouterDecision,
+  TaskFeedbackObservation,
   TaskOutcomeObservation,
   TaskProfile,
   ThreadId,
@@ -28,6 +29,7 @@ export const ProjectionTaskRun = Schema.Struct({
   taskProfile: Schema.NullOr(TaskProfile),
   routerDecision: Schema.NullOr(RouterDecision),
   outcome: Schema.NullOr(TaskOutcomeObservation),
+  feedback: Schema.NullOr(TaskFeedbackObservation),
   requestedAt: IsoDateTime,
   observedAt: Schema.NullOr(IsoDateTime),
 });
@@ -54,6 +56,13 @@ export const RecordProjectionTaskOutcomeInput = Schema.Struct({
   outcome: TaskOutcomeObservation,
 });
 export type RecordProjectionTaskOutcomeInput = typeof RecordProjectionTaskOutcomeInput.Type;
+
+export const SetProjectionTaskFeedbackInput = Schema.Struct({
+  threadId: ThreadId,
+  requestedAt: IsoDateTime,
+  feedback: Schema.NullOr(TaskFeedbackObservation),
+});
+export type SetProjectionTaskFeedbackInput = typeof SetProjectionTaskFeedbackInput.Type;
 
 export const ListProjectionTaskRunsInput = Schema.Struct({
   threadId: ThreadId,
@@ -87,6 +96,10 @@ export interface ProjectionTaskRunRepositoryShape {
   readonly recordOutcome: (
     input: RecordProjectionTaskOutcomeInput,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
+  /** Returns false when the public task key does not resolve to exactly one row. */
+  readonly setFeedback: (
+    input: SetProjectionTaskFeedbackInput,
+  ) => Effect.Effect<boolean, ProjectionRepositoryError>;
   readonly listByThreadId: (
     input: ListProjectionTaskRunsInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionTaskRun>, ProjectionRepositoryError>;

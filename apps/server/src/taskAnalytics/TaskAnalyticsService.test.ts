@@ -90,18 +90,21 @@ const row: ProjectionTaskRun = {
     },
     observedAt: "2026-03-08T06:30:00.000Z",
   },
+  feedback: null,
   requestedAt: "2026-03-08T06:00:00.000Z",
   observedAt: "2026-03-08T06:30:00.000Z",
 };
 
 it.effect("TaskAnalyticsService returns bounded factual evidence with zoned window bounds", () => {
   let observedInput: { since: string; until: string; limit: number } | null = null;
+  let feedbackTargetExists = true;
   const repository = Layer.succeed(
     ProjectionTaskRunRepository,
     ProjectionTaskRunRepository.of({
       replacePending: () => Effect.void,
       bindPendingTurn: () => Effect.void,
       recordOutcome: () => Effect.void,
+      setFeedback: () => Effect.succeed(feedbackTargetExists),
       listByThreadId: () => Effect.succeed([]),
       listWindow: (input) =>
         Effect.sync(() => {
@@ -138,11 +141,34 @@ it.effect("TaskAnalyticsService returns bounded factual evidence with zoned wind
     assert.equal(record?.route?.eligibleCandidateCount, 1);
     assert.equal(record?.route?.contextLimited, true);
     assert.equal(record?.outcome?.terminalState, "completed");
+    assert.equal(record?.feedback, null);
     assert.equal(record?.elapsedMs, 1_800_000);
     assert.notProperty(record ?? {}, "messageId");
     assert.notProperty(record ?? {}, "prompt");
     assert.notProperty(record ?? {}, "quality");
     assert.deepEqual(yield* service.clearHistory, { deletedRecords: 4 });
+    const saved = yield* service.setFeedback({
+      threadId: row.threadId,
+      requestedAt: row.requestedAt,
+      feedback: "accepted",
+    });
+    assert.equal(saved.feedback?.value, "accepted");
+    assert.equal(saved.feedback?.version, 1);
+    const cleared = yield* service.setFeedback({
+      threadId: row.threadId,
+      requestedAt: row.requestedAt,
+      feedback: null,
+    });
+    assert.equal(cleared.feedback, null);
+    feedbackTargetExists = false;
+    const missing = yield* Effect.flip(
+      service.setFeedback({
+        threadId: row.threadId,
+        requestedAt: row.requestedAt,
+        feedback: "rejected",
+      }),
+    );
+    assert.equal(missing.reason, "taskNotFound");
   }).pipe(Effect.provide(testLayer));
 });
 

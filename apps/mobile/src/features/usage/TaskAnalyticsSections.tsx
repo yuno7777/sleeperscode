@@ -1,6 +1,11 @@
-import type { MergedTaskAnalytics } from "@t3tools/shared/taskAnalyticsMerge";
+import type { TaskFeedbackValue } from "@t3tools/contracts";
+import type {
+  MergedTaskAnalytics,
+  MergedTaskAnalyticsRecord,
+} from "@t3tools/shared/taskAnalyticsMerge";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
-import { View } from "react-native";
+import { useState } from "react";
+import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { SettingsSection } from "../settings/components/SettingsSection";
@@ -13,8 +18,30 @@ export function TaskAnalyticsSections(props: {
   readonly view: MobileUsageAnalyticsView;
   readonly analytics: MergedTaskAnalytics;
   readonly notices: readonly string[];
+  readonly onSetFeedback: (
+    record: MergedTaskAnalyticsRecord,
+    feedback: TaskFeedbackValue | null,
+  ) => Promise<void>;
 }) {
   const { analytics, view } = props;
+  const [pendingFeedbackKey, setPendingFeedbackKey] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
+  const setFeedback = async (
+    record: MergedTaskAnalyticsRecord,
+    feedback: TaskFeedbackValue | null,
+  ) => {
+    const key = `${record.environmentId}:${record.threadId}:${record.requestedAt}`;
+    setPendingFeedbackKey(key);
+    setFeedbackError(null);
+    try {
+      await props.onSetFeedback(record, feedback);
+    } catch {
+      setFeedbackError("Task feedback could not be saved. Pull to refresh and try again.");
+    } finally {
+      setPendingFeedbackKey(null);
+    }
+  };
   if (analytics.totalTasks === 0) {
     return (
       <View className="items-center gap-1 py-16">
@@ -57,6 +84,7 @@ export function TaskAnalyticsSections(props: {
               <Metric label="Profiled" value={analytics.profiledTasks} />
               <Metric label="Terminal" value={analytics.terminalTasks} />
               <Metric label="Timed" value={analytics.timedTasks} />
+              <Metric label="User feedback" value={analytics.feedbackTasks} />
               <Metric
                 label="Average elapsed"
                 value={
@@ -109,9 +137,46 @@ export function TaskAnalyticsSections(props: {
                   ? ""
                   : ` · ${humanize(record.route.recommendation)}`}
             </Text>
+            {view === "tasks" && record.outcome !== null && record.feedback !== undefined ? (
+              <TaskFeedbackControls
+                value={record.feedback?.value ?? null}
+                disabled={
+                  pendingFeedbackKey ===
+                  `${record.environmentId}:${record.threadId}:${record.requestedAt}`
+                }
+                onChange={(feedback) => void setFeedback(record, feedback)}
+              />
+            ) : null}
           </View>
         ))}
       </SettingsSection>
+
+      {view === "tasks" ? (
+        <SettingsSection title="User feedback" card>
+          {feedbackError === null ? null : (
+            <Text className="px-4 pt-4 text-sm text-destructive">{feedbackError}</Text>
+          )}
+          {analytics.feedback.length === 0 ? (
+            <Text className="p-4 text-sm text-foreground-muted">No direct feedback yet.</Text>
+          ) : (
+            analytics.feedback.map((entry, index) => (
+              <View
+                key={entry.value}
+                className={
+                  index === 0
+                    ? "flex-row items-center justify-between p-4"
+                    : "flex-row items-center justify-between border-t border-border-subtle p-4"
+                }
+              >
+                <Text className="text-base capitalize text-foreground">
+                  {humanize(entry.value)}
+                </Text>
+                <Text className="text-base tabular-nums text-foreground-muted">{entry.count}</Text>
+              </View>
+            ))
+          )}
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title={view === "tasks" ? "Terminal states" : "Recommendations"} card>
         {(view === "tasks" ? analytics.terminalStates : analytics.recommendations).map(
@@ -134,6 +199,50 @@ export function TaskAnalyticsSections(props: {
         )}
       </SettingsSection>
     </>
+  );
+}
+
+const feedbackOptions: readonly { readonly value: TaskFeedbackValue; readonly label: string }[] = [
+  { value: "accepted", label: "Accepted" },
+  { value: "needs-repair", label: "Repair" },
+  { value: "rejected", label: "Rejected" },
+];
+
+function TaskFeedbackControls({
+  value,
+  disabled,
+  onChange,
+}: {
+  readonly value: TaskFeedbackValue | null;
+  readonly disabled: boolean;
+  readonly onChange: (value: TaskFeedbackValue | null) => void;
+}) {
+  return (
+    <View className="mt-2 flex-row gap-2" accessibilityLabel="Task feedback">
+      {feedbackOptions.map((option) => {
+        const selected = value === option.value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="button"
+            accessibilityState={{ selected, disabled }}
+            disabled={disabled}
+            onPress={() => onChange(selected ? null : option.value)}
+            className={
+              selected
+                ? "rounded-full bg-foreground px-3 py-1.5 active:opacity-70"
+                : "rounded-full border border-border px-3 py-1.5 active:bg-fill-tertiary"
+            }
+          >
+            <Text
+              className={selected ? "text-xs text-background" : "text-xs text-foreground-muted"}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 

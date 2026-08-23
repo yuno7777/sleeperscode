@@ -846,6 +846,17 @@ const buildAppUnderTest = (options?: {
                 truncated: false,
               }),
             clearHistory: Effect.succeed({ deletedRecords: 0 }),
+            setFeedback: (input) =>
+              Effect.succeed({
+                feedback:
+                  input.feedback === null
+                    ? null
+                    : {
+                        version: 1,
+                        value: input.feedback,
+                        observedAt: "2026-08-12T00:00:00.000Z",
+                      },
+              }),
           }),
         ),
       ),

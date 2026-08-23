@@ -1,5 +1,10 @@
-import type { MergedTaskAnalytics } from "@t3tools/shared/taskAnalyticsMerge";
+import type { TaskFeedbackValue } from "@t3tools/contracts";
+import type {
+  MergedTaskAnalytics,
+  MergedTaskAnalyticsRecord,
+} from "@t3tools/shared/taskAnalyticsMerge";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { useState } from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -17,11 +22,35 @@ export function TaskAnalyticsPanel({
   view,
   analytics,
   notices,
+  onSetFeedback,
 }: {
   readonly view: UsageAnalyticsView;
   readonly analytics: MergedTaskAnalytics;
   readonly notices: readonly string[];
+  readonly onSetFeedback: (
+    record: MergedTaskAnalyticsRecord,
+    feedback: TaskFeedbackValue | null,
+  ) => Promise<void>;
 }) {
+  const [pendingFeedbackKey, setPendingFeedbackKey] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
+  const setFeedback = async (
+    record: MergedTaskAnalyticsRecord,
+    feedback: TaskFeedbackValue | null,
+  ) => {
+    const key = `${record.environmentId}:${record.threadId}:${record.requestedAt}`;
+    setPendingFeedbackKey(key);
+    setFeedbackError(null);
+    try {
+      await onSetFeedback(record, feedback);
+    } catch {
+      setFeedbackError("Task feedback could not be saved. Refresh and try again.");
+    } finally {
+      setPendingFeedbackKey(null);
+    }
+  };
+
   if (analytics.totalTasks === 0) {
     return (
       <section className="border border-border px-5 py-16 text-center">
@@ -59,11 +88,12 @@ export function TaskAnalyticsPanel({
 
       {view === "tasks" ? (
         <>
-          <section className="grid grid-cols-2 gap-px border-y border-border bg-border md:grid-cols-3 xl:grid-cols-6">
+          <section className="grid grid-cols-2 gap-px border-y border-border bg-border md:grid-cols-4 xl:grid-cols-7">
             <EvidenceMetric label="Recorded tasks" value={analytics.totalTasks} />
             <EvidenceMetric label="Profiled" value={analytics.profiledTasks} />
             <EvidenceMetric label="Terminal observations" value={analytics.terminalTasks} />
             <EvidenceMetric label="Timed tasks" value={analytics.timedTasks} />
+            <EvidenceMetric label="User feedback" value={analytics.feedbackTasks} />
             <EvidenceMetric
               label="Average elapsed"
               value={
@@ -80,8 +110,32 @@ export function TaskAnalyticsPanel({
           </section>
 
           <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            <RecentTasksTable analytics={analytics} />
+            <div className="flex min-w-0 flex-col gap-2">
+              {feedbackError === null ? null : (
+                <p role="alert" className="text-xs text-destructive">
+                  {feedbackError}
+                </p>
+              )}
+              <RecentTasksTable
+                analytics={analytics}
+                pendingFeedbackKey={pendingFeedbackKey}
+                onSetFeedback={setFeedback}
+              />
+            </div>
             <div className="flex flex-col gap-5">
+              <EvidenceBreakdown
+                title="User feedback"
+                entries={analytics.feedback.map(({ value, count }) => ({
+                  label: humanize(value),
+                  count,
+                  tone:
+                    value === "accepted"
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : value === "rejected"
+                        ? "text-destructive"
+                        : "text-amber-700 dark:text-amber-300",
+                }))}
+              />
               <EvidenceBreakdown
                 title="Terminal states"
                 entries={analytics.terminalStates.map(({ state, count }) => ({
@@ -214,9 +268,16 @@ function EvidenceBreakdown({
 function RecentTasksTable({
   analytics,
   routerOnly = false,
+  pendingFeedbackKey = null,
+  onSetFeedback,
 }: {
   readonly analytics: MergedTaskAnalytics;
   readonly routerOnly?: boolean;
+  readonly pendingFeedbackKey?: string | null;
+  readonly onSetFeedback?: (
+    record: MergedTaskAnalyticsRecord,
+    feedback: TaskFeedbackValue | null,
+  ) => Promise<void>;
 }) {
   const records = analytics.records.slice(0, 50);
   return (
@@ -230,13 +291,14 @@ function RecentTasksTable({
         </span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[44rem] text-xs">
+        <table className="w-full min-w-[58rem] text-xs">
           <thead>
             <tr className="border-b border-border text-left text-muted-foreground">
               <th className="py-2 font-normal">Task</th>
               <th className="py-2 font-normal">Environment</th>
               <th className="py-2 font-normal">Selection</th>
               <th className="py-2 font-normal">Evidence</th>
+              {routerOnly ? null : <th className="py-2 font-normal">User feedback</th>}
               <th className="py-2 text-right font-normal">Elapsed</th>
               <th className="py-2 text-right font-normal">Observed</th>
             </tr>
@@ -244,6 +306,7 @@ function RecentTasksTable({
           <tbody>
             {records.map((record) => {
               const state = record.outcome?.terminalState ?? "pending";
+              const recordKey = `${record.environmentId}:${record.threadId}:${record.requestedAt}`;
               return (
                 <tr
                   key={`${record.environmentId}:${record.threadId}:${record.requestedAt}`}
@@ -267,6 +330,21 @@ function RecentTasksTable({
                   <td className={cn("py-3 pr-4 capitalize", terminalTone(state))}>
                     {humanize(state)}
                   </td>
+                  {routerOnly ? null : (
+                    <td className="py-2 pr-4">
+                      {record.outcome === null || record.feedback === undefined ? (
+                        <span className="text-muted-foreground">
+                          {record.feedback === undefined ? "not supported" : "after completion"}
+                        </span>
+                      ) : (
+                        <TaskFeedbackControls
+                          value={record.feedback?.value ?? null}
+                          disabled={pendingFeedbackKey === recordKey}
+                          onChange={(feedback) => onSetFeedback?.(record, feedback)}
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className="py-3 pr-4 text-right text-muted-foreground tabular-nums">
                     {record.elapsedMs === undefined ? "—" : formatDuration(record.elapsedMs)}
                   </td>
@@ -285,5 +363,46 @@ function RecentTasksTable({
         </table>
       </div>
     </section>
+  );
+}
+
+const feedbackOptions: readonly { readonly value: TaskFeedbackValue; readonly label: string }[] = [
+  { value: "accepted", label: "Accepted" },
+  { value: "needs-repair", label: "Repair" },
+  { value: "rejected", label: "Rejected" },
+];
+
+function TaskFeedbackControls({
+  value,
+  disabled,
+  onChange,
+}: {
+  readonly value: TaskFeedbackValue | null;
+  readonly disabled: boolean;
+  readonly onChange: (value: TaskFeedbackValue | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1" aria-label="Task feedback">
+      {feedbackOptions.map((option) => {
+        const selected = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            disabled={disabled}
+            aria-pressed={selected}
+            onClick={() => onChange(selected ? null : option.value)}
+            className={cn(
+              "border px-1.5 py-1 text-[10px] transition-colors disabled:cursor-wait disabled:opacity-50",
+              selected
+                ? "border-foreground bg-foreground text-background"
+                : "border-border text-muted-foreground hover:border-foreground/50 hover:text-foreground",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
