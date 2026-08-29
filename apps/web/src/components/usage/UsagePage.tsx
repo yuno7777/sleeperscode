@@ -23,7 +23,6 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
-  hasUsageCostEstimate,
   makeWindow,
   summarizeUsageCost,
 } from "@t3tools/shared/usageFormat";
@@ -225,7 +224,7 @@ export function UsagePage() {
 
                   {orderedProviders.map((provider) => {
                     const share = metric === "cost" ? provider.costShare : provider.tokenShare;
-                    const hasCost = hasUsageCostEstimate(provider.provider);
+                    const hasCost = provider.hasPricedUsage;
                     return (
                       <div key={provider.provider} className="flex flex-col gap-1.5">
                         <div className="flex items-baseline justify-between">
@@ -378,14 +377,10 @@ export function UsagePage() {
                               </span>
                             </td>
                             <td className="py-2 text-right text-foreground tabular-nums">
-                              {hasUsageCostEstimate(model.provider)
-                                ? formatUsd(model.costUsd)
-                                : "N/A"}
+                              {model.hasPricedUsage ? formatUsd(model.costUsd) : "N/A"}
                             </td>
                             <td className="py-2 text-right text-muted-foreground tabular-nums">
-                              {hasUsageCostEstimate(model.provider)
-                                ? formatPercent(model.costShare)
-                                : "N/A"}
+                              {model.hasPricedUsage ? formatPercent(model.costShare) : "N/A"}
                             </td>
                             <td className="py-2 text-right text-muted-foreground tabular-nums">
                               {formatTokens(model.totalTokens)}

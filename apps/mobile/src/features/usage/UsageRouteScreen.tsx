@@ -15,7 +15,6 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
-  hasUsageCostEstimate,
   makeWindow,
   summarizeUsageCost,
 } from "@t3tools/shared/usageFormat";
@@ -604,7 +603,7 @@ function ProviderSection(props: {
     <SettingsSection title="Providers" card>
       {ordered.map((provider, index) => {
         const share = metric === "cost" ? provider.costShare : provider.tokenShare;
-        const hasCost = hasUsageCostEstimate(provider.provider);
+        const hasCost = provider.hasPricedUsage;
         return (
           <View
             key={provider.provider}
@@ -737,13 +736,13 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
               {model.model}
             </Text>
             <Text className="text-sm text-foreground-muted">
-              {hasUsageCostEstimate(model.provider)
+              {model.hasPricedUsage
                 ? `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`
                 : `Cost unavailable · ${formatTokens(model.totalTokens)} tokens`}
             </Text>
           </View>
           <Text className="text-base tabular-nums text-foreground">
-            {hasUsageCostEstimate(model.provider) ? formatUsd(model.costUsd) : "N/A"}
+            {model.hasPricedUsage ? formatUsd(model.costUsd) : "N/A"}
           </Text>
         </View>
       ))}

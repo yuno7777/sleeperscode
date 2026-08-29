@@ -24,6 +24,8 @@ export interface EnvironmentUsage {
 export interface ProviderTotals {
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
+  /** At least one contributing record had a reported or model-derived price. */
+  readonly hasPricedUsage: boolean;
   readonly totalTokens: number;
   readonly records: number;
   readonly costShare: number;
@@ -34,6 +36,8 @@ export interface ModelTotals {
   readonly model: string;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
+  /** At least one contributing record had a reported or model-derived price. */
+  readonly hasPricedUsage: boolean;
   readonly totalTokens: number;
   readonly records: number;
   readonly costShare: number;
@@ -268,11 +272,17 @@ export function mergeUsage(
 
   const providerAccumulator = new Map<
     UsageProviderKind,
-    { costUsd: number; totalTokens: number; records: number }
+    { costUsd: number; hasPricedUsage: boolean; totalTokens: number; records: number }
   >();
   const modelAccumulator = new Map<
     string,
-    { provider: UsageProviderKind; costUsd: number; totalTokens: number; records: number }
+    {
+      provider: UsageProviderKind;
+      costUsd: number;
+      hasPricedUsage: boolean;
+      totalTokens: number;
+      records: number;
+    }
   >();
   const dailyAccumulator = new Map<
     string,
@@ -308,10 +318,12 @@ export function mergeUsage(
 
       const provider = providerAccumulator.get(bucket.provider) ?? {
         costUsd: 0,
+        hasPricedUsage: false,
         totalTokens: 0,
         records: 0,
       };
       provider.costUsd += bucket.costUsd;
+      provider.hasPricedUsage ||= bucket.unpricedRecords < bucket.records;
       provider.totalTokens += tokens;
       provider.records += bucket.records;
       providerAccumulator.set(bucket.provider, provider);
@@ -320,10 +332,12 @@ export function mergeUsage(
       const model = modelAccumulator.get(modelKey) ?? {
         provider: bucket.provider,
         costUsd: 0,
+        hasPricedUsage: false,
         totalTokens: 0,
         records: 0,
       };
       model.costUsd += bucket.costUsd;
+      model.hasPricedUsage ||= bucket.unpricedRecords < bucket.records;
       model.totalTokens += tokens;
       model.records += bucket.records;
       modelAccumulator.set(modelKey, model);
@@ -349,7 +363,12 @@ export function mergeUsage(
     if (coverage.reporting === "notReported") continue;
     const provider = usageProviderFromCoverage(coverage);
     if (provider !== undefined && !providerAccumulator.has(provider)) {
-      providerAccumulator.set(provider, { costUsd: 0, totalTokens: 0, records: 0 });
+      providerAccumulator.set(provider, {
+        costUsd: 0,
+        hasPricedUsage: false,
+        totalTokens: 0,
+        records: 0,
+      });
     }
   }
 
@@ -357,6 +376,7 @@ export function mergeUsage(
     .map(([provider, totals]) => ({
       provider,
       costUsd: totals.costUsd,
+      hasPricedUsage: totals.hasPricedUsage,
       totalTokens: totals.totalTokens,
       records: totals.records,
       costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,
@@ -369,6 +389,7 @@ export function mergeUsage(
       model: key.slice(key.indexOf(" ") + 1),
       provider: totals.provider,
       costUsd: totals.costUsd,
+      hasPricedUsage: totals.hasPricedUsage,
       totalTokens: totals.totalTokens,
       records: totals.records,
       costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,

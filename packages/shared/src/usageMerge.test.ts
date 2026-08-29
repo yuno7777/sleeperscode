@@ -192,6 +192,43 @@ describe("mergeUsage", () => {
     expect(merged.costQuality.cacheSavingsUsd).toBe(4);
   });
 
+  it("marks cost availability from contributing records rather than provider names", () => {
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary(
+            [
+              bucket(),
+              bucket({
+                provider: "codex",
+                model: "unknown-model",
+                costUsd: 0,
+                costSource: "unpriced",
+                unpricedRecords: 5,
+              }),
+            ],
+            [
+              { provider: "claude", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "codex", hostId: "mac", homePath: "/a/.codex" },
+            ],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "claude", hasPricedUsage: true }),
+        expect.objectContaining({ provider: "codex", hasPricedUsage: false }),
+      ]),
+    );
+    expect(merged.models).toContainEqual(
+      expect.objectContaining({ model: "unknown-model", hasPricedUsage: false }),
+    );
+  });
+
   it("keeps two machines apart when hostname and home path collide", () => {
     // Every Mac resolves /Users/theo/.claude, so a hostname clash used to make
     // one machine's usage vanish. Filesystem identity separates them.
@@ -308,6 +345,7 @@ describe("mergeUsage", () => {
     expect(merged.providers).toContainEqual({
       provider: "antigravity",
       costUsd: 0,
+      hasPricedUsage: false,
       totalTokens: 0,
       records: 0,
       costShare: 0,
