@@ -24,6 +24,19 @@ export function hasUsageCostEstimate(provider: UsageProviderKind): boolean {
   return provider === "claude" || provider === "codex";
 }
 
+/** Copy shared by web and mobile when some observed usage has no verified rate. */
+export function summarizeUsageCost(unpricedShare: number): {
+  readonly label: string;
+  readonly detail: string;
+} {
+  return unpricedShare > 0
+    ? {
+        label: "Priced token cost",
+        detail: "Excludes observed usage without a trustworthy price.",
+      }
+    : { label: "Raw token cost", detail: "* if billed at full API rate" };
+}
+
 export function formatCount(value: number): string {
   return INTEGER.format(Math.round(value));
 }

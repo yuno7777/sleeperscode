@@ -25,6 +25,7 @@ import {
   formatUsd,
   hasUsageCostEstimate,
   makeWindow,
+  summarizeUsageCost,
 } from "@t3tools/shared/usageFormat";
 import { ScrollArea } from "../ui/scroll-area";
 import { Button } from "../ui/button";
@@ -89,6 +90,7 @@ export function UsagePage() {
   const dailyAverage = activeDays === 0 ? 0 : merged.totalTokens / activeDays;
   const observedInput = merged.uncachedInputTokens + merged.cachedInputTokens;
   const cachedShare = observedInput === 0 ? 0 : merged.cachedInputTokens / observedInput;
+  const costSummary = summarizeUsageCost(merged.costQuality.unpricedShare);
 
   return (
     <ScrollArea className="h-full">
@@ -207,7 +209,7 @@ export function UsagePage() {
                 <div className="flex flex-col gap-5">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs tracking-wide text-muted-foreground uppercase">
-                      {metric === "cost" ? "Raw token cost" : "Processed tokens"}
+                      {metric === "cost" ? costSummary.label : "Processed tokens"}
                     </span>
                     <span className="text-4xl font-semibold text-foreground tabular-nums">
                       {metric === "cost"
@@ -216,7 +218,7 @@ export function UsagePage() {
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {metric === "cost"
-                        ? "* if billed at full API rate"
+                        ? costSummary.detail
                         : `Input, cache reads and output across ${formatCount(merged.sessions)} sessions.`}
                     </span>
                   </div>
