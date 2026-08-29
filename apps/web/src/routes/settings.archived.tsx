@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy } from "react";
 
-import { ArchivedThreadsPanel } from "../components/settings/SettingsPanels";
+const ArchivedThreadsPanel = lazy(() =>
+  import("../components/settings/SettingsPanels").then(({ ArchivedThreadsPanel }) => ({
+    default: ArchivedThreadsPanel,
+  })),
+);
 
 export const Route = createFileRoute("/settings/archived")({
   component: ArchivedThreadsPanel,
