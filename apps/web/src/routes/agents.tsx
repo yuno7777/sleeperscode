@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy } from "react";
 
-import { AgentHubPage } from "../components/agent-hub/AgentHubPage";
+const AgentHubPage = lazy(() =>
+  import("../components/agent-hub/AgentHubPage").then(({ AgentHubPage }) => ({
+    default: AgentHubPage,
+  })),
+);
 
 export const Route = createFileRoute("/agents")({
   component: AgentHubPage,
