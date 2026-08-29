@@ -107,6 +107,15 @@ describe("CloudManagedEndpointRuntime", () => {
     ).toBe("warning");
   });
 
+  it("redacts every connector token from emitted output without corrupting empty-token logs", () => {
+    expect(
+      ManagedEndpointRuntime.redactRelayClientOutput("token-1 connected token-1", "token-1"),
+    ).toBe("<redacted> connected <redacted>");
+    expect(ManagedEndpointRuntime.redactRelayClientOutput("connector started", "")).toBe(
+      "connector started",
+    );
+  });
+
   it.effect("starts, deduplicates, rotates, and stops the Cloudflare connector", () =>
     Effect.gen(function* () {
       const spawned: Array<ChildProcess.StandardCommand> = [];

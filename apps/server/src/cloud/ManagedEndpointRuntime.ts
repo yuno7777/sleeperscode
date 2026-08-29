@@ -78,6 +78,10 @@ export function classifyRelayClientOutput(line: string): "connected" | "warning"
   return /\b(?:ERR|WRN|FTL|PNC)\b/u.test(line) ? "warning" : "debug";
 }
 
+export function redactRelayClientOutput(line: string, connectorToken: string): string {
+  return connectorToken.length > 0 ? line.replaceAll(connectorToken, "<redacted>") : line;
+}
+
 function runtimeConfigKey(config: RelayManagedEndpointRuntimeConfig): string {
   return JSON.stringify({
     providerKind: config.providerKind,
@@ -158,7 +162,7 @@ export const make = Effect.gen(function* () {
       Stream.map((line) => line.trim()),
       Stream.filter((line) => line.length > 0),
       Stream.runForEach((line) => {
-        const output = line.replaceAll(connector.config.connectorToken, "<redacted>");
+        const output = redactRelayClientOutput(line, connector.config.connectorToken);
         const attributes = {
           pid: Number(connector.child.pid),
           tunnelId: connector.config.tunnelId,
