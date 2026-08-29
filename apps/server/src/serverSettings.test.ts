@@ -48,6 +48,32 @@ const makeFailingSecretStoreLayer = (cause: ServerSecretStore.SecretStoreError) 
   );
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it("redacts sensitive provider environment values before they reach a client", () => {
+    const instanceId = ProviderInstanceId.make("codex_personal");
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("codex"),
+          environment: [
+            { name: "OPENROUTER_API_KEY", value: "sk-or-secret", sensitive: true },
+            { name: "ANTHROPIC_BASE_URL", value: "https://api.example.test", sensitive: false },
+          ],
+          config: {},
+        },
+      },
+    };
+
+    const redacted = ServerSettingsModule.redactServerSettingsForClient(settings);
+
+    assert.deepEqual(redacted.providerInstances[instanceId]?.environment, [
+      { name: "OPENROUTER_API_KEY", value: "", sensitive: true, valueRedacted: true },
+      { name: "ANTHROPIC_BASE_URL", value: "https://api.example.test", sensitive: false },
+    ]);
+    assert.notInclude(JSON.stringify(redacted), "sk-or-secret");
+    assert.equal(settings.providerInstances[instanceId]?.environment?.[0]?.value, "sk-or-secret");
+  });
+
   it.effect("preserves context when reading a provider environment secret fails", () => {
     const platformCause = PlatformError.systemError({
       _tag: "PermissionDenied",
