@@ -610,21 +610,21 @@ function HostSystemMetrics(props: { readonly environment: EnvironmentUsageStatus
               detail={`sampled every ${Math.round(summary.sampleIntervalMs / 1_000)}s`}
             />
           </div>
-          <ResourceProfileControls
-            currentProfile={settings?.backgroundActivity.profile ?? null}
-            onSelect={(profile) =>
-              void updateSettings({
-                environmentId: props.environment.environmentId,
-                input: {
-                  patch: {
-                    backgroundActivity: { schemaVersion: 1, profile, overrides: {} },
-                  },
-                },
-              })
-            }
-          />
         </>
       )}
+      <ResourceProfileControls
+        currentProfile={settings?.backgroundActivity.profile ?? null}
+        onSelect={(profile) =>
+          void updateSettings({
+            environmentId: props.environment.environmentId,
+            input: {
+              patch: {
+                backgroundActivity: { schemaVersion: 1, profile, overrides: {} },
+              },
+            },
+          })
+        }
+      />
     </div>
   );
 }
