@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy } from "react";
 
-import { ProjectSettingsPanel } from "../components/settings/ProjectSettingsPanel";
+const ProjectSettingsPanel = lazy(() =>
+  import("../components/settings/ProjectSettingsPanel").then(({ ProjectSettingsPanel }) => ({
+    default: ProjectSettingsPanel,
+  })),
+);
 
 function SettingsProjectDetailRoute() {
   const { projectKey } = Route.useParams();

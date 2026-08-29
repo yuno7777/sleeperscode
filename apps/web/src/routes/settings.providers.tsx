@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy } from "react";
 
-import { ProviderSettingsPanel } from "../components/settings/ProviderSettingsPanel";
+const ProviderSettingsPanel = lazy(() =>
+  import("../components/settings/ProviderSettingsPanel").then(({ ProviderSettingsPanel }) => ({
+    default: ProviderSettingsPanel,
+  })),
+);
 
 function SettingsProvidersRoute() {
   return <ProviderSettingsPanel />;
