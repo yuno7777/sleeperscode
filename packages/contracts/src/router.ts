@@ -46,6 +46,10 @@ export type RouterRecommendationOutcome = typeof RouterRecommendationOutcome.Typ
 export const RouterReviewRequirement = Schema.Literals(["none", "recommended", "required"]);
 export type RouterReviewRequirement = typeof RouterReviewRequirement.Type;
 
+/** A bounded suggestion for the amount of orchestration a task needs. */
+export const RouterExecutionStyle = Schema.Literals(["standard", "lean"]);
+export type RouterExecutionStyle = typeof RouterExecutionStyle.Type;
+
 export const RouterDecisionReason = Schema.Literals([
   "turn-override-authoritative",
   "thread-selection-authoritative",
@@ -59,6 +63,7 @@ export const RouterDecisionReason = Schema.Literals([
   "review-required",
   "research-required",
   "collaboration-recommended",
+  "lean-execution-recommended",
   "context-limited",
   "shadow-mode-no-override",
 ]);
@@ -85,6 +90,8 @@ export const RouterDecision = Schema.Struct({
   }),
   candidates: Schema.Array(RouterCandidate),
   execution: Schema.Struct({
+    /** Optional so historical persisted shadow decisions continue to decode. */
+    style: Schema.optionalKey(RouterExecutionStyle),
     tools: Schema.Array(TaskToolRequirement),
     collaboration: TaskCollaborationRecommendation,
     review: RouterReviewRequirement,

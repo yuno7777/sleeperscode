@@ -44,6 +44,16 @@ describe("router contracts", () => {
     expect(() => decodeDecision({ ...validDecision, applied: true })).toThrow();
   });
 
+  it("accepts a bounded execution style while keeping older decisions decodable", () => {
+    expect(decodeDecision(validDecision)).toEqual(validDecision);
+    expect(
+      decodeDecision({
+        ...validDecision,
+        execution: { ...validDecision.execution, style: "lean" },
+      }),
+    ).toMatchObject({ execution: { style: "lean" } });
+  });
+
   it("rejects free-form reasons that could carry prompt content", () => {
     expect(() =>
       decodeDecision({ ...validDecision, reasons: ["because-user-said-secret"] }),

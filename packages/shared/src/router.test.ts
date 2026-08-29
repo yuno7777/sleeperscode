@@ -110,6 +110,7 @@ describe("planRouterDecision", () => {
     });
 
     expect(decision.applied).toBe(false);
+    expect(decision.execution.style).toBe("standard");
     expect(decision.recommendation).toEqual({ outcome: "retain-current", instanceId: "codex" });
     expect(decision.reasons).toEqual(
       expect.arrayContaining([
@@ -175,6 +176,18 @@ describe("planRouterDecision", () => {
     expect(decision.recommendation).toEqual({ outcome: "insufficient-evidence" });
     expect(decision.reasons).toContain("context-limited");
     expect(decision.reasons).not.toContain("no-eligible-candidates");
+  });
+
+  it("recommends lean execution only for a bounded low-risk trivial change", () => {
+    const decision = planRouterDecision({
+      taskProfile: classifyTaskProfile({ text: "Change the button radius to 12px." }),
+      context: buildRouterContext([provider({ instanceId: "codex" })]),
+      effectiveSelection: selection("codex"),
+      selectionSource: "thread",
+    });
+
+    expect(decision.execution.style).toBe("lean");
+    expect(decision.reasons).toContain("lean-execution-recommended");
   });
 
   it("never copies prompt content into a decision", () => {

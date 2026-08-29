@@ -5,6 +5,7 @@ import {
   type RouterContext,
   type RouterDecision,
   type RouterDecisionReason,
+  type RouterExecutionStyle,
   type RouterReviewRequirement,
   type RouterSelectionSource,
   type ServerProvider,
@@ -68,6 +69,11 @@ export const ROUTER_DECISION_REASON_EXPLANATIONS = {
     label: "Collaboration recommended",
     detail: "The task profile indicates useful independent or parallel work.",
   },
+  "lean-execution-recommended": {
+    label: "Lean execution recommended",
+    detail:
+      "This appears to be a small, low-risk change, so extra orchestration is unlikely to help.",
+  },
   "context-limited": {
     label: "Provider context was limited",
     detail: "The provider snapshot was bounded, so absence was not treated as definitive.",
@@ -126,6 +132,16 @@ const reviewRequirement = (profile: TaskProfile): RouterReviewRequirement => {
 
 const unique = <A>(values: ReadonlyArray<A>): ReadonlyArray<A> => [...new Set(values)];
 
+const executionStyle = (profile: TaskProfile): RouterExecutionStyle =>
+  profile.signals.includes("trivial-change") &&
+  profile.complexity.band === "low" &&
+  profile.collaboration === "single-worker" &&
+  profile.securitySensitivity === "normal" &&
+  profile.testingRequirement !== "broad" &&
+  profile.visualRequirement !== "required"
+    ? "lean"
+    : "standard";
+
 export function planRouterDecision(input: {
   readonly taskProfile: TaskProfile;
   readonly context: RouterContext;
@@ -154,6 +170,7 @@ export function planRouterDecision(input: {
           : { outcome: "insufficient-evidence" as const };
   const review = reviewRequirement(input.taskProfile);
   const research = input.taskProfile.kinds.includes("research");
+  const style = executionStyle(input.taskProfile);
   const reasons = unique<RouterDecisionReason>([
     input.selectionSource === "turn-override"
       ? "turn-override-authoritative"
@@ -179,6 +196,7 @@ export function planRouterDecision(input: {
     ...(input.taskProfile.collaboration === "single-worker"
       ? []
       : (["collaboration-recommended"] as const)),
+    ...(style === "lean" ? (["lean-execution-recommended"] as const) : []),
     ...(input.context.limited ? (["context-limited"] as const) : []),
     "shadow-mode-no-override",
   ]);
@@ -196,6 +214,7 @@ export function planRouterDecision(input: {
     recommendation,
     candidates: input.context.candidates,
     execution: {
+      style,
       tools: input.taskProfile.toolRequirements,
       collaboration: input.taskProfile.collaboration,
       review,
