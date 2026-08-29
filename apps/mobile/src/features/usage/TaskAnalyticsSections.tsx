@@ -5,13 +5,14 @@ import type {
   MergedTaskAnalyticsRecord,
 } from "@t3tools/shared/taskAnalyticsMerge";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { describeTaskTimelineEvent, projectTaskTimeline } from "@t3tools/shared/taskTimeline";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { SettingsSection } from "../settings/components/SettingsSection";
 
-export type MobileUsageAnalyticsView = "tasks" | "router";
+export type MobileUsageAnalyticsView = "tasks" | "router" | "timeline";
 
 const humanize = (value: string) => value.replaceAll("-", " ");
 
@@ -52,6 +53,42 @@ export function TaskAnalyticsSections(props: {
           New normal turns will appear after their server records a task profile.
         </Text>
       </View>
+    );
+  }
+
+  if (view === "timeline") {
+    const events = projectTaskTimeline(analytics.records);
+    return (
+      <>
+        <View className="gap-1 rounded-[16px] border-continuous bg-card px-4 py-3">
+          <Text className="text-xs font-t3-medium uppercase text-foreground-muted">
+            Content-free lifecycle evidence
+          </Text>
+          <Text className="text-sm text-foreground">
+            Requests, shadow-router evidence, terminal observations, and direct feedback in time
+            order. This does not infer correctness or causality.
+          </Text>
+        </View>
+        <SettingsSection title="Recent lifecycle events" card>
+          {events.map((event, index) => (
+            <View
+              key={event.key}
+              className={index === 0 ? "gap-1 p-4" : "gap-1 border-t border-border-subtle p-4"}
+            >
+              <Text className="text-base text-foreground">{describeTaskTimelineEvent(event)}</Text>
+              <Text className="text-sm text-foreground-muted">
+                {event.environmentLabel} ·{" "}
+                {new Intl.DateTimeFormat(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                }).format(new Date(event.timestamp))}
+              </Text>
+            </View>
+          ))}
+        </SettingsSection>
+      </>
     );
   }
 

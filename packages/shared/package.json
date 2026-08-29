@@ -234,6 +234,10 @@
     "./taskAnalyticsMerge": {
       "types": "./src/taskAnalyticsMerge.ts",
       "import": "./src/taskAnalyticsMerge.ts"
+    },
+    "./taskTimeline": {
+      "types": "./src/taskTimeline.ts",
+      "import": "./src/taskTimeline.ts"
     }
   },
   "scripts": {

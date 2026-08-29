@@ -157,7 +157,7 @@ export function UsagePage() {
         </header>
 
         <nav className="flex gap-5 border-b border-border" aria-label="Usage analytics views">
-          {(["overview", "tasks", "router"] as const).map((option) => (
+          {(["overview", "tasks", "router", "timeline"] as const).map((option) => (
             <button
               key={option}
               type="button"

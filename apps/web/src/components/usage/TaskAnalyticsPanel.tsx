@@ -5,11 +5,12 @@ import type {
   MergedTaskAnalyticsRecord,
 } from "@t3tools/shared/taskAnalyticsMerge";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { describeTaskTimelineEvent, projectTaskTimeline } from "@t3tools/shared/taskTimeline";
 import { useState } from "react";
 
 import { cn } from "../../lib/utils";
 
-export type UsageAnalyticsView = "tasks" | "router";
+export type UsageAnalyticsView = "tasks" | "router" | "timeline";
 
 const humanize = (value: string) => value.replaceAll("-", " ");
 
@@ -63,6 +64,10 @@ export function TaskAnalyticsPanel({
         </p>
       </section>
     );
+  }
+
+  if (view === "timeline") {
+    return <TaskTimeline analytics={analytics} notices={notices} />;
   }
 
   return (
@@ -201,6 +206,65 @@ export function TaskAnalyticsPanel({
           <RecentTasksTable analytics={analytics} routerOnly />
         </>
       )}
+    </div>
+  );
+}
+
+function TaskTimeline({
+  analytics,
+  notices,
+}: {
+  readonly analytics: MergedTaskAnalytics;
+  readonly notices: readonly string[];
+}) {
+  const events = projectTaskTimeline(analytics.records);
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2 border-l-2 border-foreground/70 pl-4">
+        <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+          Content-free lifecycle evidence
+        </p>
+        <p className="max-w-3xl text-sm text-foreground">
+          This is a chronological record of task requests, shadow-router evidence, terminal
+          observations, and direct user feedback. It does not infer correctness or causality.
+        </p>
+      </div>
+      {notices.length > 0 || analytics.truncated ? (
+        <div className="border border-border px-3 py-2 text-xs text-muted-foreground">
+          {notices.map((notice) => (
+            <p key={notice}>{notice}</p>
+          ))}
+          {analytics.truncated ? <p>Source records are bounded to this window.</p> : null}
+        </div>
+      ) : null}
+      <section className="border border-border">
+        <div className="flex items-baseline justify-between border-b border-border px-4 py-3">
+          <h2 className="text-sm font-medium text-foreground">Recent lifecycle events</h2>
+          <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
+            newest first
+          </span>
+        </div>
+        {events.map((event) => (
+          <div
+            key={event.key}
+            className="flex gap-3 border-b border-border/50 px-4 py-3 last:border-b-0"
+          >
+            <span className="mt-1 size-2 shrink-0 rounded-full bg-foreground/70" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-foreground">{describeTaskTimelineEvent(event)}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {event.environmentLabel} ·{" "}
+                {new Intl.DateTimeFormat(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                }).format(new Date(event.timestamp))}
+              </p>
+            </div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

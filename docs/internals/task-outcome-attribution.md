@@ -65,9 +65,12 @@ The payload contains only compact profile categories, shadow-decision reason cod
 terminal state, optional elapsed milliseconds, and optional coarse user feedback. It uses an opaque local-store fingerprint so
 clients can avoid double-counting the same database through multiple connections. Web/desktop and
 mobile merge those bounded summaries into Tasks and Router views on the Usage page, showing timing
-coverage, average elapsed time, per-task elapsed time, and feedback counts. Feedback mutations target
-only the environment that owns the selected row. Controls appear only for terminal records on servers
-that advertise the optional feedback field. The views deliberately label terminal state as lifecycle
+coverage, average elapsed time, per-task elapsed time, and feedback counts. A third Timeline view
+projects each record into its observed request, optional shadow-router, optional terminal, and optional
+feedback lifecycle events, newest first with stable ordering for timestamp ties. It remains bounded to
+200 rendered events and does not create a second event store. Feedback mutations target only the
+environment that owns the selected row. Controls appear only for terminal records on servers that
+advertise the optional feedback field. The views deliberately label terminal state as lifecycle
 evidence and shadow decisions as unapplied.
 
 ## Current limits

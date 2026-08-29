@@ -134,6 +134,7 @@ export function UsageRouteScreen() {
               { value: "overview", label: "Overview" },
               { value: "tasks", label: "Tasks" },
               { value: "router", label: "Router" },
+              { value: "timeline", label: "Timeline" },
             ] as const
           }
           selected={view}
