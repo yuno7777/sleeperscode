@@ -1,4 +1,5 @@
-import type { TaskFeedbackValue } from "@t3tools/contracts";
+import type { RouterDecisionReason, TaskFeedbackValue } from "@t3tools/contracts";
+import { explainRouterDecisionReason } from "@t3tools/shared/router";
 import type {
   MergedTaskAnalytics,
   MergedTaskAnalyticsRecord,
@@ -26,6 +27,7 @@ export function TaskAnalyticsSections(props: {
   const { analytics, view } = props;
   const [pendingFeedbackKey, setPendingFeedbackKey] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [expandedRouterKey, setExpandedRouterKey] = useState<string | null>(null);
 
   const setFeedback = async (
     record: MergedTaskAnalyticsRecord,
@@ -62,7 +64,7 @@ export function TaskAnalyticsSections(props: {
         <Text className="text-sm text-foreground">
           {view === "tasks"
             ? "Terminal states are provider lifecycle evidence, not correctness or quality."
-            : "Routing is shadow-only and never replaces the provider you selected."}
+            : "Routing is shadow-only. Open a recent decision to see why it retained or questioned your selection."}
         </Text>
         {props.notices.map((notice) => (
           <Text key={notice} className="text-xs text-foreground-tertiary">
@@ -110,45 +112,54 @@ export function TaskAnalyticsSections(props: {
       </SettingsSection>
 
       <SettingsSection title={view === "tasks" ? "Recent tasks" : "Recent decisions"} card>
-        {analytics.records.slice(0, 30).map((record, index) => (
-          <View
-            key={`${record.environmentId}:${record.threadId}:${record.requestedAt}`}
-            className={index === 0 ? "gap-1 p-4" : "gap-1 border-t border-border-subtle p-4"}
-          >
-            <View className="flex-row items-baseline justify-between gap-3">
-              <Text
-                className="min-w-0 flex-1 text-base capitalize text-foreground"
-                numberOfLines={1}
-              >
-                {view === "tasks"
-                  ? (record.profile?.kinds[0] ?? "unprofiled")
-                  : (record.route?.selectedInstanceId ?? "not recorded")}
+        {analytics.records.slice(0, 30).map((record, index) => {
+          const recordKey = `${record.environmentId}:${record.threadId}:${record.requestedAt}`;
+          return (
+            <View
+              key={recordKey}
+              className={index === 0 ? "gap-1 p-4" : "gap-1 border-t border-border-subtle p-4"}
+            >
+              <View className="flex-row items-baseline justify-between gap-3">
+                <Text
+                  className="min-w-0 flex-1 text-base capitalize text-foreground"
+                  numberOfLines={1}
+                >
+                  {view === "tasks"
+                    ? (record.profile?.kinds[0] ?? "unprofiled")
+                    : (record.route?.selectedInstanceId ?? "not recorded")}
+                </Text>
+                <Text className="text-sm capitalize text-foreground-muted">
+                  {humanize(record.outcome?.terminalState ?? "pending")}
+                  {record.elapsedMs === undefined ? "" : ` · ${formatDuration(record.elapsedMs)}`}
+                </Text>
+              </View>
+              <Text className="text-sm capitalize text-foreground-muted" numberOfLines={1}>
+                {record.environmentLabel}
+                {view === "tasks" && record.profile !== null
+                  ? ` · ${humanize(record.profile.primaryDomain)} · ${humanize(record.profile.complexity)}`
+                  : record.route === null
+                    ? ""
+                    : ` · ${humanize(record.route.recommendation)}`}
               </Text>
-              <Text className="text-sm capitalize text-foreground-muted">
-                {humanize(record.outcome?.terminalState ?? "pending")}
-                {record.elapsedMs === undefined ? "" : ` · ${formatDuration(record.elapsedMs)}`}
-              </Text>
+              {view === "tasks" && record.outcome !== null && record.feedback !== undefined ? (
+                <TaskFeedbackControls
+                  value={record.feedback?.value ?? null}
+                  disabled={pendingFeedbackKey === recordKey}
+                  onChange={(feedback) => void setFeedback(record, feedback)}
+                />
+              ) : null}
+              {view === "router" && record.route !== null ? (
+                <RouterDecisionExplanation
+                  reasons={record.route.reasons}
+                  expanded={expandedRouterKey === recordKey}
+                  onToggle={() =>
+                    setExpandedRouterKey((current) => (current === recordKey ? null : recordKey))
+                  }
+                />
+              ) : null}
             </View>
-            <Text className="text-sm capitalize text-foreground-muted" numberOfLines={1}>
-              {record.environmentLabel}
-              {view === "tasks" && record.profile !== null
-                ? ` · ${humanize(record.profile.primaryDomain)} · ${humanize(record.profile.complexity)}`
-                : record.route === null
-                  ? ""
-                  : ` · ${humanize(record.route.recommendation)}`}
-            </Text>
-            {view === "tasks" && record.outcome !== null && record.feedback !== undefined ? (
-              <TaskFeedbackControls
-                value={record.feedback?.value ?? null}
-                disabled={
-                  pendingFeedbackKey ===
-                  `${record.environmentId}:${record.threadId}:${record.requestedAt}`
-                }
-                onChange={(feedback) => void setFeedback(record, feedback)}
-              />
-            ) : null}
-          </View>
-        ))}
+          );
+        })}
       </SettingsSection>
 
       {view === "tasks" ? (
@@ -199,6 +210,43 @@ export function TaskAnalyticsSections(props: {
         )}
       </SettingsSection>
     </>
+  );
+}
+
+function RouterDecisionExplanation({
+  reasons,
+  expanded,
+  onToggle,
+}: {
+  readonly reasons: readonly RouterDecisionReason[];
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+}) {
+  const visibleReasons = expanded ? reasons : reasons.slice(0, 1);
+  return (
+    <View className="mt-2 gap-2 border-l border-border pl-3">
+      {visibleReasons.map((reason) => {
+        const explanation = explainRouterDecisionReason(reason);
+        return (
+          <View key={reason} className="gap-0.5">
+            <Text className="text-sm font-t3-medium text-foreground">{explanation.label}</Text>
+            <Text className="text-xs leading-4 text-foreground-muted">{explanation.detail}</Text>
+          </View>
+        );
+      })}
+      {reasons.length > 1 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={onToggle}
+          className="self-start py-1 active:opacity-60"
+        >
+          <Text className="text-xs font-t3-medium text-foreground">
+            {expanded ? "Show less" : `Show ${reasons.length - 1} more`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 

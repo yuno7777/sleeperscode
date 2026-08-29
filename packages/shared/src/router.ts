@@ -13,6 +13,77 @@ import {
 
 const ROUTER_CONTEXT_MAX_CANDIDATES = 64;
 
+export interface RouterDecisionReasonExplanation {
+  readonly label: string;
+  readonly detail: string;
+}
+
+/** User-facing copy for every bounded router reason code. */
+export const ROUTER_DECISION_REASON_EXPLANATIONS = {
+  "turn-override-authoritative": {
+    label: "Turn override kept",
+    detail: "This turn's explicit provider and model choice remained authoritative.",
+  },
+  "thread-selection-authoritative": {
+    label: "Thread selection kept",
+    detail: "The provider and model already selected for this thread remained authoritative.",
+  },
+  "selected-provider-eligible": {
+    label: "Selected provider is routable",
+    detail: "The selected provider was installed, enabled, authenticated, and available.",
+  },
+  "selected-provider-excluded": {
+    label: "Selected provider is not routable",
+    detail: "The selected provider failed at least one current routing eligibility check.",
+  },
+  "selected-provider-unknown": {
+    label: "Selected provider was not observed",
+    detail: "The selected provider was absent from the bounded provider snapshot.",
+  },
+  "single-eligible-alternative": {
+    label: "One eligible alternative",
+    detail: "Exactly one other provider passed the current routing eligibility checks.",
+  },
+  "multiple-eligible-candidates": {
+    label: "Several eligible providers",
+    detail: "More than one provider was eligible, so no unsupported ranking was invented.",
+  },
+  "no-eligible-candidates": {
+    label: "No eligible providers",
+    detail: "No observed provider passed all current routing eligibility checks.",
+  },
+  "review-recommended": {
+    label: "Review recommended",
+    detail: "The task profile indicates that an independent review would be useful.",
+  },
+  "review-required": {
+    label: "Review required",
+    detail: "The task profile indicates that an independent review should be required.",
+  },
+  "research-required": {
+    label: "Research capability needed",
+    detail: "The task profile includes research work and may need web or document access.",
+  },
+  "collaboration-recommended": {
+    label: "Collaboration recommended",
+    detail: "The task profile indicates useful independent or parallel work.",
+  },
+  "context-limited": {
+    label: "Provider context was limited",
+    detail: "The provider snapshot was bounded, so absence was not treated as definitive.",
+  },
+  "shadow-mode-no-override": {
+    label: "Shadow mode only",
+    detail: "The router recorded evidence but did not change the user's selection.",
+  },
+} satisfies Record<RouterDecisionReason, RouterDecisionReasonExplanation>;
+
+export function explainRouterDecisionReason(
+  reason: RouterDecisionReason,
+): RouterDecisionReasonExplanation {
+  return ROUTER_DECISION_REASON_EXPLANATIONS[reason];
+}
+
 const compareCandidateIdentity = (left: RouterCandidate, right: RouterCandidate): number => {
   if (left.instanceId < right.instanceId) return -1;
   if (left.instanceId > right.instanceId) return 1;

@@ -65,9 +65,11 @@ runtime bottlenecks move behind small Rust components.
   to factual provider terminal states without calling completion “success,” and the Usage page exposes
   compact Tasks and Router views across connected environments. Completed tasks can be marked
   **Accepted**, **Needs repair**, or **Rejected**; selecting the active mark again clears it, and the
-  app keeps this direct user feedback separate from provider lifecycle state. A confirmed clear-history control
-  removes that local evidence without touching conversations or provider usage transcripts, and a
-  durable replay cutoff prevents cleared evidence from reappearing after projection rebuilds.
+  app keeps this direct user feedback separate from provider lifecycle state. Router decisions expand
+  into plain-language reasons without claiming the router changed the user's selection. A confirmed
+  clear-history control removes that local evidence without touching conversations or provider usage
+  transcripts, and a durable replay cutoff prevents cleared evidence from reappearing after projection
+  rebuilds.
 - **Measured decisions** — performance claims live beside their harnesses and limitations; slower
   replacements do not become defaults for architectural aesthetics.
 - **Traceable release components** — one release command synchronizes web, server, desktop,

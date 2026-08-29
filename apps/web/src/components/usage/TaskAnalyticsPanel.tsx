@@ -1,4 +1,5 @@
-import type { TaskFeedbackValue } from "@t3tools/contracts";
+import type { RouterDecisionReason, TaskFeedbackValue } from "@t3tools/contracts";
+import { explainRouterDecisionReason } from "@t3tools/shared/router";
 import type {
   MergedTaskAnalytics,
   MergedTaskAnalyticsRecord,
@@ -73,7 +74,7 @@ export function TaskAnalyticsPanel({
         <p className="max-w-3xl text-sm text-foreground">
           {view === "tasks"
             ? "Terminal states describe provider lifecycle, not correctness, acceptance, or quality."
-            : "The router remains shadow-only. These records explain the user's existing selection and never change it."}
+            : "The router remains shadow-only. Expand a recent decision to see why it retained or questioned the user's existing selection."}
         </p>
       </div>
 
@@ -291,14 +292,16 @@ function RecentTasksTable({
         </span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[58rem] text-xs">
+        <table className={cn("w-full text-xs", routerOnly ? "min-w-[70rem]" : "min-w-[58rem]")}>
           <thead>
             <tr className="border-b border-border text-left text-muted-foreground">
               <th className="py-2 font-normal">Task</th>
               <th className="py-2 font-normal">Environment</th>
               <th className="py-2 font-normal">Selection</th>
-              <th className="py-2 font-normal">Evidence</th>
-              {routerOnly ? null : <th className="py-2 font-normal">User feedback</th>}
+              <th className="py-2 font-normal">{routerOnly ? "Outcome" : "Evidence"}</th>
+              <th className="py-2 font-normal">
+                {routerOnly ? "Why this decision" : "User feedback"}
+              </th>
               <th className="py-2 text-right font-normal">Elapsed</th>
               <th className="py-2 text-right font-normal">Observed</th>
             </tr>
@@ -330,7 +333,11 @@ function RecentTasksTable({
                   <td className={cn("py-3 pr-4 capitalize", terminalTone(state))}>
                     {humanize(state)}
                   </td>
-                  {routerOnly ? null : (
+                  {routerOnly ? (
+                    <td className="py-2 pr-4 align-top">
+                      <RouterDecisionExplanation reasons={record.route?.reasons ?? []} />
+                    </td>
+                  ) : (
                     <td className="py-2 pr-4">
                       {record.outcome === null || record.feedback === undefined ? (
                         <span className="text-muted-foreground">
@@ -363,6 +370,38 @@ function RecentTasksTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function RouterDecisionExplanation({
+  reasons,
+}: {
+  readonly reasons: readonly RouterDecisionReason[];
+}) {
+  if (reasons.length === 0) {
+    return <span className="text-muted-foreground">No reason record</span>;
+  }
+  const primary = explainRouterDecisionReason(reasons[0]!);
+  return (
+    <details className="min-w-64 max-w-80">
+      <summary className="cursor-pointer font-medium text-foreground marker:text-muted-foreground">
+        {primary.label}
+        {reasons.length === 1 ? null : (
+          <span className="ml-1 font-normal text-muted-foreground">+{reasons.length - 1}</span>
+        )}
+      </summary>
+      <ul className="mt-2 flex flex-col gap-2 border-l border-border pl-3">
+        {reasons.map((reason) => {
+          const explanation = explainRouterDecisionReason(reason);
+          return (
+            <li key={reason}>
+              <p className="font-medium text-foreground">{explanation.label}</p>
+              <p className="mt-0.5 leading-4 text-muted-foreground">{explanation.detail}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 

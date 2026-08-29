@@ -45,6 +45,17 @@ The decision contains no prompt excerpt, workspace path, credentials, provider i
 manifest content. It is optional on the durable turn-start event so older events and mixed-version
 clients continue to decode.
 
+## Explanation surfaces
+
+Every `RouterDecisionReason` has one exhaustive shared mapping to a short label and factual detail.
+Web/desktop use a native disclosure in Usage → Router, while mobile shows the primary reason and lets
+the user expand the remaining reasons for that decision. Both surfaces consume the same copy, so a
+reason cannot silently mean something different between clients. Missing legacy decisions remain
+labeled as missing evidence rather than receiving a fabricated explanation.
+
+The explanations describe recorded inputs and policy branches only. They do not claim causality,
+provider quality, cost savings, or that shadow mode changed execution.
+
 The task-run projection described in
 [`task-outcome-attribution.md`](./task-outcome-attribution.md) now binds that decision to the
 provider's concrete turn id and content-free terminal state. A provider-completed state is lifecycle

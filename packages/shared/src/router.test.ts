@@ -8,7 +8,12 @@ import {
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildRouterContext, planRouterDecision } from "./router.ts";
+import {
+  buildRouterContext,
+  explainRouterDecisionReason,
+  planRouterDecision,
+  ROUTER_DECISION_REASON_EXPLANATIONS,
+} from "./router.ts";
 import { classifyTaskProfile } from "./taskProfile.ts";
 
 const NOW = "2026-08-09T00:00:00.000Z";
@@ -72,6 +77,20 @@ describe("buildRouterContext", () => {
 
     expect(context.candidates).toHaveLength(64);
     expect(context.limited).toBe(true);
+  });
+});
+
+describe("router decision explanations", () => {
+  it("provides concise copy for every reason without exposing raw reason codes", () => {
+    for (const [reason, explanation] of Object.entries(ROUTER_DECISION_REASON_EXPLANATIONS)) {
+      expect(explanation.label).not.toBe(reason);
+      expect(explanation.label.length).toBeGreaterThan(3);
+      expect(explanation.detail.endsWith(".")).toBe(true);
+    }
+    expect(explainRouterDecisionReason("shadow-mode-no-override")).toEqual({
+      label: "Shadow mode only",
+      detail: "The router recorded evidence but did not change the user's selection.",
+    });
   });
 });
 
