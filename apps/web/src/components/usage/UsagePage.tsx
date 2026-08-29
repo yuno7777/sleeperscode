@@ -1,10 +1,18 @@
 import type { UsageProviderKind } from "@t3tools/contracts";
 import type { MergedProviderCoverage } from "@t3tools/shared/usageMerge";
+import {
+  describeResourceTelemetryStatus,
+  formatResourceBytes,
+  formatResourceCpuPercent,
+  summarizeResourceTelemetry,
+} from "@t3tools/shared/resourceTelemetrySummary";
 import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon, CheckIcon, RefreshCwIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
+import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
 import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import {
   enumerateDays,
@@ -187,6 +195,8 @@ export function UsagePage() {
               />
 
               <ProviderCoverageSection providers={merged.providerCoverage} />
+
+              <SystemMetricsSection environments={environments} />
 
               {/* Cost first: the financial answer, then the provider split. */}
               <section className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
@@ -505,6 +515,96 @@ export function UsagePage() {
         </AlertDialog>
       </div>
     </ScrollArea>
+  );
+}
+
+function SystemMetricsSection(props: { readonly environments: readonly EnvironmentUsageStatus[] }) {
+  if (props.environments.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-sm font-medium text-foreground">Host system</h2>
+        <p className="text-xs text-muted-foreground">
+          Current T3 process telemetry is shown separately for each connected host. It is not task,
+          provider, or whole-machine attribution.
+        </p>
+      </div>
+      <div className="grid gap-px overflow-hidden rounded-md border border-border bg-border lg:grid-cols-2">
+        {props.environments.map((environment) => (
+          <HostSystemMetrics key={environment.environmentId} environment={environment} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HostSystemMetrics(props: { readonly environment: EnvironmentUsageStatus }) {
+  const telemetry = useEnvironmentQuery(
+    serverEnvironment.resourceTelemetry({
+      environmentId: props.environment.environmentId,
+      input: {},
+    }),
+  );
+  const summary = telemetry.data === null ? null : summarizeResourceTelemetry(telemetry.data);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-3 bg-background px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm text-foreground">{props.environment.label}</div>
+          <div className="text-xs text-muted-foreground">T3 process telemetry</div>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full border px-2 py-0.5 text-[10px]",
+            summary?.status === "healthy"
+              ? "border-emerald-500/50 text-emerald-400"
+              : summary === null
+                ? "border-border text-muted-foreground"
+                : "border-amber-500/50 text-amber-400",
+          )}
+        >
+          {summary === null
+            ? telemetry.isPending
+              ? "Starting"
+              : telemetry.error === null
+                ? "Waiting"
+                : "Unavailable"
+            : describeResourceTelemetryStatus(summary.status)}
+        </span>
+      </div>
+      {summary === null ? (
+        <p className="text-xs text-muted-foreground">
+          {telemetry.error ?? "Waiting for this host's resource monitor."}
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-px bg-border">
+            <Metric
+              label="T3 CPU"
+              value={formatResourceCpuPercent(summary.currentCpuPercent)}
+              detail={`${summary.processCount} tracked processes`}
+            />
+            <Metric
+              label="Resident memory"
+              value={formatResourceBytes(summary.currentRssBytes)}
+              detail={`${formatResourceBytes(summary.peakRssBytes)} observed peak`}
+            />
+            <Metric
+              label="Read rate"
+              value={`${formatResourceBytes(summary.ioReadBytesPerSecond)}/s`}
+              detail="T3 process I/O"
+            />
+            <Metric
+              label="Write rate"
+              value={`${formatResourceBytes(summary.ioWriteBytesPerSecond)}/s`}
+              detail={`sampled every ${Math.round(summary.sampleIntervalMs / 1_000)}s`}
+            />
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

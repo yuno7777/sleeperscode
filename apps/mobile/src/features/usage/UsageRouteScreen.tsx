@@ -1,6 +1,12 @@
 import { useNavigation } from "@react-navigation/native";
 import type { MergedUsage } from "@t3tools/shared/usageMerge";
 import {
+  describeResourceTelemetryStatus,
+  formatResourceBytes,
+  formatResourceCpuPercent,
+  summarizeResourceTelemetry,
+} from "@t3tools/shared/resourceTelemetrySummary";
+import {
   enumerateDays,
   formatCount,
   formatDayShort,
@@ -19,6 +25,8 @@ import { AppText as Text } from "../../components/AppText";
 import { showConfirmDialog } from "../../components/ConfirmDialogHost";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
@@ -172,6 +180,7 @@ export function UsageRouteScreen() {
           ) : (
             <>
               <ProviderCoverageSection merged={merged} />
+              <SystemMetricsSection environments={environments} />
               <ChartCard
                 merged={merged}
                 days={days}
@@ -216,6 +225,103 @@ export function UsageRouteScreen() {
           />
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function SystemMetricsSection(props: { readonly environments: readonly EnvironmentUsageStatus[] }) {
+  if (props.environments.length === 0) return null;
+
+  return (
+    <SettingsSection title="Host system" card>
+      <View className="gap-1 border-b border-border-subtle px-4 py-3">
+        <Text className="text-sm text-foreground-muted">
+          Current T3 process telemetry stays separate for each connected host.
+        </Text>
+        <Text className="text-xs text-foreground-tertiary">
+          It is not task, provider, or whole-device attribution.
+        </Text>
+      </View>
+      {props.environments.map((environment, index) => (
+        <HostSystemMetrics
+          key={environment.environmentId}
+          environment={environment}
+          bordered={index > 0}
+        />
+      ))}
+    </SettingsSection>
+  );
+}
+
+function HostSystemMetrics(props: {
+  readonly environment: EnvironmentUsageStatus;
+  readonly bordered: boolean;
+}) {
+  const telemetry = useEnvironmentQuery(
+    serverEnvironment.resourceTelemetry({
+      environmentId: props.environment.environmentId,
+      input: {},
+    }),
+  );
+  const summary = telemetry.data === null ? null : summarizeResourceTelemetry(telemetry.data);
+  const status =
+    summary === null
+      ? telemetry.isPending
+        ? "Starting"
+        : telemetry.error === null
+          ? "Waiting"
+          : "Unavailable"
+      : describeResourceTelemetryStatus(summary.status);
+
+  return (
+    <View className={props.bordered ? "gap-3 border-t border-border-subtle p-4" : "gap-3 p-4"}>
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-base text-foreground" numberOfLines={1}>
+            {props.environment.label}
+          </Text>
+          <Text className="text-xs text-foreground-tertiary">T3 process telemetry</Text>
+        </View>
+        <Text
+          className={
+            summary?.status === "healthy"
+              ? "text-xs text-success-foreground"
+              : summary === null
+                ? "text-xs text-foreground-muted"
+                : "text-xs text-warning-foreground"
+          }
+        >
+          {status}
+        </Text>
+      </View>
+      {summary === null ? (
+        <Text className="text-sm text-foreground-muted">
+          {telemetry.error ?? "Waiting for this host's resource monitor."}
+        </Text>
+      ) : (
+        <View className="flex-row flex-wrap">
+          <MetricCell
+            label="T3 CPU"
+            value={formatResourceCpuPercent(summary.currentCpuPercent)}
+            detail={`${summary.processCount} tracked processes`}
+          />
+          <MetricCell
+            label="Resident memory"
+            value={formatResourceBytes(summary.currentRssBytes)}
+            detail={`${formatResourceBytes(summary.peakRssBytes)} observed peak`}
+          />
+          <MetricCell
+            label="Read rate"
+            value={`${formatResourceBytes(summary.ioReadBytesPerSecond)}/s`}
+            detail="T3 process I/O"
+          />
+          <MetricCell
+            label="Write rate"
+            value={`${formatResourceBytes(summary.ioWriteBytesPerSecond)}/s`}
+            detail={`sampled every ${Math.round(summary.sampleIntervalMs / 1_000)}s`}
+          />
+        </View>
+      )}
     </View>
   );
 }

@@ -332,6 +332,16 @@ The diagnostics page displays:
 - safe process signaling for backend descendants;
 - instrumented logical application I/O.
 
+Usage → Overview also shows a compact host-system card for every connected
+environment. It uses the `allT3` aggregate only: current CPU, resident and
+peak memory, current I/O rates, tracked process count, sampling interval, and
+native-monitor health. Hosts remain separate, and the card makes no claim about
+whole-machine utilization, a provider's cost, or a task's resource use.
+
+Opening that view creates a scoped live snapshot subscription for each visible
+host. It does not persist telemetry or enable tracing, and the subscription is
+released when the Usage view unmounts.
+
 Legacy process diagnostics RPCs are projected from the same service so they no
 longer start recurring process-table commands.
 

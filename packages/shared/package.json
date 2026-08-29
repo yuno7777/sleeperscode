@@ -227,6 +227,10 @@
       "types": "./src/usageFormat.ts",
       "import": "./src/usageFormat.ts"
     },
+    "./resourceTelemetrySummary": {
+      "types": "./src/resourceTelemetrySummary.ts",
+      "import": "./src/resourceTelemetrySummary.ts"
+    },
     "./taskAnalyticsMerge": {
       "types": "./src/taskAnalyticsMerge.ts",
       "import": "./src/taskAnalyticsMerge.ts"

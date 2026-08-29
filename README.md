@@ -51,7 +51,9 @@ runtime bottlenecks move behind small Rust components.
   Claude and Codex contribute transcript-backed token and API-equivalent cost totals. Antigravity
   contributes durable token totals for turns run through Sleepers Code; its CLI does not expose
   separate historical sessions or trustworthy API-equivalent pricing. Providers without a durable
-  source are labeled `Totals not reported` instead of showing a fabricated zero.
+  source are labeled `Totals not reported` instead of showing a fabricated zero. The same screen
+  shows current CPU, memory, I/O rate, and process counts for each connected host separately;
+  those readings are T3-process telemetry, not provider, task, or whole-machine attribution.
 - **Agent Hub discovery and secure binary installation** — web, desktop, and mobile review the exact
   artifact, require explicit consent for unverified publishers, enforce HTTPS and SHA-256, activate
   through isolated staging, register the resulting ACP provider, support app-managed uninstall, and
