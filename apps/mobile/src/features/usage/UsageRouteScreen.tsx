@@ -1,4 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
+import type { BackgroundActivityProfile } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import type { MergedUsage } from "@t3tools/shared/usageMerge";
 import {
   describeResourceTelemetryStatus,
@@ -27,6 +29,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
@@ -265,6 +268,12 @@ function HostSystemMetrics(props: {
     }),
   );
   const summary = telemetry.data === null ? null : summarizeResourceTelemetry(telemetry.data);
+  const settings = useAtomValue(
+    serverEnvironment.settingsValueAtom(props.environment.environmentId),
+  );
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "resource profile update",
+  });
   const status =
     summary === null
       ? telemetry.isPending
@@ -300,29 +309,93 @@ function HostSystemMetrics(props: {
           {telemetry.error ?? "Waiting for this host's resource monitor."}
         </Text>
       ) : (
-        <View className="flex-row flex-wrap">
-          <MetricCell
-            label="T3 CPU"
-            value={formatResourceCpuPercent(summary.currentCpuPercent)}
-            detail={`${summary.processCount} tracked processes`}
+        <>
+          <View className="flex-row flex-wrap">
+            <MetricCell
+              label="T3 CPU"
+              value={formatResourceCpuPercent(summary.currentCpuPercent)}
+              detail={`${summary.processCount} tracked processes`}
+            />
+            <MetricCell
+              label="Resident memory"
+              value={formatResourceBytes(summary.currentRssBytes)}
+              detail={`${formatResourceBytes(summary.peakRssBytes)} observed peak`}
+            />
+            <MetricCell
+              label="Read rate"
+              value={`${formatResourceBytes(summary.ioReadBytesPerSecond)}/s`}
+              detail="T3 process I/O"
+            />
+            <MetricCell
+              label="Write rate"
+              value={`${formatResourceBytes(summary.ioWriteBytesPerSecond)}/s`}
+              detail={`sampled every ${Math.round(summary.sampleIntervalMs / 1_000)}s`}
+            />
+          </View>
+          <ResourceProfileControls
+            currentProfile={settings?.backgroundActivity.profile ?? null}
+            onSelect={(profile) =>
+              void updateSettings({
+                environmentId: props.environment.environmentId,
+                input: {
+                  patch: {
+                    backgroundActivity: { schemaVersion: 1, profile, overrides: {} },
+                  },
+                },
+              })
+            }
           />
-          <MetricCell
-            label="Resident memory"
-            value={formatResourceBytes(summary.currentRssBytes)}
-            detail={`${formatResourceBytes(summary.peakRssBytes)} observed peak`}
-          />
-          <MetricCell
-            label="Read rate"
-            value={`${formatResourceBytes(summary.ioReadBytesPerSecond)}/s`}
-            detail="T3 process I/O"
-          />
-          <MetricCell
-            label="Write rate"
-            value={`${formatResourceBytes(summary.ioWriteBytesPerSecond)}/s`}
-            detail={`sampled every ${Math.round(summary.sampleIntervalMs / 1_000)}s`}
-          />
-        </View>
+        </>
       )}
+    </View>
+  );
+}
+
+const RESOURCE_PROFILES: readonly {
+  readonly value: BackgroundActivityProfile;
+  readonly label: string;
+}[] = [
+  { value: "performance", label: "Performance" },
+  { value: "balanced", label: "Balanced" },
+  { value: "battery-saver", label: "Battery saver" },
+];
+
+function ResourceProfileControls(props: {
+  readonly currentProfile: BackgroundActivityProfile | "custom" | null;
+  readonly onSelect: (profile: BackgroundActivityProfile) => void;
+}) {
+  return (
+    <View className="gap-1.5">
+      <Text className="text-sm text-foreground-muted">Background resource policy</Text>
+      <View className="flex-row flex-wrap gap-2" accessibilityLabel="Background resource policy">
+        {RESOURCE_PROFILES.map((profile) => {
+          const selected = props.currentProfile === profile.value;
+          return (
+            <Pressable
+              key={profile.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => props.onSelect(profile.value)}
+              className={
+                selected
+                  ? "rounded-full bg-foreground px-3 py-1.5 active:opacity-70"
+                  : "rounded-full border border-border px-3 py-1.5 active:bg-fill-tertiary"
+              }
+            >
+              <Text
+                className={selected ? "text-xs text-background" : "text-xs text-foreground-muted"}
+              >
+                {profile.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {props.currentProfile === "custom" ? (
+        <Text className="text-xs text-foreground-tertiary">
+          Custom settings are active; selecting a preset replaces their overrides.
+        </Text>
+      ) : null}
     </View>
   );
 }

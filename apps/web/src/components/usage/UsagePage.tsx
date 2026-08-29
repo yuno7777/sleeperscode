@@ -1,4 +1,5 @@
-import type { UsageProviderKind } from "@t3tools/contracts";
+import type { BackgroundActivityProfile, UsageProviderKind } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import type { MergedProviderCoverage } from "@t3tools/shared/usageMerge";
 import {
   describeResourceTelemetryStatus,
@@ -13,6 +14,7 @@ import { useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useTaskAnalytics, useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import {
   enumerateDays,
@@ -547,6 +549,12 @@ function HostSystemMetrics(props: { readonly environment: EnvironmentUsageStatus
     }),
   );
   const summary = telemetry.data === null ? null : summarizeResourceTelemetry(telemetry.data);
+  const settings = useAtomValue(
+    serverEnvironment.settingsValueAtom(props.environment.environmentId),
+  );
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "resource profile update",
+  });
 
   return (
     <div className="flex min-w-0 flex-col gap-3 bg-background px-3 py-3">
@@ -602,8 +610,67 @@ function HostSystemMetrics(props: { readonly environment: EnvironmentUsageStatus
               detail={`sampled every ${Math.round(summary.sampleIntervalMs / 1_000)}s`}
             />
           </div>
+          <ResourceProfileControls
+            currentProfile={settings?.backgroundActivity.profile ?? null}
+            onSelect={(profile) =>
+              void updateSettings({
+                environmentId: props.environment.environmentId,
+                input: {
+                  patch: {
+                    backgroundActivity: { schemaVersion: 1, profile, overrides: {} },
+                  },
+                },
+              })
+            }
+          />
         </>
       )}
+    </div>
+  );
+}
+
+const RESOURCE_PROFILES: readonly {
+  readonly value: BackgroundActivityProfile;
+  readonly label: string;
+}[] = [
+  { value: "performance", label: "Performance" },
+  { value: "balanced", label: "Balanced" },
+  { value: "battery-saver", label: "Battery saver" },
+];
+
+function ResourceProfileControls(props: {
+  readonly currentProfile: BackgroundActivityProfile | "custom" | null;
+  readonly onSelect: (profile: BackgroundActivityProfile) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">Background resource policy</p>
+      <div className="flex flex-wrap gap-1.5" aria-label="Background resource policy">
+        {RESOURCE_PROFILES.map((profile) => {
+          const selected = props.currentProfile === profile.value;
+          return (
+            <button
+              key={profile.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => props.onSelect(profile.value)}
+              className={cn(
+                "cursor-pointer border px-2 py-1 text-[10px]",
+                selected
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {profile.label}
+            </button>
+          );
+        })}
+      </div>
+      {props.currentProfile === "custom" ? (
+        <p className="text-[10px] text-muted-foreground">
+          Custom settings are active; selecting a preset replaces their overrides.
+        </p>
+      ) : null}
     </div>
   );
 }

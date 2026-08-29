@@ -54,6 +54,8 @@ runtime bottlenecks move behind small Rust components.
   source are labeled `Totals not reported` instead of showing a fabricated zero. The same screen
   shows current CPU, memory, I/O rate, and process counts for each connected host separately;
   those readings are T3-process telemetry, not provider, task, or whole-machine attribution.
+  Each connected host also exposes its existing Performance, Balanced, and Battery saver background
+  policy presets directly from that card.
 - **Agent Hub discovery and secure binary installation** — web, desktop, and mobile review the exact
   artifact, require explicit consent for unverified publishers, enforce HTTPS and SHA-256, activate
   through isolated staging, register the resulting ACP provider, support app-managed uninstall, and
