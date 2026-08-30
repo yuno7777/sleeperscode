@@ -172,6 +172,26 @@ export const checkAntigravityProviderStatus = Effect.fn("checkAntigravityProvide
 
     const versionResult = versionAttempt.success.value;
     const version = parseGenericCliVersion(`${versionResult.stdout}\n${versionResult.stderr}`);
+    if (versionResult.code !== 0) {
+      yield* Effect.logWarning("Antigravity CLI version probe exited with a non-zero status.", {
+        exitCode: versionResult.code,
+        stdoutLength: versionResult.stdout.length,
+        stderrLength: versionResult.stderr.length,
+      });
+      return buildServerProvider({
+        presentation: PRESENTATION,
+        enabled: true,
+        checkedAt,
+        models: modelsFrom(settings),
+        probe: {
+          installed: true,
+          version,
+          status: "error",
+          auth: { status: "unknown" },
+          message: "Antigravity CLI is installed but failed to run.",
+        },
+      });
+    }
     // `agy models` requires a terminal on Windows and otherwise waits until
     // this timeout with redirected server stdio. Skip that known-dead probe so
     // provider refresh and startup stay fast; explicit turns remain the source
