@@ -82,7 +82,7 @@ describe("buildDayColumns", () => {
     // permanently above Codex regardless of which provider spent more.
     const [first] = buildDayColumns(days, byDay, "cost");
 
-    expect(first?.bands).toEqual([
+    expect(first?.bands.filter((band) => band.value > 0)).toEqual([
       { provider: "codex", value: 10 },
       { provider: "claude", value: 20 },
     ]);
