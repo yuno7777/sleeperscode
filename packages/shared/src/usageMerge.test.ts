@@ -227,6 +227,12 @@ describe("mergeUsage", () => {
     expect(merged.models).toContainEqual(
       expect.objectContaining({ model: "unknown-model", hasPricedUsage: false }),
     );
+    expect(merged.daily[0]?.byProvider.get("codex")).toEqual({
+      costUsd: 0,
+      totalTokens: 1160,
+      hasPricedUsage: false,
+      hasUnpricedUsage: true,
+    });
   });
 
   it("keeps two machines apart when hostname and home path collide", () => {

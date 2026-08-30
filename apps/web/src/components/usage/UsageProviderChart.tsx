@@ -2,7 +2,12 @@ import type { UsageProviderKind } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { DailyTotals } from "@t3tools/shared/usageMerge";
-import { formatDayShort, formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
+import {
+  formatDayShort,
+  formatObservedUsageCost,
+  formatTokens,
+  formatUsd,
+} from "@t3tools/shared/usageFormat";
 import { PROVIDER_COLOR, PROVIDER_LABEL, PROVIDER_MARK, PROVIDER_ORDER } from "./usageProviders";
 
 const VIEW_WIDTH = 960;
@@ -23,6 +28,9 @@ export interface DayColumn {
   readonly bands: readonly {
     readonly provider: UsageProviderKind;
     readonly value: number;
+    readonly totalTokens: number;
+    readonly hasPricedUsage: boolean;
+    readonly hasUnpricedUsage: boolean;
   }[];
   readonly total: number;
 }
@@ -169,10 +177,16 @@ export function buildDayColumns(
 ): readonly DayColumn[] {
   return days.map((day) => {
     const entry = byDay.get(day);
-    const bands = PROVIDER_ORDER.map((provider) => ({
-      provider,
-      value: valueFor(entry, provider, metric),
-    }));
+    const bands = PROVIDER_ORDER.map((provider) => {
+      const providerTotals = entry?.byProvider.get(provider);
+      return {
+        provider,
+        value: valueFor(entry, provider, metric),
+        totalTokens: providerTotals?.totalTokens ?? 0,
+        hasPricedUsage: providerTotals?.hasPricedUsage ?? false,
+        hasUnpricedUsage: providerTotals?.hasUnpricedUsage ?? false,
+      };
+    });
     return { bands, total: bands.reduce((sum, band) => sum + band.value, 0) };
   });
 }
@@ -336,6 +350,9 @@ export function UsageProviderChart({ days, daily, metric }: UsageProviderChartPr
               <div className="mb-1 text-muted-foreground">{formatDayShort(hoveredDay)}</div>
               {PROVIDER_ORDER.map((provider) => {
                 const Mark = PROVIDER_MARK[provider];
+                const band = hoveredColumn?.bands.find(
+                  (candidate) => candidate.provider === provider,
+                );
                 return (
                   <div key={provider} className="flex items-center justify-between gap-3">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -343,9 +360,14 @@ export function UsageProviderChart({ days, daily, metric }: UsageProviderChartPr
                       {PROVIDER_LABEL[provider]}
                     </span>
                     <span className="text-foreground tabular-nums">
-                      {format(
-                        hoveredColumn?.bands.find((band) => band.provider === provider)?.value ?? 0,
-                      )}
+                      {metric === "tokens"
+                        ? formatTokens(band?.value ?? 0)
+                        : formatObservedUsageCost({
+                            costUsd: band?.value ?? 0,
+                            totalTokens: band?.totalTokens ?? 0,
+                            hasPricedUsage: band?.hasPricedUsage ?? false,
+                            hasUnpricedUsage: band?.hasUnpricedUsage ?? false,
+                          })}
                     </span>
                   </div>
                 );

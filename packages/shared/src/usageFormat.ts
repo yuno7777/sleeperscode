@@ -19,6 +19,22 @@ export function formatUsd(value: number): string {
   return CURRENCY.format(value);
 }
 
+/**
+ * Cost is unknown, rather than zero, when a provider reported tokens without a
+ * trustworthy rate. A trailing star means the displayed amount is only the
+ * priced portion of mixed usage.
+ */
+export function formatObservedUsageCost(input: {
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly hasPricedUsage: boolean;
+  readonly hasUnpricedUsage: boolean;
+}): string {
+  if (!input.hasPricedUsage && input.totalTokens > 0) return "N/A";
+  const formatted = formatUsd(input.costUsd);
+  return input.hasUnpricedUsage ? `${formatted}*` : formatted;
+}
+
 /** Copy shared by web and mobile when some observed usage has no verified rate. */
 export function summarizeUsageCost(unpricedShare: number): {
   readonly label: string;

@@ -50,8 +50,14 @@ describe("buildDayColumns", () => {
         costUsd: 30,
         totalTokens: 300,
         byProvider: new Map([
-          ["codex" as const, { costUsd: 10, totalTokens: 100 }],
-          ["claude" as const, { costUsd: 20, totalTokens: 200 }],
+          [
+            "codex" as const,
+            { costUsd: 10, totalTokens: 100, hasPricedUsage: true, hasUnpricedUsage: false },
+          ],
+          [
+            "claude" as const,
+            { costUsd: 20, totalTokens: 200, hasPricedUsage: true, hasUnpricedUsage: false },
+          ],
         ]),
       },
     ],
@@ -62,7 +68,12 @@ describe("buildDayColumns", () => {
         day: "2026-08-03",
         costUsd: 5,
         totalTokens: 50,
-        byProvider: new Map([["claude" as const, { costUsd: 5, totalTokens: 50 }]]),
+        byProvider: new Map([
+          [
+            "claude" as const,
+            { costUsd: 5, totalTokens: 50, hasPricedUsage: true, hasUnpricedUsage: false },
+          ],
+        ]),
       },
     ],
   ]);
@@ -82,7 +93,11 @@ describe("buildDayColumns", () => {
     // permanently above Codex regardless of which provider spent more.
     const [first] = buildDayColumns(days, byDay, "cost");
 
-    expect(first?.bands.filter((band) => band.value > 0)).toEqual([
+    expect(
+      first?.bands
+        .filter((band) => band.value > 0)
+        .map(({ provider, value }) => ({ provider, value })),
+    ).toEqual([
       { provider: "codex", value: 10 },
       { provider: "claude", value: 20 },
     ]);

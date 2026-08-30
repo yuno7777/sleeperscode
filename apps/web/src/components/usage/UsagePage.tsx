@@ -20,6 +20,7 @@ import {
   enumerateDays,
   formatCount,
   formatDayShort,
+  formatObservedUsageCost,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -391,52 +392,67 @@ export function UsagePage() {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                        <th className="py-2 font-normal">Day</th>
-                        {PROVIDER_ORDER.map((provider) => (
-                          <th key={provider} className="py-2 text-right font-normal">
-                            {PROVIDER_LABEL[provider]}
-                          </th>
-                        ))}
-                        <th className="py-2 text-right font-normal">Total</th>
-                        <th className="py-2 text-right font-normal">Tokens</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentDays.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={PROVIDER_ORDER.length + 3}
-                            className="py-6 text-center text-muted-foreground"
-                          >
-                            No activity in this window.
-                          </td>
+                  <>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                          <th className="py-2 font-normal">Day</th>
+                          {PROVIDER_ORDER.map((provider) => (
+                            <th key={provider} className="py-2 text-right font-normal">
+                              {PROVIDER_LABEL[provider]}
+                            </th>
+                          ))}
+                          <th className="py-2 text-right font-normal">Total</th>
+                          <th className="py-2 text-right font-normal">Tokens</th>
                         </tr>
-                      ) : (
-                        recentDays.map((day) => (
-                          <tr key={day.day} className="border-b border-border/50">
-                            <td className="py-2 text-foreground">{formatDayShort(day.day)}</td>
-                            {PROVIDER_ORDER.map((provider) => (
-                              <td
-                                key={provider}
-                                className="py-2 text-right text-muted-foreground tabular-nums"
-                              >
-                                {formatUsd(day.byProvider.get(provider)?.costUsd ?? 0)}
-                              </td>
-                            ))}
-                            <td className="py-2 text-right text-foreground tabular-nums">
-                              {formatUsd(day.costUsd)}
-                            </td>
-                            <td className="py-2 text-right text-muted-foreground tabular-nums">
-                              {formatTokens(day.totalTokens)}
+                      </thead>
+                      <tbody>
+                        {recentDays.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={PROVIDER_ORDER.length + 3}
+                              className="py-6 text-center text-muted-foreground"
+                            >
+                              No activity in this window.
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          recentDays.map((day) => (
+                            <tr key={day.day} className="border-b border-border/50">
+                              <td className="py-2 text-foreground">{formatDayShort(day.day)}</td>
+                              {PROVIDER_ORDER.map((provider) => (
+                                <td
+                                  key={provider}
+                                  className="py-2 text-right text-muted-foreground tabular-nums"
+                                >
+                                  {formatObservedUsageCost(
+                                    day.byProvider.get(provider) ?? {
+                                      costUsd: 0,
+                                      totalTokens: 0,
+                                      hasPricedUsage: false,
+                                      hasUnpricedUsage: false,
+                                    },
+                                  )}
+                                </td>
+                              ))}
+                              <td className="py-2 text-right text-foreground tabular-nums">
+                                {formatUsd(day.costUsd)}
+                              </td>
+                              <td className="py-2 text-right text-muted-foreground tabular-nums">
+                                {formatTokens(day.totalTokens)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                    {merged.costQuality.unpricedShare > 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        N/A means tokens were observed without a trustworthy price. * means only
+                        part of that provider's daily usage is priced.
+                      </p>
+                    ) : null}
+                  </>
                 )}
               </section>
             </>

@@ -47,7 +47,15 @@ export interface DailyTotals {
   readonly day: string;
   readonly costUsd: number;
   readonly totalTokens: number;
-  readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byProvider: ReadonlyMap<UsageProviderKind, DailyProviderTotals>;
+}
+
+/** Price completeness for one provider on one calendar day. */
+export interface DailyProviderTotals {
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly hasPricedUsage: boolean;
+  readonly hasUnpricedUsage: boolean;
 }
 
 export interface CostQuality {
@@ -289,7 +297,7 @@ export function mergeUsage(
     {
       costUsd: number;
       totalTokens: number;
-      byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byProvider: Map<UsageProviderKind, DailyProviderTotals>;
     }
   >();
   const contributingEnvironments: EnvironmentId[] = [];
@@ -345,14 +353,19 @@ export function mergeUsage(
       const day = dailyAccumulator.get(bucket.day) ?? {
         costUsd: 0,
         totalTokens: 0,
-        byProvider: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+        byProvider: new Map<UsageProviderKind, DailyProviderTotals>(),
       };
       day.costUsd += bucket.costUsd;
       day.totalTokens += tokens;
-      const dayProvider = day.byProvider.get(bucket.provider) ?? { costUsd: 0, totalTokens: 0 };
-      dayProvider.costUsd += bucket.costUsd;
-      dayProvider.totalTokens += tokens;
-      day.byProvider.set(bucket.provider, dayProvider);
+      const existingDayProvider = day.byProvider.get(bucket.provider);
+      day.byProvider.set(bucket.provider, {
+        costUsd: (existingDayProvider?.costUsd ?? 0) + bucket.costUsd,
+        totalTokens: (existingDayProvider?.totalTokens ?? 0) + tokens,
+        hasPricedUsage:
+          (existingDayProvider?.hasPricedUsage ?? false) || bucket.unpricedRecords < bucket.records,
+        hasUnpricedUsage:
+          (existingDayProvider?.hasUnpricedUsage ?? false) || bucket.unpricedRecords > 0,
+      });
       dailyAccumulator.set(bucket.day, day);
     }
   }
