@@ -315,9 +315,21 @@ independent four-run result. Startup timing is not claimed as an improvement: th
 move in opposite directions between cold and warm figures, within the greater-than-one-second host
 drift already established above.
 
-OpenCode remains the largest single probe because its two discovery commands intentionally run in
-parallel. The scheduler removes cross-provider amplification; reducing OpenCode's internal peak is a
-separate optimization and needs its own latency/resource tradeoff measurement.
+OpenCode was the largest single probe because its two discovery commands started full Node runtimes
+in parallel. A scoped Windows spot measurement on the installed OpenCode 1.18.23 CLI sampled only
+the captured `cmd` launchers and their descendants while running `models --verbose` plus `agent
+list`:
+
+| Probe mode |    Elapsed | Peak scoped RSS |
+| :--------- | ---------: | --------------: |
+| Parallel   | 2,080.0 ms |       605.2 MiB |
+| Serialized | 3,298.6 ms |       463.2 MiB |
+
+Serializing discovery lowered the observed scoped peak by 23.5% at the cost of 1.22 seconds for
+that one sample. The runtime therefore executes the model inventory first and the optional agent
+metadata second, including the one transient-failure retry. This preserves the complete inventory
+without reintroducing cross-provider overlap. The sample is host-specific and does not establish a
+startup-time improvement; it only justifies the lower peak-memory policy.
 
 ### Bundled against unbundled entry
 

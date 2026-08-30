@@ -107,6 +107,11 @@ export interface OpenCodeInventory {
   readonly agents: ReadonlyArray<Agent>;
 }
 
+export interface OpenCodeCliInventoryInput {
+  readonly binaryPath: string;
+  readonly environment?: NodeJS.ProcessEnv;
+}
+
 export interface ParsedOpenCodeModelSlug {
   readonly providerID: string;
   readonly modelID: string;
@@ -152,10 +157,9 @@ export interface OpenCodeRuntimeShape {
   readonly loadOpenCodeInventory: (
     client: OpencodeClient,
   ) => Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError>;
-  readonly loadInventoryFromCli: (input: {
-    readonly binaryPath: string;
-    readonly environment?: NodeJS.ProcessEnv;
-  }) => Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError>;
+  readonly loadInventoryFromCli: (
+    input: OpenCodeCliInventoryInput,
+  ) => Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError>;
 }
 
 function parseServerUrlFromOutput(output: string): string | null {
@@ -294,6 +298,91 @@ export function parseOpenCodeModelSlug(
     modelID: trimmed.slice(separator + 1),
   };
 }
+
+export const loadOpenCodeInventoryFromCli = (
+  input: OpenCodeCliInventoryInput,
+  runCommand: (input: {
+    readonly binaryPath: string;
+    readonly args: ReadonlyArray<string>;
+    readonly environment?: NodeJS.ProcessEnv;
+  }) => Effect.Effect<OpenCodeCommandResult, OpenCodeRuntimeError>,
+): Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError> =>
+  Effect.gen(function* () {
+    const env = input.environment !== undefined ? { environment: input.environment } : ({} as {});
+
+    const runModelsCli = () =>
+      runCommand({
+        binaryPath: input.binaryPath,
+        args: ["models", "--verbose"],
+        ...env,
+      }).pipe(Effect.exit);
+    const runAgentsCli = () =>
+      runCommand({ binaryPath: input.binaryPath, args: ["agent", "list"], ...env }).pipe(
+        Effect.exit,
+      );
+
+    // OpenCode starts a full Node runtime for each command. Keep the inventory
+    // complete, but avoid doubling the largest single startup probe's peak RSS.
+    let [modelsResult, agentsResult] = yield* Effect.all([runModelsCli(), runAgentsCli()], {
+      concurrency: 1,
+    });
+
+    // Retry once after 1s on transient failures (e.g. SQLite "database is locked").
+    const needsModelsRetry = modelsResult._tag === "Failure" || modelsResult.value.code !== 0;
+    const needsAgentsRetry = agentsResult._tag === "Failure" || agentsResult.value.code !== 0;
+    if (needsModelsRetry || needsAgentsRetry) {
+      yield* Effect.sleep("1 second");
+      const [m2, a2] = yield* Effect.all(
+        [
+          needsModelsRetry ? runModelsCli() : Effect.succeed(modelsResult),
+          needsAgentsRetry ? runAgentsCli() : Effect.succeed(agentsResult),
+        ],
+        { concurrency: 1 },
+      );
+      modelsResult = m2;
+      agentsResult = a2;
+    }
+
+    if (modelsResult._tag === "Failure") {
+      const cause = Cause.squash(modelsResult.cause);
+      return yield* ensureRuntimeError(
+        "loadInventoryFromCli",
+        `Failed to load OpenCode models: ${openCodeRuntimeErrorDetail(cause)}`,
+        cause,
+      );
+    }
+    if (modelsResult.value.code !== 0) {
+      return yield* new OpenCodeRuntimeError({
+        operation: "loadInventoryFromCli",
+        detail: `OpenCode models command exited with code ${modelsResult.value.code}.`,
+      });
+    }
+
+    const parsed = parseModelsCliOutput(modelsResult.value.stdout);
+    const connected = [...parsed.connected];
+    const allProviders: ProviderListResponse["all"] = [...parsed.providers.values()].map(
+      (provider) => ({
+        id: provider.id,
+        name: provider.name,
+        source: "config" as const,
+        env: [],
+        options: {},
+        models: provider.models,
+      }),
+    );
+
+    // Agent metadata enriches model capabilities but is not required for an
+    // authoritative model inventory, so it may still degrade to an empty list.
+    let agents: ReadonlyArray<Agent> = [];
+    if (agentsResult._tag === "Success" && agentsResult.value.code === 0) {
+      agents = parseAgentListCliOutput(agentsResult.value.stdout);
+    }
+
+    return {
+      providerList: { all: allProviders, default: {}, connected },
+      agents,
+    };
+  });
 
 export function openCodeQuestionId(
   index: number,
@@ -659,81 +748,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
     );
 
   const loadInventoryFromCli: OpenCodeRuntimeShape["loadInventoryFromCli"] = (input) =>
-    Effect.gen(function* () {
-      const env = input.environment !== undefined ? { environment: input.environment } : ({} as {});
-
-      const runModelsCli = () =>
-        runOpenCodeCommand({
-          binaryPath: input.binaryPath,
-          args: ["models", "--verbose"],
-          ...env,
-        }).pipe(Effect.exit);
-      const runAgentsCli = () =>
-        runOpenCodeCommand({ binaryPath: input.binaryPath, args: ["agent", "list"], ...env }).pipe(
-          Effect.exit,
-        );
-
-      // First attempt — run both in parallel
-      let [modelsResult, agentsResult] = yield* Effect.all([runModelsCli(), runAgentsCli()], {
-        concurrency: "unbounded",
-      });
-
-      // Retry once after 1s on transient failures (e.g. SQLite "database is locked")
-      const needsModelsRetry = modelsResult._tag === "Failure" || modelsResult.value.code !== 0;
-      const needsAgentsRetry = agentsResult._tag === "Failure" || agentsResult.value.code !== 0;
-      if (needsModelsRetry || needsAgentsRetry) {
-        yield* Effect.sleep("1 second");
-        const [m2, a2] = yield* Effect.all(
-          [
-            needsModelsRetry ? runModelsCli() : Effect.succeed(modelsResult),
-            needsAgentsRetry ? runAgentsCli() : Effect.succeed(agentsResult),
-          ],
-          { concurrency: "unbounded" },
-        );
-        modelsResult = m2;
-        agentsResult = a2;
-      }
-
-      if (modelsResult._tag === "Failure") {
-        const cause = Cause.squash(modelsResult.cause);
-        return yield* ensureRuntimeError(
-          "loadInventoryFromCli",
-          `Failed to load OpenCode models: ${openCodeRuntimeErrorDetail(cause)}`,
-          cause,
-        );
-      }
-      if (modelsResult.value.code !== 0) {
-        return yield* new OpenCodeRuntimeError({
-          operation: "loadInventoryFromCli",
-          detail: `OpenCode models command exited with code ${modelsResult.value.code}.`,
-        });
-      }
-
-      const parsed = parseModelsCliOutput(modelsResult.value.stdout);
-      const connected = [...parsed.connected];
-      const allProviders: ProviderListResponse["all"] = [...parsed.providers.values()].map(
-        (provider) => ({
-          id: provider.id,
-          name: provider.name,
-          source: "config" as const,
-          env: [],
-          options: {},
-          models: provider.models,
-        }),
-      );
-
-      // Agent metadata enriches model capabilities but is not required for an
-      // authoritative model inventory, so it may still degrade to an empty list.
-      let agents: ReadonlyArray<Agent> = [];
-      if (agentsResult._tag === "Success" && agentsResult.value.code === 0) {
-        agents = parseAgentListCliOutput(agentsResult.value.stdout);
-      }
-
-      return {
-        providerList: { all: allProviders, default: {}, connected },
-        agents,
-      };
-    });
+    loadOpenCodeInventoryFromCli(input, runOpenCodeCommand);
 
   return {
     startOpenCodeServerProcess,

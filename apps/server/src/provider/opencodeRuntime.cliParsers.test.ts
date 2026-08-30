@@ -1,8 +1,14 @@
 import * as NodeAssert from "node:assert/strict";
 
-import { describe, it } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import { describe } from "vite-plus/test";
 
-import { parseModelsCliOutput, parseAgentListCliOutput } from "./opencodeRuntime.ts";
+import {
+  loadOpenCodeInventoryFromCli,
+  parseModelsCliOutput,
+  parseAgentListCliOutput,
+} from "./opencodeRuntime.ts";
 
 describe("parseModelsCliOutput", () => {
   it("parses a single model from a single provider", () => {
@@ -226,4 +232,38 @@ describe("parseAgentListCliOutput", () => {
     NodeAssert.equal(result[0]!.hidden, true);
     NodeAssert.equal(result[1]!.hidden, false);
   });
+});
+
+describe("loadOpenCodeInventoryFromCli", () => {
+  it.effect("serializes the two CLI probes while preserving the full inventory", () =>
+    Effect.gen(function* () {
+      let activeProbes = 0;
+      let peakConcurrentProbes = 0;
+      const calls: string[] = [];
+      const modelOutput = [
+        "opencode/gpt-5.4",
+        '{"id":"gpt-5.4","providerID":"opencode","name":"GPT-5.4"}',
+      ].join("\n");
+
+      const inventory = yield* loadOpenCodeInventoryFromCli({ binaryPath: "opencode" }, (input) =>
+        Effect.gen(function* () {
+          activeProbes += 1;
+          peakConcurrentProbes = Math.max(peakConcurrentProbes, activeProbes);
+          calls.push(input.args.join(" "));
+          yield* Effect.yieldNow;
+          activeProbes -= 1;
+          return {
+            stdout: input.args[0] === "models" ? modelOutput : "build (primary)\n  []",
+            stderr: "",
+            code: 0,
+          };
+        }),
+      );
+
+      NodeAssert.equal(peakConcurrentProbes, 1);
+      NodeAssert.deepEqual(calls, ["models --verbose", "agent list"]);
+      NodeAssert.equal(inventory.providerList.all[0]?.id, "opencode");
+      NodeAssert.equal(inventory.agents[0]?.name, "build");
+    }),
+  );
 });
