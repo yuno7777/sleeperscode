@@ -40,6 +40,7 @@ import * as Context from "effect/Context";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as ServerConfig from "./config.ts";
 import { writeFileStringAtomically } from "./atomicWrite.ts";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -569,6 +570,7 @@ const make = Effect.gen(function* () {
   );
 
   const startWatcher = Effect.gen(function* () {
+    const platform = yield* HostProcessPlatform;
     const keybindingsConfigDir = path.dirname(keybindingsConfigPath);
     const keybindingsConfigFile = path.basename(keybindingsConfigPath);
     const keybindingsConfigPathResolved = path.resolve(keybindingsConfigPath);
@@ -583,6 +585,10 @@ const make = Effect.gen(function* () {
           }),
       ),
     );
+
+    // ponytail: Node's Windows directory watcher aborts the host process here;
+    // external edits take effect after restart until a reliable watcher is available.
+    if (platform === "win32") return;
 
     const revalidateAndEmitSafely = revalidateAndEmit.pipe(Effect.ignoreCause({ log: true }));
 

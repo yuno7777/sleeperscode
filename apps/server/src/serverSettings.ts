@@ -50,6 +50,7 @@ import {
   applyServerSettingsPatch,
   isModelSelectionProviderEnabled,
 } from "@t3tools/shared/serverSettings";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 
 export { resolveSourceControlWriterModelSelection } from "@t3tools/shared/serverSettings";
@@ -509,6 +510,7 @@ const make = Effect.gen(function* () {
   );
 
   const startWatcher = Effect.gen(function* () {
+    const platform = yield* HostProcessPlatform;
     const settingsDir = pathService.dirname(settingsPath);
     const settingsFile = pathService.basename(settingsPath);
     const settingsPathResolved = pathService.resolve(settingsPath);
@@ -523,6 +525,10 @@ const make = Effect.gen(function* () {
           }),
       ),
     );
+
+    // ponytail: Node's Windows directory watcher aborts the host process here;
+    // external edits take effect after restart until a reliable watcher is available.
+    if (platform === "win32") return;
 
     const revalidateAndEmitSafely = revalidateAndEmit.pipe(Effect.ignoreCause({ log: true }));
 
