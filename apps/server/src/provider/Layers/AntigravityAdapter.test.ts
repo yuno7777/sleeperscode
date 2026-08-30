@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { antigravityToolItemType, parseAntigravityStreamLine } from "./AntigravityAdapter.ts";
+import {
+  antigravityToolItemType,
+  buildAntigravityPrompt,
+  parseAntigravityStreamLine,
+} from "./AntigravityAdapter.ts";
 
 describe("Antigravity stream-JSON adapter", () => {
   it("decodes the documented init inventory including native web search", () => {
@@ -36,5 +40,21 @@ describe("Antigravity stream-JSON adapter", () => {
     );
     expect(event?.event).toBe("result");
     expect(event?.event === "result" ? event.result?.usage?.total_tokens : undefined).toBe(42);
+  });
+
+  it("keeps the default provider turn as a direct worker", () => {
+    const prompt = buildAntigravityPrompt({
+      text: "Repair the failing test.",
+      allowNativeOrchestration: false,
+    });
+
+    expect(prompt).toContain("Do not spawn or delegate to subagents");
+    expect(prompt).toContain("do not recursively invoke another orchestrator");
+    expect(prompt.endsWith("Repair the failing test.")).toBe(true);
+  });
+
+  it("only removes the direct-worker boundary when native orchestration is enabled", () => {
+    const text = "Delegate this task to a specialist.";
+    expect(buildAntigravityPrompt({ text, allowNativeOrchestration: true })).toBe(text);
   });
 });

@@ -114,6 +114,25 @@ export function antigravityToolItemType(toolName: string): ToolLifecycleItemType
   return "dynamic_tool_call";
 }
 
+/**
+ * Antigravity can expose subagent tools, but a Sleepers Code provider turn is
+ * a direct worker by default. Keep the boundary deterministic and local to the
+ * adapter so callers cannot accidentally reintroduce nested orchestration.
+ */
+export function buildAntigravityPrompt(input: {
+  readonly text: string;
+  readonly allowNativeOrchestration: boolean;
+}): string {
+  if (input.allowNativeOrchestration) return input.text;
+  return [
+    "You are a direct worker inside Sleepers Code.",
+    "Do not spawn or delegate to subagents, and do not recursively invoke another orchestrator.",
+    "Complete the requested work yourself using the available tools.",
+    "",
+    input.text,
+  ].join("\n");
+}
+
 function parseResumeCursor(value: unknown): string | undefined {
   const candidate = record(value);
   return candidate?.schemaVersion === RESUME_SCHEMA_VERSION &&
@@ -393,15 +412,10 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
       const turnId = TurnId.make(yield* nextId);
       const selection =
         input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
-      const boundedPrompt = settings.allowNativeOrchestration
-        ? text
-        : [
-            "You are a direct worker inside Sleepers Code.",
-            "Do not spawn or delegate to subagents, and do not recursively invoke another orchestrator.",
-            "Complete the requested work yourself using the available tools.",
-            "",
-            text,
-          ].join("\n");
+      const boundedPrompt = buildAntigravityPrompt({
+        text,
+        allowNativeOrchestration: settings.allowNativeOrchestration,
+      });
       const args = [
         "-p",
         boundedPrompt,
