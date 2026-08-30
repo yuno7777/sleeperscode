@@ -887,7 +887,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         version: parsedVersion,
         status: "error",
         auth: { status: "unknown" },
-        message: "Claude Agent CLI is installed but failed to run.",
+        message:
+          "Claude Agent CLI is installed but failed to run. Check its executable path in Settings or reinstall Claude Code.",
       },
     });
   }

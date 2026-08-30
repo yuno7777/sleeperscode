@@ -2324,7 +2324,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           );
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.message, "Claude Agent CLI is installed but failed to run.");
+          assert.strictEqual(
+            status.message,
+            "Claude Agent CLI is installed but failed to run. Check its executable path in Settings or reinstall Claude Code.",
+          );
           assert.ok(!(status.message ?? "").includes(secretStderr));
         }).pipe(
           Effect.provide(
