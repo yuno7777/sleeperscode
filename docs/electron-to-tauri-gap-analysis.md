@@ -3,6 +3,10 @@
 Tauri migration is deferred. The current Electron app is more than a window wrapper and the Node
 server remains necessary for remote web/mobile clients.
 
+The additive experiment in `apps/desktop-tauri` now proves the smallest shell boundary on Windows:
+a Tauri 2 WebView2 window can host an already-running local Sleepers Code web client without any
+native commands or plugins. It does not claim capability parity and does not replace Electron.
+
 | Current capability                                 | Likely path                  | Status / gap                                                                                                 |
 | -------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Main/splash windows, bounds, focus, fullscreen     | **DIRECT TAURI REPLACEMENT** | Validate multi-display restore and Windows focus behavior.                                                   |
@@ -23,6 +27,19 @@ server remains necessary for remote web/mobile clients.
 | Process metrics                                    | **DIRECT RUST REPLACEMENT**  | Existing Rust resource monitor already supplies most data.                                                   |
 | Native theme and app identity                      | **DIRECT TAURI REPLACEMENT** | Validate live theme updates, dock/app user model IDs, and about panel.                                       |
 | Clerk Electron/passkeys                            | **KEEP TEMPORARILY**         | Authentication and passkey support need an endorsed Tauri flow.                                              |
+
+## Reversible shell experiment
+
+The experiment accepts an explicit `SLEEPERS_CODE_TAURI_URL`, rejects non-loopback origins,
+credentials, and non-HTTP(S) schemes, then creates one WebView2 window. Supplying the URL through the
+environment avoids placing pairing data in the process command line. It deliberately does not start
+or supervise the Node server and grants the loaded page no Tauri commands.
+
+On Windows x64, the locked release build produced a 4,727,808-byte executable. Three URL-boundary
+tests pass, a missing URL exits with code 2 and a specific diagnostic, and a live run against the
+isolated development web origin produced a responsive `Sleepers Code (Tauri Experiment)` window.
+The native process used about 24.3 MiB working set in that observation. Its WebView2 children
+used substantially more, so this is not evidence of an application-memory improvement.
 
 ## Gate to start a Tauri shell
 

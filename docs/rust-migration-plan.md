@@ -62,7 +62,9 @@
 
 ### Phase 5: desktop shell evaluation
 
-- Close every item in `electron-to-tauri-gap-analysis.md` before starting a replacement shell.
+- The reversible shell experiment may host an existing loopback web surface without native
+  privileges. Close every item in `electron-to-tauri-gap-analysis.md` before starting a replacement
+  shell or moving production behavior out of Electron.
 - Keep the WebSocket server as a reusable host for remote web and mobile clients even if the local
   desktop UI moves to Tauri commands/events.
 

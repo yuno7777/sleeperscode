@@ -39,5 +39,6 @@
       metadata launches.
 - [x] Differential-test checkpoint capture/diff/restore.
 - [x] Profile remaining filesystem work; retain the existing native `fff` index.
-- [ ] Close Tauri gap analysis and build a reversible shell experiment.
+- [x] Close the first Tauri gap analysis and build a reversible, unprivileged shell experiment;
+      keep Electron until the named parity gates close.
 - [ ] Repeat application RAM, CPU, startup, package-size, and workflow benchmarks.
