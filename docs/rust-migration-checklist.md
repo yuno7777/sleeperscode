@@ -35,8 +35,9 @@
 
 ## Later phases
 
-- [ ] Benchmark and select Git operations for migration.
-- [ ] Differential-test checkpoint capture/diff/restore.
-- [ ] Profile remaining filesystem work; do not replace native `fff` blindly.
+- [x] Benchmark and select Git operations for migration; retain native Git and remove redundant
+      metadata launches.
+- [x] Differential-test checkpoint capture/diff/restore.
+- [x] Profile remaining filesystem work; retain the existing native `fff` index.
 - [ ] Close Tauri gap analysis and build a reversible shell experiment.
 - [ ] Repeat application RAM, CPU, startup, package-size, and workflow benchmarks.

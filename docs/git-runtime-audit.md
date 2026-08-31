@@ -1,8 +1,8 @@
 # Git runtime audit
 
 Phase 9 asks whether Git work should move to `gix`, `git2`, or stay on the native Git executable.
-This is the audit and the measurement behind that decision. Captured 2026-08-09 on Windows x64 with
-Node 24.14.0.
+This is the audit and the measurement behind that decision. The baseline was captured 2026-08-09
+and the metadata follow-up on 2026-08-31, both on Windows x64 with Node 24.14.0.
 
 ## Every Git call goes through one boundary
 
@@ -94,14 +94,12 @@ child, so routing Git through it would add latency to every call.
 
 The real candidates, in order of value per unit of risk:
 
-1. **Answer metadata without launching Git.** `--git-common-dir` and `--abbrev-ref HEAD` resolve from
-   `.git/HEAD` and the `.git` pointer. Seven call sites, each currently paying about 38 ms to learn
-   something a file read answers. This needs no new dependency in any language. Named edge cases
-   that must be handled before it is safe: a detached HEAD (`rev-parse --abbrev-ref HEAD` prints
-   `HEAD`, the file holds a raw object id), worktrees and submodules where `.git` is a file
-   containing a `gitdir:` pointer rather than a directory, and a symbolic ref pointing outside
-   `refs/heads`. Any implementation needs differential tests against the executable across all of
-   these before it replaces a call site.
+1. **Coalesce standard repository metadata. Implemented.** The driver now asks `rev-parse` for the
+   common directory, per-worktree Git directory, and worktree root in one process, then reads that
+   Git directory's `HEAD` directly. Detached heads resolve to no current branch. Unreadable or
+   nonstandard symbolic heads fall back to `symbolic-ref`; bare repositories and malformed or
+   newline-bearing output fall back to the previous resolver. This preserves Git as the authority
+   for repository layout while removing two process launches from the normal path.
 2. **Coalesce the status path.** `statusDetails` issues `rev-parse`, `status`, and `diff` as three
    separate launches, so a single refresh pays the 38 ms floor three times, roughly 114 ms of which
    about 76 ms is launch. Caching the metadata result across a refresh removes launches without
@@ -112,7 +110,27 @@ The real candidates, in order of value per unit of risk:
    before anything else, because it also affects provider CLI probing, which
    `performance-results.md` shows dominates server startup memory.
 
-None of these is a Git library migration. Phase 9 stays open on evidence, not on effort.
+None of these is a Git library migration. Phase 9 stays open for broader status-path and launch-floor
+work, but the implementation selection and first measured launch reduction are complete.
+
+## Metadata resolver follow-up
+
+The benchmark alternates the legacy and coalesced resolvers in every iteration and verifies their
+returned common directory, worktree root, and branch are identical before recording a sample:
+
+```text
+node scripts/benchmark-git-operations.mjs --repeat=20 --warmups=3
+```
+
+| Repository            | Legacy mean | Coalesced mean | Mean improvement |
+| :-------------------- | ----------: | -------------: | ---------------: |
+| this monorepo         |   169.49 ms |       72.64 ms |            57.1% |
+| single-commit fixture |   177.05 ms |       77.92 ms |            56.0% |
+
+The result is a launch-count win, not evidence that the Git implementation itself became faster.
+The driver integration suite passes 46 tests on this host. Its one remaining Windows failure is an
+existing test fixture that asks Git for Windows to create a directory whose name contains a newline;
+the three directly affected metadata, fallback-diagnostics, and current-branch tests pass.
 
 ## Limitations
 

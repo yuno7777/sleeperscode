@@ -406,6 +406,25 @@ component whose streaming throughput this host cannot measure precisely enough t
 packaging size becomes a binding constraint, in which case `z` is the option to take, and measure
 streaming on a quieter machine first.
 
+## Git metadata launch reduction
+
+The Git operations harness now measures the production repository-metadata resolver in addition to
+individual commands. It alternates the legacy three-process resolver with the new one-process plus
+`HEAD` read resolver and rejects the run if their outputs differ:
+
+```powershell
+node scripts/benchmark-git-operations.mjs --repeat=20 --warmups=3
+```
+
+| Repository            | Legacy mean | Coalesced mean | Mean improvement |
+| :-------------------- | ----------: | -------------: | ---------------: |
+| this monorepo         |   169.49 ms |       72.64 ms |            57.1% |
+| single-commit fixture |   177.05 ms |       77.92 ms |            56.0% |
+
+Captured on Windows x64 with Node 24.14.0 on 2026-08-31. The result removes two Git-for-Windows
+launches from the standard path. Bare repositories, malformed output, and nonstandard symbolic
+heads retain the executable-backed compatibility path.
+
 ## Windows process-tree cancellation
 
 Command:
