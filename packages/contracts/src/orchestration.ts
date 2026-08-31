@@ -25,12 +25,14 @@ import { ProviderInstanceId } from "./providerInstance.ts";
 import { RouterContext, RouterDecision } from "./router.ts";
 import { TaskOutcomeObservation } from "./taskOutcome.ts";
 import { TaskProfile, TaskRepositoryEvidence } from "./taskProfile.ts";
+import { ProjectContextSnapshot } from "./projectContext.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",
   getTurnDiff: "orchestration.getTurnDiff",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
+  getProjectContext: "orchestration.getProjectContext",
   searchThreads: "orchestration.searchThreads",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
@@ -1609,6 +1611,16 @@ export type OrchestrationGetFullThreadDiffInput = typeof OrchestrationGetFullThr
 export const OrchestrationGetFullThreadDiffResult = ThreadTurnDiff;
 export type OrchestrationGetFullThreadDiffResult = typeof OrchestrationGetFullThreadDiffResult.Type;
 
+export const OrchestrationGetProjectContextInput = Schema.Struct({
+  projectId: ProjectId,
+  /** Selects the branch and worktree whose context the user is about to use. */
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type OrchestrationGetProjectContextInput = typeof OrchestrationGetProjectContextInput.Type;
+
+export const OrchestrationGetProjectContextResult = ProjectContextSnapshot;
+export type OrchestrationGetProjectContextResult = typeof OrchestrationGetProjectContextResult.Type;
+
 export const OrchestrationThreadSearchSource = Schema.Literals(["user", "assistant"]);
 export type OrchestrationThreadSearchSource = typeof OrchestrationThreadSearchSource.Type;
 
@@ -1698,6 +1710,10 @@ export const OrchestrationRpcSchemas = {
   getFullThreadDiff: {
     input: OrchestrationGetFullThreadDiffInput,
     output: OrchestrationGetFullThreadDiffResult,
+  },
+  getProjectContext: {
+    input: OrchestrationGetProjectContextInput,
+    output: OrchestrationGetProjectContextResult,
   },
   searchThreads: {
     input: OrchestrationSearchThreadsInput,

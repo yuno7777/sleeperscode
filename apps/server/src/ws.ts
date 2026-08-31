@@ -77,6 +77,8 @@ import {
   projectThreadDetailSnapshot,
 } from "./orchestration/ActivityPayloadProjection.ts";
 import { normalizeDispatchCommand, readRouterContext } from "./orchestration/Normalizer.ts";
+import * as TaskRepositoryProfiler from "./orchestration/TaskRepositoryProfiler.ts";
+import { buildProjectContextSnapshot } from "./projectContext/buildProjectContext.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -1173,6 +1175,61 @@ const makeWsRpcLayer = (
                     message: "Failed to load full thread diff",
                     cause,
                   }),
+              ),
+            ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.getProjectContext]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getProjectContext,
+            Effect.gen(function* () {
+              const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+              const project = snapshot.projects.find(
+                (candidate) => candidate.id === input.projectId && candidate.deletedAt === null,
+              );
+              if (!project) {
+                return yield* new OrchestrationGetSnapshotError({
+                  message: "Project context is no longer available",
+                });
+              }
+              const requestedThread =
+                input.threadId === undefined
+                  ? null
+                  : (snapshot.threads.find(
+                      (candidate) =>
+                        candidate.id === input.threadId && candidate.projectId === project.id,
+                    ) ?? null);
+              const currentThread =
+                requestedThread ??
+                snapshot.threads
+                  .filter(
+                    (candidate) =>
+                      candidate.projectId === project.id && candidate.archivedAt === null,
+                  )
+                  .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
+                null;
+              const entries = yield* workspaceEntries.list({ cwd: project.workspaceRoot });
+              const repositoryEvidence = yield* TaskRepositoryProfiler.getTaskRepositoryEvidence(
+                project.workspaceRoot,
+              );
+              return buildProjectContextSnapshot({
+                project,
+                currentThread,
+                threads: snapshot.threads,
+                workspacePaths: entries.entries
+                  .filter((entry) => entry.kind === "file")
+                  .map((entry) => entry.path),
+                repositoryEvidence,
+                generatedAt: yield* nowIso,
+              });
+            }).pipe(
+              Effect.mapError((cause) =>
+                Schema.is(OrchestrationGetSnapshotError)(cause)
+                  ? cause
+                  : new OrchestrationGetSnapshotError({
+                      message: "Failed to load project context",
+                      cause,
+                    }),
               ),
             ),
             { "rpc.aggregate": "orchestration" },
