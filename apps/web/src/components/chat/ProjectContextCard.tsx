@@ -9,6 +9,7 @@ import type {
 import { useEffect, useState } from "react";
 import { deriveMcpDiagnostics } from "../../mcpDiagnostics";
 import { deriveProviderQuotaStatus } from "../../providerQuota";
+import { deriveContextCompactionRecovery } from "../../contextCompaction";
 
 function StackSummary({ context }: { readonly context: ProjectContextSnapshot }) {
   const evidence = context.repositoryEvidence;
@@ -76,6 +77,11 @@ export function ProjectContextCard({
   const [draft, setDraft] = useState<ProjectHandoffSummary | null>(handoff?.summary ?? null);
   const mcpDiagnostics = deriveMcpDiagnostics(threadActivities ?? [], sharedProviderConfiguration);
   const providerQuotaStatus = deriveProviderQuotaStatus(threadActivities ?? []);
+  const compactionRecovery = deriveContextCompactionRecovery({
+    activities: threadActivities ?? [],
+    checkpoints: context?.recentCheckpoints ?? [],
+    threadId: handoffThreadId,
+  });
   useEffect(() => setDraft(handoff?.summary ?? null), [handoff]);
   if (context === null && !isPending && error === null) return null;
   return (
@@ -188,6 +194,18 @@ export function ProjectContextCard({
               <p className="text-foreground">
                 {providerQuotaStatus.provider} reported a rate limit. Save the handoff, choose a
                 different provider in the composer, then continue from that reviewed summary.
+              </p>
+            </div>
+          ) : null}
+          {compactionRecovery ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Context recovery
+              </p>
+              <p className="text-foreground">
+                {compactionRecovery.checkpointedAfterCompaction
+                  ? "Context was compacted and a later checkpoint was captured for this thread."
+                  : "Context was compacted, but no later checkpoint is recorded yet. Let the turn settle before relying on a handoff or continuation."}
               </p>
             </div>
           ) : null}

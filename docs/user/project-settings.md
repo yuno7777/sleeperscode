@@ -35,6 +35,10 @@ The project context card also shows active related work. A shared worktree is ma
 highest merge risk. If two saved handoffs declare the same changed file, T3 Code shows that overlap
 as a coordination signal. It does not claim to predict a Git merge conflict.
 
+When a provider compacts its context, the context card reports whether this thread has a checkpoint
+captured afterward. A later checkpoint is the evidence for a recoverable repository state. If one
+is not recorded yet, let the turn settle before relying on a handoff or continuation.
+
 When you start a new thread, T3 Code shows the project context card with the detected stack,
 local rule and documentation paths, recent checkpoints, and other active work in the project.
 
