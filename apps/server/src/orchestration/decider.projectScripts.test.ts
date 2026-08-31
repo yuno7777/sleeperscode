@@ -135,6 +135,65 @@ it.layer(NodeServices.layer)("decider project scripts", (it) => {
     }),
   );
 
+  it.effect("keeps project handoffs and shared provider advice explicit", () =>
+    Effect.gen(function* () {
+      const now = "2026-01-01T00:00:00.000Z";
+      const projectId = asProjectId("project-context-advice");
+      const readModel = yield* projectEvent(createEmptyReadModel(now), {
+        sequence: 1,
+        eventId: asEventId("evt-project-create-context-advice"),
+        aggregateKind: "project",
+        aggregateId: projectId,
+        type: "project.created",
+        occurredAt: now,
+        commandId: CommandId.make("cmd-project-create-context-advice"),
+        causationEventId: null,
+        correlationId: CommandId.make("cmd-project-create-context-advice"),
+        metadata: {},
+        payload: {
+          projectId,
+          title: "Context advice",
+          workspaceRoot: "/tmp/context-advice",
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+
+      const result = yield* decideOrchestrationCommand({
+        command: {
+          type: "project.meta.update",
+          commandId: CommandId.make("cmd-project-update-context-advice"),
+          projectId,
+          sharedProviderConfiguration: {
+            rulePaths: ["AGENTS.md"],
+            mcpServerNames: ["github"],
+            recommendedRuntimeMode: "approval-required",
+            recommendedInteractionMode: null,
+          },
+          handoffs: [
+            {
+              threadId: ThreadId.make("thread-context-advice"),
+              title: "Context task",
+              summary: { changed: ["AGENTS.md"], decisions: [], verification: [], remaining: [] },
+              savedAt: now,
+            },
+          ],
+        },
+        readModel,
+      });
+
+      const event = Array.isArray(result) ? result[0] : result;
+      expect(event.type).toBe("project.meta-updated");
+      expect((event.payload as { handoffs?: unknown[] }).handoffs).toHaveLength(1);
+      expect(
+        (event.payload as { sharedProviderConfiguration?: { mcpServerNames: unknown[] } })
+          .sharedProviderConfiguration?.mcpServerNames,
+      ).toEqual(["github"]);
+    }),
+  );
+
   it.effect("rejects project.create for an active workspace root that already exists", () =>
     Effect.gen(function* () {
       const now = "2026-01-01T00:00:00.000Z";

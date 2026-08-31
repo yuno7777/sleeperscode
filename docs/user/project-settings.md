@@ -14,3 +14,18 @@ T3 Code supports SVG, PNG, ICO, JPEG, GIF, AVIF, and WebP files. The selected pa
 each checkout in the project group and appears on your connected clients.
 
 To use automatic detection again, select **Automatic**.
+
+## Share setup between agents
+
+Under **Settings** → **Projects** → **Shared agent setup**, you can save rule paths, MCP server
+names, and a recommended runtime mode for a project. These are shared suggestions for every
+provider, not provider credentials or command-line settings.
+
+When you start a new thread, T3 Code shows the project context card with the detected stack,
+local rule and documentation paths, recent checkpoints, and other active work in the project.
+
+## Save a handoff
+
+After a task settles, T3 Code saves a local handoff draft with the files from its latest
+checkpoint. Add decisions, verification, and remaining work before you save it. Choose
+**Review and add to project notes** only when you want that handoff retained as a project note.

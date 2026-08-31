@@ -9,8 +9,11 @@
 import {
   IsoDateTime,
   ModelSelection,
+  ProjectHandoff,
+  ProjectKnowledgeNote,
   ProjectId,
   ProjectScript,
+  ProjectSharedProviderConfiguration,
   ThreadEnvMode,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -28,6 +31,9 @@ export const ProjectionProject = Schema.Struct({
   defaultThreadEnvMode: Schema.NullOr(ThreadEnvMode),
   faviconPath: Schema.optional(Schema.NullOr(Schema.String)),
   scripts: Schema.Array(ProjectScript),
+  sharedProviderConfiguration: ProjectSharedProviderConfiguration,
+  handoffs: Schema.Array(ProjectHandoff),
+  knowledgeNotes: Schema.Array(ProjectKnowledgeNote),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),

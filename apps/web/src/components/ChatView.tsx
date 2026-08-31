@@ -6,6 +6,7 @@ import {
   type MessageId,
   type ModelSelection,
   type ProjectScript,
+  type ProjectHandoffSummary,
   type ProjectId,
   type ProviderApprovalDecision,
   type PreviewAnnotationPayload,
@@ -1491,15 +1492,26 @@ function ChatViewContent(props: ChatViewProps) {
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
-  const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+  const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
+  const runtimeMode =
+    composerRuntimeMode ??
+    (isLocalDraftThread
+      ? (fallbackDraftProject?.sharedProviderConfiguration?.recommendedRuntimeMode ??
+        activeThread?.runtimeMode)
+      : activeThread?.runtimeMode) ??
+    DEFAULT_RUNTIME_MODE;
   // Plan mode is legacy (Settings → Beta). With the flag off the effective
   // mode is forced to "default" — even for threads with a stored plan mode —
   // so nobody is trapped in plan mode while its toggle is hidden. The next
   // send persists "default" back to the thread.
   const interactionMode = settings.planModeEnabled
-    ? (composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE)
+    ? (composerInteractionMode ??
+      (isLocalDraftThread
+        ? (fallbackDraftProject?.sharedProviderConfiguration?.recommendedInteractionMode ??
+          activeThread?.interactionMode)
+        : activeThread?.interactionMode) ??
+      DEFAULT_INTERACTION_MODE)
     : DEFAULT_INTERACTION_MODE;
-  const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
   const activeThreadEnvironmentId = activeThread?.environmentId ?? null;
@@ -1662,6 +1674,77 @@ function ChatViewContent(props: ChatViewProps) {
     activeProject?.id ?? null,
     routeKind === "server" ? (activeThread?.id ?? null) : null,
   );
+  const handoffAutoSaveRef = useRef<string | null>(null);
+  const saveProjectHandoff = useCallback(
+    async (summary: ProjectHandoffSummary) => {
+      if (!activeProject || !activeThread || routeKind !== "server") return;
+      const handoff = {
+        threadId: activeThread.id,
+        title: activeThread.title,
+        summary,
+        savedAt: new Date().toISOString(),
+      };
+      const handoffs = [
+        ...(activeProject.handoffs ?? []).filter((entry) => entry.threadId !== activeThread.id),
+        handoff,
+      ].slice(-24);
+      const result = await updateProject({
+        environmentId: activeProject.environmentId,
+        input: { projectId: activeProject.id, handoffs },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        setThreadError(activeThread.id, "Failed to save the project handoff.");
+      }
+    },
+    [activeProject, activeThread, routeKind, updateProject],
+  );
+  const promoteProjectHandoff = useCallback(async () => {
+    if (!activeProject || !activeThread || routeKind !== "server") return;
+    const handoff = (activeProject.handoffs ?? []).find(
+      (entry) => entry.threadId === activeThread.id,
+    );
+    if (!handoff) return;
+    const now = new Date().toISOString();
+    const notes = [
+      ...(activeProject.knowledgeNotes ?? []).filter((note) => note.threadId !== activeThread.id),
+      {
+        id: `handoff-${activeThread.id}`,
+        threadId: activeThread.id,
+        title: handoff.title,
+        summary: handoff.summary,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ].slice(-100);
+    const result = await updateProject({
+      environmentId: activeProject.environmentId,
+      input: { projectId: activeProject.id, knowledgeNotes: notes },
+    });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      setThreadError(activeThread.id, "Failed to add the handoff to project notes.");
+    }
+  }, [activeProject, activeThread, routeKind, updateProject]);
+  useEffect(() => {
+    if (
+      !activeProject ||
+      !activeThread ||
+      routeKind !== "server" ||
+      activeThread.latestTurn === null ||
+      !latestTurnSettled ||
+      (activeProject.handoffs ?? []).some((entry) => entry.threadId === activeThread.id) ||
+      handoffAutoSaveRef.current === activeThread.id
+    ) {
+      return;
+    }
+    handoffAutoSaveRef.current = activeThread.id;
+    const checkpoint = activeThread.checkpoints.at(-1);
+    void saveProjectHandoff({
+      changed: checkpoint?.files.map((file) => file.path).slice(0, 24) ?? [],
+      decisions: [],
+      verification: [],
+      remaining: [],
+    });
+  }, [activeProject, activeThread, latestTurnSettled, routeKind, saveProjectHandoff]);
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -6131,6 +6214,22 @@ function ChatViewContent(props: ChatViewProps) {
                 loadEarlier={loadEarlierTurns}
               />
 
+              {routeKind === "server" && latestTurnSettled && activeThread.latestTurn ? (
+                <div className="chat-composer-horizontal-inset pointer-events-auto px-0 pb-3">
+                  <ProjectContextCard
+                    context={projectContext.data}
+                    isPending={projectContext.isPending}
+                    error={projectContext.error}
+                    handoffThreadId={activeThread.id}
+                    handoffs={activeProject?.handoffs}
+                    knowledgeNotes={activeProject?.knowledgeNotes}
+                    sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
+                    onSaveHandoff={(summary) => void saveProjectHandoff(summary)}
+                    onPromoteHandoff={() => void promoteProjectHandoff()}
+                  />
+                </div>
+              ) : null}
+
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
               {showScrollToBottom && (
                 <div
@@ -6186,6 +6285,9 @@ function ChatViewContent(props: ChatViewProps) {
                           context={projectContext.data}
                           isPending={projectContext.isPending}
                           error={projectContext.error}
+                          handoffs={activeProject?.handoffs}
+                          knowledgeNotes={activeProject?.knowledgeNotes}
+                          sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
                         />
                       </div>
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />

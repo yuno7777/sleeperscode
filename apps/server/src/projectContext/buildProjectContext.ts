@@ -108,6 +108,8 @@ export function buildProjectContextSnapshot(input: {
     rules: documents.filter((document) => document.kind === "rule").slice(0, 24),
     recentCheckpoints,
     relatedThreads,
+    handoffs: input.project.handoffs ?? [],
+    knowledgeNotes: input.project.knowledgeNotes ?? [],
     generatedAt: input.generatedAt,
   };
 }

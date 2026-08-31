@@ -1,4 +1,11 @@
-import type { ProjectContextSnapshot } from "@t3tools/contracts";
+import type {
+  ProjectContextSnapshot,
+  ProjectHandoff,
+  ProjectHandoffSummary,
+  ProjectKnowledgeNote,
+  ProjectSharedProviderConfiguration,
+} from "@t3tools/contracts";
+import { useEffect, useState } from "react";
 
 function StackSummary({ context }: { readonly context: ProjectContextSnapshot }) {
   const evidence = context.repositoryEvidence;
@@ -39,11 +46,28 @@ export function ProjectContextCard({
   context,
   isPending,
   error,
+  handoffThreadId = null,
+  handoffs,
+  knowledgeNotes,
+  sharedProviderConfiguration,
+  onSaveHandoff,
+  onPromoteHandoff,
 }: {
   readonly context: ProjectContextSnapshot | null;
   readonly isPending: boolean;
   readonly error: string | null;
+  readonly handoffThreadId?: string | null;
+  readonly handoffs?: ReadonlyArray<ProjectHandoff> | undefined;
+  readonly knowledgeNotes?: ReadonlyArray<ProjectKnowledgeNote> | undefined;
+  readonly sharedProviderConfiguration?: ProjectSharedProviderConfiguration | undefined;
+  readonly onSaveHandoff?: (summary: ProjectHandoffSummary) => void;
+  readonly onPromoteHandoff?: () => void;
 }) {
+  const handoff =
+    (handoffs ?? context?.handoffs ?? []).find((entry) => entry.threadId === handoffThreadId) ??
+    null;
+  const [draft, setDraft] = useState<ProjectHandoffSummary | null>(handoff?.summary ?? null);
+  useEffect(() => setDraft(handoff?.summary ?? null), [handoff]);
   if (context === null && !isPending && error === null) return null;
   return (
     <section className="mx-auto mb-2 w-full max-w-3xl rounded-xl border border-border/70 bg-background/85 px-3 py-2.5 shadow-sm backdrop-blur-sm">
@@ -84,6 +108,27 @@ export function ProjectContextCard({
           </div>
           <SourceList label="Important docs" paths={context.documents.slice(0, 6)} />
           <SourceList label="Rules" paths={context.rules.slice(0, 6)} />
+          {sharedProviderConfiguration &&
+          (sharedProviderConfiguration.rulePaths.length > 0 ||
+            sharedProviderConfiguration.mcpServerNames.length > 0 ||
+            sharedProviderConfiguration.recommendedRuntimeMode !== null ||
+            sharedProviderConfiguration.recommendedInteractionMode !== null) ? (
+            <div className="min-w-0">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Shared setup
+              </p>
+              <p className="text-foreground">
+                {[
+                  ...sharedProviderConfiguration.rulePaths,
+                  ...sharedProviderConfiguration.mcpServerNames.map((name) => `MCP: ${name}`),
+                  sharedProviderConfiguration.recommendedRuntimeMode,
+                  sharedProviderConfiguration.recommendedInteractionMode,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+          ) : null}
           {context.relatedThreads.length > 0 ? (
             <div className="min-w-0 sm:col-span-2">
               <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
@@ -98,6 +143,66 @@ export function ProjectContextCard({
                     {thread.worktreePath ? ` · ${thread.worktreePath}` : ""}
                   </p>
                 ))}
+              </div>
+            </div>
+          ) : null}
+          {(knowledgeNotes ?? context.knowledgeNotes).length > 0 ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Project notes
+              </p>
+              <div className="space-y-1">
+                {(knowledgeNotes ?? context.knowledgeNotes)
+                  .slice(-3)
+                  .reverse()
+                  .map((note) => (
+                    <p key={note.id} className="truncate text-foreground" title={note.title}>
+                      {note.title}
+                    </p>
+                  ))}
+              </div>
+            </div>
+          ) : null}
+          {handoff && draft && onSaveHandoff ? (
+            <div className="space-y-2 sm:col-span-2">
+              <p className="font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Handoff draft
+              </p>
+              {(["changed", "decisions", "verification", "remaining"] as const).map((field) => (
+                <label key={field} className="block text-[11px] text-muted-foreground">
+                  {field}
+                  <textarea
+                    className="mt-1 min-h-14 w-full resize-y rounded border border-input bg-background px-2 py-1.5 text-xs text-foreground"
+                    value={draft[field].join("\n")}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        [field]: event.target.value
+                          .split("\n")
+                          .map((value) => value.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                  />
+                </label>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"
+                  onClick={() => onSaveHandoff(draft)}
+                >
+                  Save handoff
+                </button>
+                {onPromoteHandoff ? (
+                  <button
+                    type="button"
+                    className="rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"
+                    onClick={onPromoteHandoff}
+                  >
+                    Review and add to project notes
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}

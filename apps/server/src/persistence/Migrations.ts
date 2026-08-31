@@ -56,6 +56,7 @@ import Migration0040 from "./Migrations/040_ProjectionProjectFaviconPath.ts";
 import Migration0041 from "./Migrations/041_ProjectionTaskRuns.ts";
 import Migration0042 from "./Migrations/042_TaskAnalyticsPrivacy.ts";
 import Migration0043 from "./Migrations/043_ProjectionTaskFeedback.ts";
+import Migration0044 from "./Migrations/044_ProjectionProjectContext.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -111,6 +112,7 @@ export const migrationEntries = [
   [41, "ProjectionTaskRuns", Migration0041],
   [42, "TaskAnalyticsPrivacy", Migration0042],
   [43, "ProjectionTaskFeedback", Migration0043],
+  [44, "ProjectionProjectContext", Migration0044],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

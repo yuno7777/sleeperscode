@@ -217,6 +217,14 @@ export function projectEvent(
             defaultThreadEnvMode: null,
             faviconPath: payload.faviconPath ?? null,
             scripts: payload.scripts,
+            sharedProviderConfiguration: payload.sharedProviderConfiguration ?? {
+              rulePaths: [],
+              mcpServerNames: [],
+              recommendedRuntimeMode: null,
+              recommendedInteractionMode: null,
+            },
+            handoffs: payload.handoffs ?? [],
+            knowledgeNotes: payload.knowledgeNotes ?? [],
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
             deletedAt: null,
@@ -255,6 +263,13 @@ export function projectEvent(
                     ? { faviconPath: payload.faviconPath }
                     : {}),
                   ...(payload.scripts !== undefined ? { scripts: payload.scripts } : {}),
+                  ...(payload.sharedProviderConfiguration !== undefined
+                    ? { sharedProviderConfiguration: payload.sharedProviderConfiguration }
+                    : {}),
+                  ...(payload.handoffs !== undefined ? { handoffs: payload.handoffs } : {}),
+                  ...(payload.knowledgeNotes !== undefined
+                    ? { knowledgeNotes: payload.knowledgeNotes }
+                    : {}),
                   updatedAt: payload.updatedAt,
                 }
               : project,

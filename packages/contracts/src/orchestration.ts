@@ -25,7 +25,15 @@ import { ProviderInstanceId } from "./providerInstance.ts";
 import { RouterContext, RouterDecision } from "./router.ts";
 import { TaskOutcomeObservation } from "./taskOutcome.ts";
 import { TaskProfile, TaskRepositoryEvidence } from "./taskProfile.ts";
-import { ProjectContextSnapshot } from "./projectContext.ts";
+import {
+  PROJECT_CONTEXT_MAX_DOCUMENTS,
+  PROJECT_HANDOFF_MAX_ITEMS,
+  PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS,
+  ProjectContextPath,
+  ProjectContextSnapshot,
+  ProjectHandoff,
+  ProjectKnowledgeNote,
+} from "./projectContext.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -132,6 +140,29 @@ export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
 export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "default";
+
+/**
+ * Project advice shared across provider CLIs. These are recommendations, not
+ * credentials or provider-specific command line configuration.
+ */
+export const ProjectSharedProviderConfiguration = Schema.Struct({
+  rulePaths: Schema.Array(ProjectContextPath).check(
+    Schema.isMaxLength(PROJECT_CONTEXT_MAX_DOCUMENTS),
+  ),
+  mcpServerNames: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(200))).check(
+    Schema.isMaxLength(PROJECT_CONTEXT_MAX_DOCUMENTS),
+  ),
+  recommendedRuntimeMode: Schema.NullOr(RuntimeMode),
+  recommendedInteractionMode: Schema.NullOr(ProviderInteractionMode),
+});
+export type ProjectSharedProviderConfiguration = typeof ProjectSharedProviderConfiguration.Type;
+
+export const DEFAULT_PROJECT_SHARED_PROVIDER_CONFIGURATION: ProjectSharedProviderConfiguration = {
+  rulePaths: [],
+  mcpServerNames: [],
+  recommendedRuntimeMode: null,
+  recommendedInteractionMode: null,
+};
 export const ProviderRequestKind = Schema.Literals(["command", "file-read", "file-change"]);
 export type ProviderRequestKind = typeof ProviderRequestKind.Type;
 export const AssistantDeliveryMode = Schema.Literals(["buffered", "streaming"]);
@@ -234,6 +265,13 @@ export const OrchestrationProject = Schema.Struct({
   // Optional on the wire so cached snapshots from older servers still decode.
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
   scripts: Schema.Array(ProjectScript),
+  sharedProviderConfiguration: Schema.optional(ProjectSharedProviderConfiguration),
+  handoffs: Schema.optional(
+    Schema.Array(ProjectHandoff).check(Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS)),
+  ),
+  knowledgeNotes: Schema.optional(
+    Schema.Array(ProjectKnowledgeNote).check(Schema.isMaxLength(PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS)),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -431,6 +469,13 @@ export const OrchestrationProjectShell = Schema.Struct({
   // Optional on the wire so cached snapshots from older servers still decode.
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
   scripts: Schema.Array(ProjectScript),
+  sharedProviderConfiguration: Schema.optional(ProjectSharedProviderConfiguration),
+  handoffs: Schema.optional(
+    Schema.Array(ProjectHandoff).check(Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS)),
+  ),
+  knowledgeNotes: Schema.optional(
+    Schema.Array(ProjectKnowledgeNote).check(Schema.isMaxLength(PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS)),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -646,6 +691,13 @@ const ProjectMetaUpdateCommand = Schema.Struct({
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
+  sharedProviderConfiguration: Schema.optional(ProjectSharedProviderConfiguration),
+  handoffs: Schema.optional(
+    Schema.Array(ProjectHandoff).check(Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS)),
+  ),
+  knowledgeNotes: Schema.optional(
+    Schema.Array(ProjectKnowledgeNote).check(Schema.isMaxLength(PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS)),
+  ),
 });
 
 const ProjectDeleteCommand = Schema.Struct({
@@ -1107,6 +1159,13 @@ export const ProjectCreatedPayload = Schema.Struct({
   // Optional so persisted events from older servers still decode.
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
   scripts: Schema.Array(ProjectScript),
+  sharedProviderConfiguration: Schema.optional(ProjectSharedProviderConfiguration),
+  handoffs: Schema.optional(
+    Schema.Array(ProjectHandoff).check(Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS)),
+  ),
+  knowledgeNotes: Schema.optional(
+    Schema.Array(ProjectKnowledgeNote).check(Schema.isMaxLength(PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS)),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -1120,6 +1179,13 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
+  sharedProviderConfiguration: Schema.optional(ProjectSharedProviderConfiguration),
+  handoffs: Schema.optional(
+    Schema.Array(ProjectHandoff).check(Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS)),
+  ),
+  knowledgeNotes: Schema.optional(
+    Schema.Array(ProjectKnowledgeNote).check(Schema.isMaxLength(PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS)),
+  ),
   updatedAt: IsoDateTime,
 });
 

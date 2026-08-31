@@ -502,6 +502,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             defaultThreadEnvMode: null,
             faviconPath: event.payload.faviconPath ?? null,
             scripts: event.payload.scripts,
+            sharedProviderConfiguration: event.payload.sharedProviderConfiguration ?? {
+              rulePaths: [],
+              mcpServerNames: [],
+              recommendedRuntimeMode: null,
+              recommendedInteractionMode: null,
+            },
+            handoffs: event.payload.handoffs ?? [],
+            knowledgeNotes: event.payload.knowledgeNotes ?? [],
             createdAt: event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
             deletedAt: null,
@@ -531,6 +539,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               ? { faviconPath: event.payload.faviconPath }
               : {}),
             ...(event.payload.scripts !== undefined ? { scripts: event.payload.scripts } : {}),
+            ...(event.payload.sharedProviderConfiguration !== undefined
+              ? { sharedProviderConfiguration: event.payload.sharedProviderConfiguration }
+              : {}),
+            ...(event.payload.handoffs !== undefined ? { handoffs: event.payload.handoffs } : {}),
+            ...(event.payload.knowledgeNotes !== undefined
+              ? { knowledgeNotes: event.payload.knowledgeNotes }
+              : {}),
             updatedAt: event.payload.updatedAt,
           });
           return;

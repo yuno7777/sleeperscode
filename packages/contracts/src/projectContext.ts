@@ -50,6 +50,41 @@ export const ProjectContextCheckpoint = Schema.Struct({
 });
 export type ProjectContextCheckpoint = typeof ProjectContextCheckpoint.Type;
 
+/** User-editable, reviewable content. It is never generated or published implicitly. */
+export const ProjectHandoffSummary = Schema.Struct({
+  changed: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
+    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
+  ),
+  decisions: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
+    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
+  ),
+  verification: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
+    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
+  ),
+  remaining: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
+    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
+  ),
+});
+export type ProjectHandoffSummary = typeof ProjectHandoffSummary.Type;
+
+export const ProjectHandoff = Schema.Struct({
+  threadId: ThreadId,
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+  summary: ProjectHandoffSummary,
+  savedAt: IsoDateTime,
+});
+export type ProjectHandoff = typeof ProjectHandoff.Type;
+
+export const ProjectKnowledgeNote = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  threadId: ThreadId,
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+  summary: ProjectHandoffSummary,
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type ProjectKnowledgeNote = typeof ProjectKnowledgeNote.Type;
+
 /** The server-built briefing shown before a turn starts, with visible local sources. */
 export const ProjectContextSnapshot = Schema.Struct({
   projectId: ProjectId,
@@ -68,33 +103,10 @@ export const ProjectContextSnapshot = Schema.Struct({
   relatedThreads: Schema.Array(ProjectContextRelatedThread).check(
     Schema.isMaxLength(PROJECT_CONTEXT_MAX_RELATED_THREADS),
   ),
+  handoffs: Schema.Array(ProjectHandoff).check(Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS)),
+  knowledgeNotes: Schema.Array(ProjectKnowledgeNote).check(
+    Schema.isMaxLength(PROJECT_KNOWLEDGE_NOTE_MAX_ITEMS),
+  ),
   generatedAt: IsoDateTime,
 });
 export type ProjectContextSnapshot = typeof ProjectContextSnapshot.Type;
-
-/** User-editable, reviewable content. It is never generated or published implicitly. */
-export const ProjectHandoffSummary = Schema.Struct({
-  changed: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
-    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
-  ),
-  decisions: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
-    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
-  ),
-  verification: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
-    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
-  ),
-  remaining: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).check(
-    Schema.isMaxLength(PROJECT_HANDOFF_MAX_ITEMS),
-  ),
-});
-export type ProjectHandoffSummary = typeof ProjectHandoffSummary.Type;
-
-export const ProjectKnowledgeNote = Schema.Struct({
-  id: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
-  threadId: ThreadId,
-  title: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
-  summary: ProjectHandoffSummary,
-  createdAt: IsoDateTime,
-  updatedAt: IsoDateTime,
-});
-export type ProjectKnowledgeNote = typeof ProjectKnowledgeNote.Type;

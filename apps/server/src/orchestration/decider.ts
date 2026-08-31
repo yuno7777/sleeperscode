@@ -254,6 +254,14 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           defaultModelSelection: command.defaultModelSelection ?? null,
           faviconPath: null,
           scripts: [],
+          sharedProviderConfiguration: {
+            rulePaths: [],
+            mcpServerNames: [],
+            recommendedRuntimeMode: null,
+            recommendedInteractionMode: null,
+          },
+          handoffs: [],
+          knowledgeNotes: [],
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -295,6 +303,13 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           ...(command.faviconPath !== undefined ? { faviconPath: command.faviconPath } : {}),
           ...(command.scripts !== undefined ? { scripts: command.scripts } : {}),
+          ...(command.sharedProviderConfiguration !== undefined
+            ? { sharedProviderConfiguration: command.sharedProviderConfiguration }
+            : {}),
+          ...(command.handoffs !== undefined ? { handoffs: command.handoffs } : {}),
+          ...(command.knowledgeNotes !== undefined
+            ? { knowledgeNotes: command.knowledgeNotes }
+            : {}),
           updatedAt: occurredAt,
         },
       };

@@ -14,6 +14,7 @@ import {
 } from "../../logicalProject";
 import type {
   ModelSelection,
+  ProjectSharedProviderConfiguration,
   ProviderDriverKind,
   SidebarProjectGroupingMode,
   T3ProjectFileScript,
@@ -333,6 +334,7 @@ function ProjectDetail({
         defaultThreadEnvMode: ThreadEnvMode | null;
         faviconPath: string | null;
         scripts: ReadonlyArray<ReturnType<typeof buildProjectScript>>;
+        sharedProviderConfiguration: ProjectSharedProviderConfiguration;
       }>,
       failureTitle: string,
     ): Promise<AtomCommandResult<void, unknown>> => {
@@ -393,6 +395,52 @@ function ProjectDetail({
         "Failed to update new-thread workspace",
       ),
     [updateAllMembers],
+  );
+
+  // These recommendations are deliberately separate from provider credentials
+  // and CLI flags. A project can guide every provider without owning its setup.
+  const sharedProviderConfiguration = representative.sharedProviderConfiguration ?? {
+    rulePaths: [],
+    mcpServerNames: [],
+    recommendedRuntimeMode: null,
+    recommendedInteractionMode: null,
+  };
+  const [sharedRulePathsInput, setSharedRulePathsInput] = useState(
+    sharedProviderConfiguration.rulePaths.join(", "),
+  );
+  const [sharedMcpServersInput, setSharedMcpServersInput] = useState(
+    sharedProviderConfiguration.mcpServerNames.join(", "),
+  );
+  useEffect(() => {
+    setSharedRulePathsInput(sharedProviderConfiguration.rulePaths.join(", "));
+    setSharedMcpServersInput(sharedProviderConfiguration.mcpServerNames.join(", "));
+  }, [
+    representative.id,
+    sharedProviderConfiguration.mcpServerNames,
+    sharedProviderConfiguration.rulePaths,
+  ]);
+  const saveSharedProviderConfiguration = useCallback(
+    (overrides?: Partial<ProjectSharedProviderConfiguration>) => {
+      const split = (value: string) =>
+        value
+          .split(/[,\n]/)
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .slice(0, 24);
+      return updateAllMembers(
+        {
+          sharedProviderConfiguration: {
+            rulePaths: split(sharedRulePathsInput),
+            mcpServerNames: split(sharedMcpServersInput),
+            recommendedRuntimeMode: sharedProviderConfiguration.recommendedRuntimeMode,
+            recommendedInteractionMode: sharedProviderConfiguration.recommendedInteractionMode,
+            ...overrides,
+          },
+        },
+        "Failed to update shared agent setup",
+      );
+    },
+    [sharedMcpServersInput, sharedProviderConfiguration, sharedRulePathsInput, updateAllMembers],
   );
 
   // ----- favicon -----
@@ -878,6 +926,67 @@ function ProjectDetail({
                 </SelectItem>
                 <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
                 <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Shared agent setup">
+        <SettingsRow
+          id="project-shared-rules"
+          title="Rules and MCP servers"
+          description="Shared recommendations for every provider. Credentials and provider CLI settings stay separate."
+          control={
+            <div className="flex w-full max-w-md flex-col gap-2 sm:items-end">
+              <Input
+                value={sharedRulePathsInput}
+                onChange={(event) => setSharedRulePathsInput(event.target.value)}
+                placeholder="Rules: AGENTS.md, docs/architecture.md"
+                aria-label="Shared project rule paths"
+              />
+              <Input
+                value={sharedMcpServersInput}
+                onChange={(event) => setSharedMcpServersInput(event.target.value)}
+                placeholder="MCP servers: github, linear"
+                aria-label="Shared project MCP server names"
+              />
+              <Button
+                size="xs"
+                variant="outline"
+                type="button"
+                onClick={() => void saveSharedProviderConfiguration()}
+              >
+                Save shared setup
+              </Button>
+            </div>
+          }
+        />
+        <SettingsRow
+          id="project-shared-runtime-mode"
+          title="Recommended runtime"
+          description="A suggestion for new work. It does not override a provider's own controls."
+          control={
+            <Select
+              value={sharedProviderConfiguration.recommendedRuntimeMode ?? "inherit"}
+              onValueChange={(value) =>
+                void saveSharedProviderConfiguration({
+                  recommendedRuntimeMode:
+                    value === "inherit"
+                      ? null
+                      : (value as ProjectSharedProviderConfiguration["recommendedRuntimeMode"]),
+                })
+              }
+            >
+              <SelectTrigger aria-label="Recommended runtime mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="inherit">No recommendation</SelectItem>
+                <SelectItem value="approval-required">Approval required</SelectItem>
+                <SelectItem value="auto-accept-edits">Auto-accept edits</SelectItem>
+                <SelectItem value="auto">Auto</SelectItem>
+                <SelectItem value="full-access">Full access</SelectItem>
               </SelectPopup>
             </Select>
           }

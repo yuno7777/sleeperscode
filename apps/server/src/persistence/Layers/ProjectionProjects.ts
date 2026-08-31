@@ -5,7 +5,13 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 
-import { ModelSelection, ProjectScript } from "@t3tools/contracts";
+import {
+  ModelSelection,
+  ProjectHandoff,
+  ProjectKnowledgeNote,
+  ProjectScript,
+  ProjectSharedProviderConfiguration,
+} from "@t3tools/contracts";
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
   DeleteProjectionProjectInput,
@@ -19,6 +25,9 @@ const ProjectionProjectDbRow = ProjectionProject.mapFields(
   Struct.assign({
     defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
     scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
+    sharedProviderConfiguration: Schema.fromJsonString(ProjectSharedProviderConfiguration),
+    handoffs: Schema.fromJsonString(Schema.Array(ProjectHandoff)),
+    knowledgeNotes: Schema.fromJsonString(Schema.Array(ProjectKnowledgeNote)),
   }),
 );
 type ProjectionProjectDbRow = typeof ProjectionProjectDbRow.Type;
@@ -38,6 +47,9 @@ const makeProjectionProjectRepository = Effect.gen(function* () {
           default_thread_env_mode,
           favicon_path,
           scripts_json,
+          shared_provider_configuration_json,
+          handoffs_json,
+          knowledge_notes_json,
           created_at,
           updated_at,
           deleted_at
@@ -50,6 +62,9 @@ const makeProjectionProjectRepository = Effect.gen(function* () {
           ${row.defaultThreadEnvMode},
           ${row.faviconPath ?? null},
           ${JSON.stringify(row.scripts)},
+          ${JSON.stringify(row.sharedProviderConfiguration)},
+          ${JSON.stringify(row.handoffs)},
+          ${JSON.stringify(row.knowledgeNotes)},
           ${row.createdAt},
           ${row.updatedAt},
           ${row.deletedAt}
@@ -62,6 +77,9 @@ const makeProjectionProjectRepository = Effect.gen(function* () {
           default_thread_env_mode = excluded.default_thread_env_mode,
           favicon_path = excluded.favicon_path,
           scripts_json = excluded.scripts_json,
+          shared_provider_configuration_json = excluded.shared_provider_configuration_json,
+          handoffs_json = excluded.handoffs_json,
+          knowledge_notes_json = excluded.knowledge_notes_json,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at,
           deleted_at = excluded.deleted_at
@@ -81,6 +99,9 @@ const makeProjectionProjectRepository = Effect.gen(function* () {
           default_thread_env_mode AS "defaultThreadEnvMode",
           favicon_path AS "faviconPath",
           scripts_json AS "scripts",
+          shared_provider_configuration_json AS "sharedProviderConfiguration",
+          handoffs_json AS "handoffs",
+          knowledge_notes_json AS "knowledgeNotes",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
           deleted_at AS "deletedAt"
@@ -102,6 +123,9 @@ const makeProjectionProjectRepository = Effect.gen(function* () {
           default_thread_env_mode AS "defaultThreadEnvMode",
           favicon_path AS "faviconPath",
           scripts_json AS "scripts",
+          shared_provider_configuration_json AS "sharedProviderConfiguration",
+          handoffs_json AS "handoffs",
+          knowledge_notes_json AS "knowledgeNotes",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
           deleted_at AS "deletedAt"
