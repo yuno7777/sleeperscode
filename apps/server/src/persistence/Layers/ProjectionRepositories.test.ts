@@ -38,6 +38,9 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         sharedProviderConfiguration: {
           rulePaths: [],
           mcpServerNames: [],
+          mcpProfileName: null,
+          mcpToolCallBudget: null,
+          scopeGuardrail: null,
           recommendedRuntimeMode: null,
           recommendedInteractionMode: null,
         },

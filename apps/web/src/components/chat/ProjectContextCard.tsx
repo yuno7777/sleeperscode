@@ -122,6 +122,7 @@ export function ProjectContextCard({
             sharedProviderConfiguration.mcpServerNames.length > 0 ||
             sharedProviderConfiguration.mcpProfileName !== null ||
             sharedProviderConfiguration.mcpToolCallBudget !== null ||
+            sharedProviderConfiguration.scopeGuardrail !== null ||
             sharedProviderConfiguration.recommendedRuntimeMode !== null ||
             sharedProviderConfiguration.recommendedInteractionMode !== null) ? (
             <div className="min-w-0">
@@ -144,6 +145,14 @@ export function ProjectContextCard({
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+            </div>
+          ) : null}
+          {sharedProviderConfiguration?.scopeGuardrail ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Scope guardrail
+              </p>
+              <p className="text-foreground">{sharedProviderConfiguration.scopeGuardrail}</p>
             </div>
           ) : null}
           {mcpDiagnostics &&

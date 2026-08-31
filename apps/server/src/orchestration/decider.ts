@@ -259,6 +259,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             mcpServerNames: [],
             mcpProfileName: null,
             mcpToolCallBudget: null,
+            scopeGuardrail: null,
             recommendedRuntimeMode: null,
             recommendedInteractionMode: null,
           },

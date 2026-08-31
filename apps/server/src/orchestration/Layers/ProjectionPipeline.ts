@@ -507,6 +507,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               mcpServerNames: [],
               mcpProfileName: null,
               mcpToolCallBudget: null,
+              scopeGuardrail: null,
               recommendedRuntimeMode: null,
               recommendedInteractionMode: null,
             },

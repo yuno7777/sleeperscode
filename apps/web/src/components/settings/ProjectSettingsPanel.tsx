@@ -404,6 +404,7 @@ function ProjectDetail({
     mcpServerNames: [],
     mcpProfileName: null,
     mcpToolCallBudget: null,
+    scopeGuardrail: null,
     recommendedRuntimeMode: null,
     recommendedInteractionMode: null,
   };
@@ -419,6 +420,9 @@ function ProjectDetail({
   const [sharedMcpToolCallBudgetInput, setSharedMcpToolCallBudgetInput] = useState(
     sharedProviderConfiguration.mcpToolCallBudget?.toString() ?? "",
   );
+  const [scopeGuardrailInput, setScopeGuardrailInput] = useState(
+    sharedProviderConfiguration.scopeGuardrail ?? "",
+  );
   useEffect(() => {
     setSharedRulePathsInput(sharedProviderConfiguration.rulePaths.join(", "));
     setSharedMcpServersInput(sharedProviderConfiguration.mcpServerNames.join(", "));
@@ -426,12 +430,14 @@ function ProjectDetail({
     setSharedMcpToolCallBudgetInput(
       sharedProviderConfiguration.mcpToolCallBudget?.toString() ?? "",
     );
+    setScopeGuardrailInput(sharedProviderConfiguration.scopeGuardrail ?? "");
   }, [
     representative.id,
     sharedProviderConfiguration.mcpProfileName,
     sharedProviderConfiguration.mcpServerNames,
     sharedProviderConfiguration.mcpToolCallBudget,
     sharedProviderConfiguration.rulePaths,
+    sharedProviderConfiguration.scopeGuardrail,
   ]);
   const saveSharedProviderConfiguration = useCallback(
     (overrides?: Partial<ProjectSharedProviderConfiguration>) => {
@@ -452,6 +458,7 @@ function ProjectDetail({
               Number.isInteger(parsedBudget) && parsedBudget >= 1 && parsedBudget <= 100
                 ? parsedBudget
                 : null,
+            scopeGuardrail: scopeGuardrailInput.trim() || null,
             recommendedRuntimeMode: sharedProviderConfiguration.recommendedRuntimeMode,
             recommendedInteractionMode: sharedProviderConfiguration.recommendedInteractionMode,
             ...overrides,
@@ -466,6 +473,7 @@ function ProjectDetail({
       sharedMcpToolCallBudgetInput,
       sharedProviderConfiguration,
       sharedRulePathsInput,
+      scopeGuardrailInput,
       updateAllMembers,
     ],
   );
@@ -996,6 +1004,17 @@ function ProjectDetail({
               <p className="text-left text-xs text-muted-foreground sm:self-start">
                 T3 reports the budget after a turn. Provider CLIs keep control of MCP execution.
               </p>
+              <textarea
+                className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                value={scopeGuardrailInput}
+                onChange={(event) => setScopeGuardrailInput(event.target.value)}
+                placeholder="Scope guardrail: keep changes in apps/web and ask before adding dependencies"
+                aria-label="Project scope guardrail"
+              />
+              <p className="text-left text-xs text-muted-foreground sm:self-start">
+                The guardrail is shared guidance. Runtime approval remains under the selected
+                provider.
+              </p>
               <Button
                 size="xs"
                 variant="outline"
@@ -1009,8 +1028,8 @@ function ProjectDetail({
         />
         <SettingsRow
           id="project-shared-runtime-mode"
-          title="Recommended runtime"
-          description="A suggestion for new work. It does not override a provider's own controls."
+          title="Approval baseline"
+          description="A provider-neutral starting policy for new work. The selected provider still owns enforcement."
           control={
             <Select
               value={sharedProviderConfiguration.recommendedRuntimeMode ?? "inherit"}

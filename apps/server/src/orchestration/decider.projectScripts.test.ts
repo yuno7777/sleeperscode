@@ -169,6 +169,9 @@ it.layer(NodeServices.layer)("decider project scripts", (it) => {
           sharedProviderConfiguration: {
             rulePaths: ["AGENTS.md"],
             mcpServerNames: ["github"],
+            mcpProfileName: null,
+            mcpToolCallBudget: null,
+            scopeGuardrail: "Keep changes within the requested surface.",
             recommendedRuntimeMode: "approval-required",
             recommendedInteractionMode: null,
           },

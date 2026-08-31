@@ -222,6 +222,7 @@ export function projectEvent(
               mcpServerNames: [],
               mcpProfileName: null,
               mcpToolCallBudget: null,
+              scopeGuardrail: null,
               recommendedRuntimeMode: null,
               recommendedInteractionMode: null,
             },

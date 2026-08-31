@@ -162,6 +162,9 @@ export const ProjectSharedProviderConfiguration = Schema.Struct({
   mcpToolCallBudget: Schema.NullOr(PositiveInt.check(Schema.isLessThanOrEqualTo(100))).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
+  scopeGuardrail: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(500))).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   recommendedRuntimeMode: Schema.NullOr(RuntimeMode),
   recommendedInteractionMode: Schema.NullOr(ProviderInteractionMode),
 });
@@ -172,6 +175,7 @@ export const DEFAULT_PROJECT_SHARED_PROVIDER_CONFIGURATION: ProjectSharedProvide
   mcpServerNames: [],
   mcpProfileName: null,
   mcpToolCallBudget: null,
+  scopeGuardrail: null,
   recommendedRuntimeMode: null,
   recommendedInteractionMode: null,
 };

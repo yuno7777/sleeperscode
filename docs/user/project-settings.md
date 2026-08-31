@@ -26,6 +26,11 @@ card reports the servers and tools actually observed in a thread, flags servers 
 profile, and calls out a budget overrun. T3 Code does not claim to block those calls because each
 provider CLI owns its own MCP execution policy.
 
+Use **Scope guardrail** to make the project boundary visible before work begins, for example a
+directory boundary or a requirement to ask before changing dependencies. Use **Approval baseline**
+to choose the shared starting approval mode. These guide each provider in the same place, while the
+provider remains responsible for enforcing its own approval controls.
+
 When you start a new thread, T3 Code shows the project context card with the detected stack,
 local rule and documentation paths, recent checkpoints, and other active work in the project.
 

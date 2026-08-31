@@ -10,6 +10,7 @@ const configuration: ProjectSharedProviderConfiguration = {
   mcpServerNames: ["github"],
   mcpProfileName: "Review tools",
   mcpToolCallBudget: 1,
+  scopeGuardrail: null,
   recommendedRuntimeMode: null,
   recommendedInteractionMode: null,
 };
