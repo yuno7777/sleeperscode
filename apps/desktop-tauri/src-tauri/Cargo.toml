@@ -1,0 +1,20 @@
+[package]
+name = "sleepers-code-tauri-experiment"
+version = "0.0.32"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sleepers_code_tauri_experiment"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sleepers-code-tauri-experiment"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = "2.5.6"
+
+[dependencies]
+tauri = { version = "2.11.5", default-features = false, features = ["common-controls-v6", "wry"] }

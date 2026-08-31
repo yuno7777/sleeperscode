@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/runtime-protocol", "crates/runtime-sidecar"]
+members = ["apps/desktop-tauri/src-tauri", "crates/runtime-protocol", "crates/runtime-sidecar"]
 exclude = ["native/resource-monitor"]
 resolver = "2"
 
