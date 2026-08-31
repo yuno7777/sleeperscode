@@ -43,7 +43,8 @@ and protocol.
 The Usage page records the token totals returned by Antigravity for turns run through Sleepers Code.
 Those totals survive normal server restarts and appear under the selected Antigravity model. Sessions
 run directly in another terminal are not available through the CLI's headless protocol, and the page
-does not invent a dollar cost when the provider does not supply trustworthy billing data.
+does not invent a dollar cost when the provider does not supply trustworthy billing data. In cost
+views these records are labelled **Cost not reported** rather than `$0.00` or `0.0% of cost`.
 
 ## Permissions and orchestration
 
