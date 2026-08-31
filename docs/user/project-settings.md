@@ -38,3 +38,7 @@ checkpoint. Add decisions, verification, and remaining work before you save it. 
 To continue work with another provider, select its model in the composer, open the settled task's
 handoff, then choose **Continue with selected provider**. T3 Code starts a new thread from the
 reviewed summary and leaves the original provider session unchanged.
+
+When a provider explicitly reports that a rate limit is exhausted, the handoff card calls this out.
+It does not switch providers automatically. Save the handoff, select an available provider, and
+continue from the reviewed summary.

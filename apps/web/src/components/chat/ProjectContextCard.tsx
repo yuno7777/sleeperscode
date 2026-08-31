@@ -8,6 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
 import { deriveMcpDiagnostics } from "../../mcpDiagnostics";
+import { deriveProviderQuotaStatus } from "../../providerQuota";
 
 function StackSummary({ context }: { readonly context: ProjectContextSnapshot }) {
   const evidence = context.repositoryEvidence;
@@ -74,6 +75,7 @@ export function ProjectContextCard({
     null;
   const [draft, setDraft] = useState<ProjectHandoffSummary | null>(handoff?.summary ?? null);
   const mcpDiagnostics = deriveMcpDiagnostics(threadActivities ?? [], sharedProviderConfiguration);
+  const providerQuotaStatus = deriveProviderQuotaStatus(threadActivities ?? []);
   useEffect(() => setDraft(handoff?.summary ?? null), [handoff]);
   if (context === null && !isPending && error === null) return null;
   return (
@@ -167,6 +169,17 @@ export function ProjectContextCard({
                   Not in the shared profile: {mcpDiagnostics.unexpectedServerNames.join(", ")}
                 </p>
               ) : null}
+            </div>
+          ) : null}
+          {providerQuotaStatus?.exhausted ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Continuation available
+              </p>
+              <p className="text-foreground">
+                {providerQuotaStatus.provider} reported a rate limit. Save the handoff, choose a
+                different provider in the composer, then continue from that reviewed summary.
+              </p>
             </div>
           ) : null}
           {context.relatedThreads.length > 0 ? (

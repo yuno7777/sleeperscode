@@ -16,6 +16,28 @@ const base = {
 };
 
 describe("runtimeEventToActivities task progress", () => {
+  it("persists provider rate-limit updates for recovery guidance", () => {
+    const activities = runtimeEventToActivities({
+      ...base,
+      type: "account.rate-limits.updated",
+      eventId: EventId.make("evt-rate-limit"),
+      payload: {
+        rateLimits: { primary: { usedPercent: 100 }, rateLimitReachedType: "primary" },
+      },
+    } satisfies ProviderRuntimeEvent);
+
+    expect(activities).toEqual([
+      expect.objectContaining({
+        kind: "provider.rate-limit.updated",
+        summary: "Provider rate limit updated",
+        payload: {
+          provider: "codex",
+          rateLimits: { primary: { usedPercent: 100 }, rateLimitReachedType: "primary" },
+        },
+      }),
+    ]);
+  });
+
   it("persists usage independently from replaceable activity", () => {
     const taskId = RuntimeTaskId.make("agent-1");
     const usageOnly = {
