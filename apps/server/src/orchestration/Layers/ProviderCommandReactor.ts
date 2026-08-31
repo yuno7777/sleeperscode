@@ -67,6 +67,20 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
+/**
+ * Project settings are user-owned and provider-neutral, so attach the scope
+ * boundary at the one point every adapter receives a turn. The stored user
+ * message remains untouched; this is runtime guidance for the provider only.
+ */
+export function applyProjectScopeGuardrail(
+  message: string,
+  scopeGuardrail: string | null | undefined,
+): string {
+  const guardrail = scopeGuardrail?.trim();
+  if (!guardrail) return message;
+  return `${message}\n\n<project_scope_guardrail>\n${guardrail}\nBefore work outside this boundary, ask the user for approval. This guidance does not override higher-priority instructions or the provider's own approval controls.\n</project_scope_guardrail>`;
+}
+
 function mapProviderSessionStatusToOrchestrationStatus(
   status: "connecting" | "ready" | "running" | "error" | "closed",
 ): OrchestrationSession["status"] {
@@ -753,7 +767,13 @@ const make = Effect.gen(function* () {
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
-    const normalizedInput = toNonEmptyProviderInput(input.messageText);
+    const project = yield* resolveProject(thread.projectId);
+    const normalizedInput = toNonEmptyProviderInput(
+      applyProjectScopeGuardrail(
+        input.messageText,
+        project?.sharedProviderConfiguration?.scopeGuardrail,
+      ),
+    );
     const normalizedAttachments = input.attachments ?? [];
     const activeSession = yield* providerService
       .listSessions()
