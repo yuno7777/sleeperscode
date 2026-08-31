@@ -35,7 +35,12 @@ export const UsageProviderKind = Schema.Literals([
 export type UsageProviderKind = typeof UsageProviderKind.Type;
 
 /** How this provider contributes to the totals on this host. */
-export const UsageReportingKind = Schema.Literals(["transcript", "runtimeEvents", "notReported"]);
+export const UsageReportingKind = Schema.Literals([
+  "transcript",
+  "runtimeEvents",
+  "database",
+  "notReported",
+]);
 export type UsageReportingKind = typeof UsageReportingKind.Type;
 
 /**

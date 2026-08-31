@@ -37,6 +37,7 @@ describe("makeUsageProviderCoverage", () => {
       [
         provider("codex"),
         provider("antigravity", { auth: { status: "unknown" } }),
+        provider("opencode"),
         provider("cursor", { installed: false }),
       ],
       [codexBucket],
@@ -54,6 +55,13 @@ describe("makeUsageProviderCoverage", () => {
       reporting: "runtimeEvents",
       observed: false,
       routable: false,
+    });
+    expect(coverage[2]).toMatchObject({
+      displayName: "OpenCode",
+      reporting: "database",
+      observed: false,
+      routable: true,
+      message: null,
     });
   });
 

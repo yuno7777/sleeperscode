@@ -124,7 +124,9 @@ export function makeUsageProviderCoverage(
           ? ("transcript" as const)
           : usageProvider === "antigravity"
             ? ("runtimeEvents" as const)
-            : ("notReported" as const);
+            : usageProvider === "opencode"
+              ? ("database" as const)
+              : ("notReported" as const);
       return {
         hostId,
         instanceId: provider.instanceId,
