@@ -1,4 +1,4 @@
-import { BotIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import { BellRingIcon, BotIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import { memo, useCallback } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 
@@ -127,6 +127,13 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     void navigate({ to: "/usage" });
   }, [isMobile, navigate, setOpenMobile]);
 
+  const handleAttentionClick = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void navigate({ to: "/attention" });
+  }, [isMobile, navigate, setOpenMobile]);
+
   const handleAgentHubClick = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
@@ -139,6 +146,12 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
       <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={handleAttentionClick}>
+            <BellRingIcon />
+            <span>Attention</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton onClick={handleAgentHubClick}>
             <BotIcon />

@@ -106,6 +106,8 @@ Threads, checkpoints, usage, and connected clients
 
 ## Documentation
 
+- [Attention queue](./docs/user/attention.md)
+
 - [Install and first run](./docs/user/install.md)
 - [Portable Windows build](./docs/user/portable-windows.md)
 - [Remote access](./docs/user/remote-access.md)
