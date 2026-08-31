@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
@@ -38,6 +39,14 @@ export const ProjectContextRelatedThread = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   active: Schema.Boolean,
   sharesWorktreeWithCurrentThread: Schema.Boolean,
+  // Handoff entries are user-reviewed declarations. They are a coordination
+  // signal, not a claim that T3 has computed a git merge conflict.
+  overlappingChangedFiles: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  mergeRisk: Schema.Literals(["none", "declared-overlap", "shared-worktree"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("none")),
+  ),
   updatedAt: IsoDateTime,
 });
 export type ProjectContextRelatedThread = typeof ProjectContextRelatedThread.Type;

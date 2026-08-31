@@ -31,6 +31,10 @@ directory boundary or a requirement to ask before changing dependencies. Use **A
 to choose the shared starting approval mode. These guide each provider in the same place, while the
 provider remains responsible for enforcing its own approval controls.
 
+The project context card also shows active related work. A shared worktree is marked as the
+highest merge risk. If two saved handoffs declare the same changed file, T3 Code shows that overlap
+as a coordination signal. It does not claim to predict a Git merge conflict.
+
 When you start a new thread, T3 Code shows the project context card with the detected stack,
 local rule and documentation paths, recent checkpoints, and other active work in the project.
 

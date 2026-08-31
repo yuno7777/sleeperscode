@@ -68,24 +68,46 @@ export function buildProjectContextSnapshot(input: {
   readonly generatedAt: string;
 }): ProjectContextSnapshot {
   const documents = classifyProjectContextDocuments(input.workspacePaths);
+  const handoffByThreadId = new Map(
+    (input.project.handoffs ?? []).map((handoff) => [handoff.threadId, handoff] as const),
+  );
+  const currentChangedFiles = new Set(
+    input.currentThread
+      ? (handoffByThreadId.get(input.currentThread.id)?.summary.changed ?? []).map((entry) =>
+          normalizePath(entry).toLocaleLowerCase(),
+        )
+      : [],
+  );
   const relatedThreads = input.threads
     .filter(
       (thread) => thread.projectId === input.project.id && thread.id !== input.currentThread?.id,
     )
     .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, 24)
-    .map((thread) => ({
-      threadId: thread.id,
-      title: thread.title,
-      branch: thread.branch,
-      worktreePath: thread.worktreePath,
-      active: thread.archivedAt === null && thread.settledAt === null,
-      sharesWorktreeWithCurrentThread:
+    .map((thread) => {
+      const sharesWorktreeWithCurrentThread =
         input.currentThread?.worktreePath !== null &&
         input.currentThread?.worktreePath !== undefined &&
-        input.currentThread.worktreePath === thread.worktreePath,
-      updatedAt: thread.updatedAt,
-    }));
+        input.currentThread.worktreePath === thread.worktreePath;
+      const overlappingChangedFiles = (handoffByThreadId.get(thread.id)?.summary.changed ?? [])
+        .filter((entry) => currentChangedFiles.has(normalizePath(entry).toLocaleLowerCase()))
+        .slice(0, 12);
+      return {
+        threadId: thread.id,
+        title: thread.title,
+        branch: thread.branch,
+        worktreePath: thread.worktreePath,
+        active: thread.archivedAt === null && thread.settledAt === null,
+        sharesWorktreeWithCurrentThread,
+        overlappingChangedFiles,
+        mergeRisk: sharesWorktreeWithCurrentThread
+          ? ("shared-worktree" as const)
+          : overlappingChangedFiles.length > 0
+            ? ("declared-overlap" as const)
+            : ("none" as const),
+        updatedAt: thread.updatedAt,
+      };
+    });
   const recentCheckpoints = input.threads
     .filter((thread) => thread.projectId === input.project.id)
     .flatMap((thread) =>

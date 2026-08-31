@@ -199,10 +199,17 @@ export function ProjectContextCard({
               <div className="space-y-1">
                 {context.relatedThreads.slice(0, 4).map((thread) => (
                   <p key={thread.threadId} className="truncate text-foreground">
-                    {thread.sharesWorktreeWithCurrentThread ? "Conflict: " : ""}
+                    {thread.mergeRisk === "shared-worktree"
+                      ? "Shared worktree: "
+                      : thread.mergeRisk === "declared-overlap"
+                        ? "Declared overlap: "
+                        : ""}
                     {thread.title}
                     {thread.branch ? ` · ${thread.branch}` : ""}
                     {thread.worktreePath ? ` · ${thread.worktreePath}` : ""}
+                    {thread.overlappingChangedFiles.length > 0
+                      ? ` · ${thread.overlappingChangedFiles.join(", ")}`
+                      : ""}
                   </p>
                 ))}
               </div>

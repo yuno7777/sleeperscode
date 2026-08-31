@@ -112,6 +112,49 @@ describe("buildProjectContextSnapshot", () => {
     assert.deepEqual(snapshot.rules, [{ path: "AGENTS.md", kind: "rule" }]);
     assert.deepEqual(snapshot.documents, [{ path: "README.md", kind: "guide" }]);
     assert.equal(snapshot.relatedThreads[0]?.sharesWorktreeWithCurrentThread, true);
+    assert.equal(snapshot.relatedThreads[0]?.mergeRisk, "shared-worktree");
     assert.equal(snapshot.recentCheckpoints[0]?.turnCount, 2);
+  });
+
+  it("uses reviewed handoff files as a declared-overlap signal", () => {
+    const current = thread({ id: ThreadId.make("current-overlap"), title: "Current work" });
+    const related = thread({ id: ThreadId.make("related-overlap"), title: "Related work" });
+    const snapshot = buildProjectContextSnapshot({
+      project: {
+        ...project,
+        handoffs: [
+          {
+            threadId: current.id,
+            title: current.title,
+            summary: {
+              changed: ["apps/web/src/App.tsx"],
+              decisions: [],
+              verification: [],
+              remaining: [],
+            },
+            savedAt: "2026-08-31T02:00:00.000Z",
+          },
+          {
+            threadId: related.id,
+            title: related.title,
+            summary: {
+              changed: ["apps/web/src/App.tsx"],
+              decisions: [],
+              verification: [],
+              remaining: [],
+            },
+            savedAt: "2026-08-31T02:00:00.000Z",
+          },
+        ],
+      },
+      currentThread: current,
+      threads: [current, related],
+      workspacePaths: [],
+      repositoryEvidence: null,
+      generatedAt: "2026-08-31T02:00:00.000Z",
+    });
+
+    assert.equal(snapshot.relatedThreads[0]?.mergeRisk, "declared-overlap");
+    assert.deepEqual(snapshot.relatedThreads[0]?.overlappingChangedFiles, ["apps/web/src/App.tsx"]);
   });
 });
