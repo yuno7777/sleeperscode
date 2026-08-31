@@ -1,0 +1,108 @@
+import type { ProjectContextSnapshot } from "@t3tools/contracts";
+
+function StackSummary({ context }: { readonly context: ProjectContextSnapshot }) {
+  const evidence = context.repositoryEvidence;
+  if (evidence === null) return <span>Stack detection is unavailable.</span>;
+  const parts = [...evidence.languages, ...evidence.frameworks, ...evidence.testRunners];
+  return <span>{parts.length > 0 ? parts.join(" · ") : "No recognised stack markers"}</span>;
+}
+
+function SourceList({
+  label,
+  paths,
+}: {
+  readonly label: string;
+  readonly paths: ReadonlyArray<{ readonly path: string }>;
+}) {
+  if (paths.length === 0) return null;
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {paths.map((entry) => (
+          <code
+            key={entry.path}
+            className="max-w-full truncate rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground"
+            title={entry.path}
+          >
+            {entry.path}
+          </code>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ProjectContextCard({
+  context,
+  isPending,
+  error,
+}: {
+  readonly context: ProjectContextSnapshot | null;
+  readonly isPending: boolean;
+  readonly error: string | null;
+}) {
+  if (context === null && !isPending && error === null) return null;
+  return (
+    <section className="mx-auto mb-2 w-full max-w-3xl rounded-xl border border-border/70 bg-background/85 px-3 py-2.5 shadow-sm backdrop-blur-sm">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium text-xs text-foreground">Project context</p>
+        <span className="truncate font-mono text-[11px] text-muted-foreground">
+          {context?.currentBranch ?? "No branch selected"}
+        </span>
+      </div>
+      {isPending ? (
+        <p className="mt-1 text-xs text-muted-foreground">Reading local project context…</p>
+      ) : null}
+      {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+      {context ? (
+        <div className="mt-2 grid gap-3 text-xs sm:grid-cols-2">
+          <div>
+            <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+              Detected stack
+            </p>
+            <p className="text-foreground">
+              <StackSummary context={context} />
+            </p>
+          </div>
+          <div>
+            <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+              Recent checkpoints
+            </p>
+            <p className="text-foreground">
+              {context.recentCheckpoints.length === 0
+                ? "No checkpoints yet"
+                : context.recentCheckpoints
+                    .slice(0, 3)
+                    .map(
+                      (checkpoint) => `Turn ${checkpoint.turnCount}, ${checkpoint.fileCount} files`,
+                    )
+                    .join(" · ")}
+            </p>
+          </div>
+          <SourceList label="Important docs" paths={context.documents.slice(0, 6)} />
+          <SourceList label="Rules" paths={context.rules.slice(0, 6)} />
+          {context.relatedThreads.length > 0 ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Related work
+              </p>
+              <div className="space-y-1">
+                {context.relatedThreads.slice(0, 4).map((thread) => (
+                  <p key={thread.threadId} className="truncate text-foreground">
+                    {thread.sharesWorktreeWithCurrentThread ? "Conflict: " : ""}
+                    {thread.title}
+                    {thread.branch ? ` · ${thread.branch}` : ""}
+                    {thread.worktreePath ? ` · ${thread.worktreePath}` : ""}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}

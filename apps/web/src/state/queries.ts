@@ -12,6 +12,8 @@ import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import type {
   EnvironmentId,
   OrchestrationThread,
+  ProjectContextSnapshot,
+  ProjectId,
   ProjectContentMatch,
   ProjectEntryKind,
   ThreadId,
@@ -27,7 +29,7 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { orchestrationEnvironment } from "./orchestration";
 import { isPaginatedBranchesNextPagePending } from "./paginatedBranches";
 import { projectContentSearch, projectEnvironment } from "./projects";
-import { useEnvironmentQuery } from "./query";
+import { type EnvironmentQueryView, useEnvironmentQuery } from "./query";
 import { useEnvironmentThread } from "./threads";
 import { vcsEnvironment } from "./vcs";
 
@@ -113,6 +115,21 @@ export function useThreadDetail(
     isPending: state.status === "synchronizing",
     isDeleted: state.status === "deleted",
   };
+}
+
+export function useProjectContext(
+  environmentId: EnvironmentId | null,
+  projectId: ProjectId | null,
+  threadId: ThreadId | null,
+): EnvironmentQueryView<ProjectContextSnapshot> {
+  return useEnvironmentQuery(
+    environmentId !== null && projectId !== null
+      ? orchestrationEnvironment.projectContext({
+          environmentId,
+          input: { projectId, ...(threadId === null ? {} : { threadId }) },
+        })
+      : null,
+  );
 }
 
 export function useBranches(target: VcsRefTarget) {
