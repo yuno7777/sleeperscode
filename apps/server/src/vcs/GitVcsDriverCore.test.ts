@@ -162,6 +162,10 @@ it.effect("uses stable diagnostics for every parsed non-repository command", () 
     assert.deepStrictEqual(commands, [
       { args: ["status", "--porcelain=2", "--branch"], lcAll: "C" },
       { args: ["rev-parse", "--abbrev-ref", "HEAD"], lcAll: "C" },
+      {
+        args: ["rev-parse", "--git-common-dir", "--git-dir", "--show-toplevel"],
+        lcAll: "C",
+      },
       { args: ["rev-parse", "--git-common-dir"], lcAll: "C" },
     ]);
   }).pipe(Effect.provide(layer));
@@ -482,6 +486,51 @@ it.effect("marks the current branch when worktree metadata is unavailable", () =
 
       assert.isTrue(refs.isRepo);
       assert.isTrue(refs.refs.find((ref) => ref.name === initialBranch)?.current);
+    }),
+  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+);
+
+it.effect("coalesces standard repository metadata into one Git process", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const commands: Array<ReadonlyArray<string>> = [];
+      const recordingSpawner = ChildProcessSpawner.make((command) =>
+        Effect.gen(function* () {
+          if (!ChildProcess.isStandardCommand(command)) {
+            return yield* Effect.die("expected a standard Git command");
+          }
+          commands.push([...command.args]);
+          return yield* delegate.spawn(command);
+        }),
+      );
+      const driver = yield* makeGitVcsDriverCore().pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, recordingSpawner),
+      );
+      const cwd = yield* makeTmpDir();
+      const { initialBranch } = yield* initRepoWithCommit(cwd).pipe(
+        Effect.provideService(GitVcsDriver.GitVcsDriver, driver),
+      );
+      commands.length = 0;
+
+      const refs = yield* driver.listRefs({ cwd, refresh: true });
+
+      assert.isTrue(refs.refs.find((ref) => ref.name === initialBranch)?.current);
+      assert.deepStrictEqual(commands[0], [
+        "rev-parse",
+        "--git-common-dir",
+        "--git-dir",
+        "--show-toplevel",
+      ]);
+      assert.isFalse(
+        commands.some(
+          (args) =>
+            args[0] === "symbolic-ref" &&
+            args.includes("--quiet") &&
+            args.includes("--short") &&
+            args.includes("HEAD"),
+        ),
+      );
     }),
   ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
 );

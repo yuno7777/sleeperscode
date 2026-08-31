@@ -131,6 +131,22 @@ interface GitRepositoryPaths {
   readonly currentBranch: string | null;
 }
 
+function parseGitHeadBranch(head: string): {
+  readonly branch: string | null;
+  readonly final: boolean;
+} {
+  const value = head.trim();
+  if (!value.startsWith("ref:")) {
+    return { branch: null, final: value.length > 0 };
+  }
+  const ref = value.slice("ref:".length).trim();
+  const headsPrefix = "refs/heads/";
+  if (!ref.startsWith(headsPrefix) || ref.length === headsPrefix.length) {
+    return { branch: null, final: false };
+  }
+  return { branch: ref.slice(headsPrefix.length), final: true };
+}
+
 interface GitRefsSnapshot {
   readonly localBranches: ReadonlyArray<VcsRef>;
   readonly remoteBranches: ReadonlyArray<VcsRef>;
@@ -1008,7 +1024,30 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     ).pipe(Effect.asVoid);
   };
 
-  const resolveRepositoryPathsUncached = Effect.fn("resolveRepositoryPathsUncached")(function* (
+  const resolveCurrentBranchFromGitDir = Effect.fn("resolveCurrentBranchFromGitDir")(function* (
+    cwd: string,
+    gitDir: string,
+  ) {
+    const head = yield* fileSystem.readFileString(path.join(gitDir, "HEAD")).pipe(Effect.option);
+    if (Option.isSome(head)) {
+      const parsed = parseGitHeadBranch(head.value);
+      if (parsed.final) return parsed.branch;
+    }
+
+    const result = yield* executeGit(
+      "GitVcsDriver.resolveRepositoryPaths.currentBranch",
+      cwd,
+      ["symbolic-ref", "--quiet", "--short", "HEAD"],
+      {
+        timeoutMs: 5_000,
+        allowNonZeroExit: true,
+      },
+    );
+    const branch = result.stdout.trim();
+    return result.exitCode === 0 && branch.length > 0 ? branch : null;
+  });
+
+  const resolveRepositoryPathsLegacy = Effect.fn("resolveRepositoryPathsLegacy")(function* (
     cwd: string,
   ) {
     const commonDirResult = yield* executeGitWithStableDiagnostics(
@@ -1086,6 +1125,53 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return {
       gitCommonDir,
       worktreeRoot,
+      currentBranch,
+    } satisfies GitRepositoryPaths;
+  });
+
+  const resolveRepositoryPathsUncached = Effect.fn("resolveRepositoryPathsUncached")(function* (
+    cwd: string,
+  ) {
+    const args = ["rev-parse", "--git-common-dir", "--git-dir", "--show-toplevel"] as const;
+    const result = yield* executeGitWithStableDiagnostics(
+      "GitVcsDriver.resolveRepositoryPaths",
+      cwd,
+      args,
+      {
+        timeoutMs: 5_000,
+        allowNonZeroExit: true,
+      },
+    );
+    if (result.exitCode !== 0) {
+      return yield* resolveRepositoryPathsLegacy(cwd);
+    }
+
+    const [commonDirOutput, gitDirOutput, worktreeRootOutput, ...unexpected] = result.stdout
+      .trimEnd()
+      .split(/\r?\n/g)
+      .map((value) => value.trim());
+    if (unexpected.length > 0 || !commonDirOutput || !gitDirOutput || !worktreeRootOutput) {
+      return yield* resolveRepositoryPathsLegacy(cwd);
+    }
+
+    const resolvedGitCommonDir = path.isAbsolute(commonDirOutput)
+      ? path.normalize(commonDirOutput)
+      : path.resolve(cwd, commonDirOutput);
+    const gitCommonDir = yield* fileSystem
+      .realPath(resolvedGitCommonDir)
+      .pipe(Effect.orElseSucceed(() => resolvedGitCommonDir));
+    const gitDir = path.isAbsolute(gitDirOutput)
+      ? path.normalize(gitDirOutput)
+      : path.resolve(cwd, gitDirOutput);
+    const currentBranch = yield* resolveCurrentBranchFromGitDir(cwd, gitDir);
+
+    return {
+      gitCommonDir,
+      worktreeRoot: path.normalize(
+        path.isAbsolute(worktreeRootOutput)
+          ? worktreeRootOutput
+          : path.resolve(cwd, worktreeRootOutput),
+      ),
       currentBranch,
     } satisfies GitRepositoryPaths;
   });

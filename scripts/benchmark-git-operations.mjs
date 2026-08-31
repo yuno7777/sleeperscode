@@ -1,12 +1,15 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
+import * as NodeUtil from "node:util";
 
-const run = promisify(execFile);
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const run = NodeUtil.promisify(NodeChildProcess.execFile);
+const repositoryRoot = NodePath.resolve(
+  NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
+  "..",
+);
 
 function numericArgument(name, fallback) {
   const argument = process.argv.slice(2).find((value) => value.startsWith(`--${name}=`));
@@ -37,11 +40,11 @@ const operations = [
 
 /** A small repository with one commit, so repository size can be varied. */
 async function makeSmallRepository() {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "t3-git-bench-"));
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-git-bench-"));
   await run("git", ["init", "--quiet"], { cwd: directory });
   await run("git", ["config", "user.email", "bench@example.invalid"], { cwd: directory });
   await run("git", ["config", "user.name", "bench"], { cwd: directory });
-  await writeFile(path.join(directory, "README.md"), "benchmark fixture\n", "utf8");
+  await NodeFSP.writeFile(NodePath.join(directory, "README.md"), "benchmark fixture\n", "utf8");
   await run("git", ["add", "."], { cwd: directory });
   await run("git", ["commit", "--quiet", "-m", "fixture"], { cwd: directory });
   return directory;
@@ -51,6 +54,50 @@ async function timeOnce(cwd, args) {
   const startedAt = performance.now();
   await run("git", args, { cwd, maxBuffer: 64 * 1024 * 1024 });
   return performance.now() - startedAt;
+}
+
+async function resolveMetadataLegacy(cwd) {
+  const commonDir = await run("git", ["rev-parse", "--git-common-dir"], { cwd });
+  const [worktreeRoot, branch] = await Promise.all([
+    run("git", ["rev-parse", "--show-toplevel"], { cwd }),
+    run("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd }),
+  ]);
+  return {
+    commonDir: commonDir.stdout.trim(),
+    worktreeRoot: worktreeRoot.stdout.trim(),
+    branch: branch.stdout.trim(),
+  };
+}
+
+async function resolveMetadataCoalesced(cwd) {
+  const result = await run(
+    "git",
+    ["rev-parse", "--git-common-dir", "--git-dir", "--show-toplevel"],
+    { cwd },
+  );
+  const [commonDir, gitDir, worktreeRoot, ...unexpected] = result.stdout
+    .trimEnd()
+    .split(/\r?\n/g)
+    .map((value) => value.trim());
+  if (unexpected.length > 0 || !commonDir || !gitDir || !worktreeRoot) {
+    throw new Error("Coalesced Git metadata output was not the expected three lines.");
+  }
+  const head = (await NodeFSP.readFile(NodePath.resolve(cwd, gitDir, "HEAD"), "utf8")).trim();
+  const branchPrefix = "ref: refs/heads/";
+  if (!head.startsWith(branchPrefix)) {
+    throw new Error("Benchmark repositories must have a symbolic branch HEAD.");
+  }
+  return {
+    commonDir,
+    worktreeRoot,
+    branch: head.slice(branchPrefix.length),
+  };
+}
+
+async function timeMetadata(cwd, resolver) {
+  const startedAt = performance.now();
+  const metadata = await resolver(cwd);
+  return { elapsedMs: performance.now() - startedAt, metadata };
 }
 
 function statistics(samples) {
@@ -72,7 +119,7 @@ const repositories = reposArgument
   ? reposArgument
       .slice("--repos=".length)
       .split(",")
-      .map((value) => ({ label: value, path: path.resolve(value) }))
+      .map((value) => ({ label: value, path: NodePath.resolve(value) }))
   : [
       { label: "this monorepo", path: repositoryRoot },
       { label: "single-commit fixture", path: smallRepository },
@@ -83,11 +130,21 @@ const key = (repository, operation) => `${repository.label}\0${operation.name}`;
 const measurements = repositories.flatMap((repository) =>
   operations.map((operation) => ({ repository, operation })),
 );
+const metadataSamples = new Map(
+  repositories.map((repository) => [repository.label, { legacy: [], coalesced: [] }]),
+);
 for (const repository of repositories) {
   for (const operation of operations) {
     samples.set(key(repository, operation), []);
     for (let index = 0; index < warmups; index += 1) {
       await timeOnce(repository.path, operation.args);
+    }
+  }
+  for (let index = 0; index < warmups; index += 1) {
+    const legacy = await resolveMetadataLegacy(repository.path);
+    const coalesced = await resolveMetadataCoalesced(repository.path);
+    if (JSON.stringify(legacy) !== JSON.stringify(coalesced)) {
+      throw new Error(`Git metadata resolvers disagreed for ${repository.label}.`);
     }
   }
 }
@@ -96,13 +153,30 @@ for (const repository of repositories) {
 // load cannot favour whichever one happened to run first.
 try {
   for (let iteration = 0; iteration < repeat; iteration += 1) {
-    const ordered = iteration % 2 === 0 ? measurements : [...measurements].reverse();
+    const ordered = iteration % 2 === 0 ? measurements : measurements.toReversed();
     for (const { repository, operation } of ordered) {
       samples.get(key(repository, operation)).push(await timeOnce(repository.path, operation.args));
     }
+    for (const repository of repositories) {
+      const repositorySamples = metadataSamples.get(repository.label);
+      const orderedResolvers =
+        iteration % 2 === 0
+          ? [
+              ["legacy", resolveMetadataLegacy],
+              ["coalesced", resolveMetadataCoalesced],
+            ]
+          : [
+              ["coalesced", resolveMetadataCoalesced],
+              ["legacy", resolveMetadataLegacy],
+            ];
+      for (const [label, resolver] of orderedResolvers) {
+        const result = await timeMetadata(repository.path, resolver);
+        repositorySamples[label].push(result.elapsedMs);
+      }
+    }
   }
 } finally {
-  await rm(smallRepository, { recursive: true, force: true }).catch(() => undefined);
+  await NodeFSP.rm(smallRepository, { recursive: true, force: true }).catch(() => undefined);
 }
 
 const results = repositories.flatMap((repository) => {
@@ -119,7 +193,29 @@ const results = repositories.flatMap((repository) => {
     };
   });
 });
+const metadataResolution = repositories.map((repository) => {
+  const repositorySamples = metadataSamples.get(repository.label);
+  const legacy = statistics(repositorySamples.legacy);
+  const coalesced = statistics(repositorySamples.coalesced);
+  return {
+    repository: repository.label,
+    legacy,
+    coalesced,
+    meanImprovementPercent:
+      legacy.meanMs > 0 ? Math.max(0, (1 - coalesced.meanMs / legacy.meanMs) * 100) : 0,
+  };
+});
 
 process.stdout.write(
-  `${JSON.stringify({ repeat, warmups, repositories: repositories.map((entry) => entry.label), results }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      repeat,
+      warmups,
+      repositories: repositories.map((entry) => entry.label),
+      results,
+      metadataResolution,
+    },
+    null,
+    2,
+  )}\n`,
 );
