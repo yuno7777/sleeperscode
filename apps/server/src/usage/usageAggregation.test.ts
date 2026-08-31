@@ -93,6 +93,21 @@ describe("UsageAggregator", () => {
     expect(result.buckets[0]?.totals.outputTokens).toBe(50);
   });
 
+  it("does not invent API-equivalent cost when a provider disables model pricing", () => {
+    const result = aggregate([
+      record({
+        provider: "antigravity",
+        allowModelPricing: false,
+      }),
+    ]);
+
+    expect(result.buckets[0]?.costUsd).toBe(0);
+    expect(result.buckets[0]?.cacheSavingsUsd).toBe(0);
+    expect(result.buckets[0]?.costSource).toBe("unpriced");
+    expect(result.buckets[0]?.unpricedRecords).toBe(1);
+    expect(result.buckets[0]?.totals.outputTokens).toBe(50);
+  });
+
   it("prefers a reported cost over the rate table", () => {
     const result = aggregate([record({ reportedCostUsd: 1.25 })]);
 

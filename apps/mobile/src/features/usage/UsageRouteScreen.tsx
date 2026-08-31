@@ -636,10 +636,10 @@ function ProviderSection(props: {
               {metric === "cost"
                 ? hasCost
                   ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                  : `Cost unavailable · ${formatTokens(provider.totalTokens)} tokens`
+                  : `Cost not reported · ${formatTokens(provider.totalTokens)} tokens`
                 : hasCost
                   ? `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`
-                  : `${formatPercent(share)} of tokens · cost unavailable`}
+                  : `${formatPercent(share)} of tokens · cost not reported`}
             </Text>
           </View>
         );
@@ -738,7 +738,7 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
             <Text className="text-sm text-foreground-muted">
               {model.hasPricedUsage
                 ? `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`
-                : `Cost unavailable · ${formatTokens(model.totalTokens)} tokens`}
+                : `Cost not reported · ${formatTokens(model.totalTokens)} tokens`}
             </Text>
           </View>
           <Text className="text-base tabular-nums text-foreground">

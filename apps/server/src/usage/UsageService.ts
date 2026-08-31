@@ -571,6 +571,10 @@ export const make = Effect.gen(function* () {
               reasoningTokens: usage.reasoningTokens,
             },
             reportedCostUsd: null,
+            // Antigravity is subscription-backed and reports tokens but no
+            // charge. A matching Gemini API rate would imply money spent that
+            // the CLI never reported.
+            allowModelPricing: false,
             dedupeKey: `runtime-activity:${row.activityId}`,
           })
         ) {

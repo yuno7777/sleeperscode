@@ -254,10 +254,10 @@ export function UsagePage() {
                           {metric === "cost"
                             ? hasCost
                               ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                              : `Cost unavailable · ${formatTokens(provider.totalTokens)} tokens`
+                              : `Cost not reported · ${formatTokens(provider.totalTokens)} tokens`
                             : hasCost
                               ? `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`
-                              : `${formatPercent(share)} of tokens · cost unavailable`}
+                              : `${formatPercent(share)} of tokens · cost not reported`}
                         </span>
                       </div>
                     );

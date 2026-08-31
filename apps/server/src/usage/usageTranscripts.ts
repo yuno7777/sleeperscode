@@ -16,6 +16,11 @@ export interface UsageRecord {
   readonly totals: UsageTokenTotals;
   readonly reportedCostUsd: number | null;
   /**
+   * Whether a third-party API rate table may estimate this record's cost when
+   * the provider did not report one. Defaults to true for transcript sources.
+   */
+  readonly allowModelPricing?: boolean;
+  /**
    * Key for cross-file de-duplication, or `null` when the record is inherently
    * unique and needs no dedup.
    */
