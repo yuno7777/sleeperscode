@@ -3,10 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangleIcon, CheckCircle2Icon, CircleDotIcon, ShieldAlertIcon } from "lucide-react";
 import { useMemo } from "react";
 
+import { classifyAttentionThread, type AttentionKind } from "../../attention";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { Button } from "../ui/button";
-
-type AttentionKind = "approval" | "input" | "failed" | "plan" | "verification" | "working";
 
 type AttentionItem = {
   readonly thread: EnvironmentThreadShell;
@@ -14,58 +13,6 @@ type AttentionItem = {
   readonly title: string;
   readonly detail: string;
 };
-
-function classifyThread(thread: EnvironmentThreadShell, verified: boolean): AttentionItem | null {
-  if (thread.hasPendingApprovals) {
-    return {
-      thread,
-      kind: "approval",
-      title: "Approval needed",
-      detail: "Review the provider request.",
-    };
-  }
-  if (thread.hasPendingUserInput) {
-    return {
-      thread,
-      kind: "input",
-      title: "Input needed",
-      detail: "The agent is waiting for your answer.",
-    };
-  }
-  if (thread.session?.status === "error" || thread.latestTurn?.state === "error") {
-    return {
-      thread,
-      kind: "failed",
-      title: "Needs recovery",
-      detail: "The last run ended with an error.",
-    };
-  }
-  if (thread.hasActionableProposedPlan) {
-    return {
-      thread,
-      kind: "plan",
-      title: "Plan ready",
-      detail: "Review the plan before implementation starts.",
-    };
-  }
-  if (thread.session?.status === "running" || thread.session?.status === "starting") {
-    return {
-      thread,
-      kind: "working",
-      title: "Working",
-      detail: "The provider is still running this task.",
-    };
-  }
-  if (thread.latestTurn?.state === "completed" && !verified) {
-    return {
-      thread,
-      kind: "verification",
-      title: "Verification not recorded",
-      detail: "The agent finished, but no test, check, or build result was saved in its handoff.",
-    };
-  }
-  return null;
-}
 
 const ICONS = {
   approval: ShieldAlertIcon,
@@ -88,8 +35,11 @@ export function AttentionPage() {
         const handoff = projectById
           .get(thread.projectId)
           ?.handoffs?.find((entry) => entry.threadId === thread.id);
-        const item = classifyThread(thread, (handoff?.summary.verification.length ?? 0) > 0);
-        return item ? [item] : [];
+        const classification = classifyAttentionThread(
+          thread,
+          (handoff?.summary.verification.length ?? 0) > 0,
+        );
+        return classification ? [{ thread, ...classification }] : [];
       })
       .toSorted((left, right) => right.thread.updatedAt.localeCompare(left.thread.updatedAt));
   }, [projects, threads]);
