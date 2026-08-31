@@ -29,3 +29,7 @@ local rule and documentation paths, recent checkpoints, and other active work in
 After a task settles, T3 Code saves a local handoff draft with the files from its latest
 checkpoint. Add decisions, verification, and remaining work before you save it. Choose
 **Review and add to project notes** only when you want that handoff retained as a project note.
+
+To continue work with another provider, select its model in the composer, open the settled task's
+handoff, then choose **Continue with selected provider**. T3 Code starts a new thread from the
+reviewed summary and leaves the original provider session unchanged.

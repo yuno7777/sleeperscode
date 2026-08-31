@@ -1724,6 +1724,70 @@ function ChatViewContent(props: ChatViewProps) {
       setThreadError(activeThread.id, "Failed to add the handoff to project notes.");
     }
   }, [activeProject, activeThread, routeKind, updateProject]);
+  const continueFromProjectHandoff = useCallback(async () => {
+    if (!activeProject || !activeThread || routeKind !== "server") return;
+    const handoff = (activeProject.handoffs ?? []).find(
+      (entry) => entry.threadId === activeThread.id,
+    );
+    const sendContext = composerRef.current?.getSendContext();
+    if (!handoff || !sendContext?.providerAvailable) return;
+    const summary = [
+      `Continue work from thread: ${handoff.title}`,
+      ...(["changed", "decisions", "verification", "remaining"] as const).flatMap((field) =>
+        handoff.summary[field].length > 0
+          ? [`${field}:`, ...handoff.summary[field].map((item) => `- ${item}`)]
+          : [],
+      ),
+      "Preserve unrelated work. Inspect the current repository state before changing files.",
+    ].join("\n");
+    const nextThreadId = newThreadId();
+    const createdAt = new Date().toISOString();
+    const modelSelection = sendContext.selectedModelSelection;
+    const title = truncate(`Continue: ${handoff.title}`);
+    const createResult = await createThread({
+      environmentId: activeThread.environmentId,
+      input: {
+        threadId: nextThreadId,
+        projectId: activeProject.id,
+        title,
+        modelSelection,
+        runtimeMode,
+        interactionMode,
+        branch: activeThread.branch,
+        worktreePath: activeThread.worktreePath,
+        createdAt,
+      },
+    });
+    if (createResult._tag === "Failure") return;
+    const startResult = await startThreadTurn({
+      environmentId: activeThread.environmentId,
+      input: {
+        threadId: nextThreadId,
+        message: { messageId: newMessageId(), role: "user", text: summary, attachments: [] },
+        modelSelection,
+        titleSeed: title,
+        runtimeMode,
+        interactionMode,
+        createdAt,
+      },
+    });
+    if (startResult._tag === "Failure") return;
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: activeThread.environmentId, threadId: nextThreadId },
+    });
+  }, [
+    activeProject,
+    activeThread,
+    composerRef,
+    createThread,
+    environmentId,
+    interactionMode,
+    navigate,
+    routeKind,
+    runtimeMode,
+    startThreadTurn,
+  ]);
   useEffect(() => {
     if (
       !activeProject ||
@@ -6226,6 +6290,7 @@ function ChatViewContent(props: ChatViewProps) {
                     sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
                     onSaveHandoff={(summary) => void saveProjectHandoff(summary)}
                     onPromoteHandoff={() => void promoteProjectHandoff()}
+                    onContinueFromHandoff={() => void continueFromProjectHandoff()}
                   />
                 </div>
               ) : null}

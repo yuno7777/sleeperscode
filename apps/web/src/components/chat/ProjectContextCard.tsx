@@ -52,6 +52,7 @@ export function ProjectContextCard({
   sharedProviderConfiguration,
   onSaveHandoff,
   onPromoteHandoff,
+  onContinueFromHandoff,
 }: {
   readonly context: ProjectContextSnapshot | null;
   readonly isPending: boolean;
@@ -62,6 +63,7 @@ export function ProjectContextCard({
   readonly sharedProviderConfiguration?: ProjectSharedProviderConfiguration | undefined;
   readonly onSaveHandoff?: (summary: ProjectHandoffSummary) => void;
   readonly onPromoteHandoff?: () => void;
+  readonly onContinueFromHandoff?: () => void;
 }) {
   const handoff =
     (handoffs ?? context?.handoffs ?? []).find((entry) => entry.threadId === handoffThreadId) ??
@@ -201,6 +203,15 @@ export function ProjectContextCard({
                     onClick={onPromoteHandoff}
                   >
                     Review and add to project notes
+                  </button>
+                ) : null}
+                {onContinueFromHandoff ? (
+                  <button
+                    type="button"
+                    className="rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"
+                    onClick={onContinueFromHandoff}
+                  >
+                    Continue with selected provider
                   </button>
                 ) : null}
               </div>
