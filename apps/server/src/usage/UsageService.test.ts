@@ -43,7 +43,7 @@ describe("makeUsageProviderCoverage", () => {
       [codexBucket],
     );
 
-    expect(coverage.map((entry) => entry.provider)).toEqual(["codex", "antigravity"]);
+    expect(coverage.map((entry) => entry.provider)).toEqual(["codex", "antigravity", "opencode"]);
     expect(coverage[0]).toMatchObject({
       displayName: "Codex",
       reporting: "transcript",
