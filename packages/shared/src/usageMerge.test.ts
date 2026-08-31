@@ -305,16 +305,16 @@ describe("mergeUsage", () => {
   it("keeps installed provider coverage while de-duplicating the same host instance", () => {
     const coverage: UsageProviderCoverage = {
       hostId: "workstation",
-      instanceId: "antigravity" as UsageProviderCoverage["instanceId"],
-      provider: "antigravity" as UsageProviderCoverage["provider"],
-      displayName: "Antigravity",
+      instanceId: "opencode" as UsageProviderCoverage["instanceId"],
+      provider: "opencode" as UsageProviderCoverage["provider"],
+      displayName: "OpenCode",
       installed: true,
       enabled: true,
       authStatus: "unknown",
       routable: false,
-      reporting: "notReported",
+      reporting: "database",
       observed: false,
-      message: "This provider does not expose trustworthy durable usage totals yet.",
+      message: null,
     };
     const merged = mergeUsage(
       [
@@ -325,7 +325,8 @@ describe("mergeUsage", () => {
     );
 
     expect(merged.providerCoverage).toHaveLength(1);
-    expect(merged.providerCoverage[0]?.displayName).toBe("Antigravity");
+    expect(merged.providerCoverage[0]?.displayName).toBe("OpenCode");
+    expect(merged.providerCoverage[0]?.reporting).toBe("database");
     expect(merged.providerCoverage[0]?.environmentLabels).toEqual(["env-a", "env-b"]);
   });
 

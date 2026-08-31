@@ -265,6 +265,7 @@ const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersisten
 const UsageLayerLive = UsageService.layer.pipe(
   Layer.provide(ServerSettingsLayerLive),
   Layer.provide(PersistenceLayerLive),
+  Layer.provide(OpenCodeRuntime.OpenCodeRuntimeLive),
 );
 
 const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(

@@ -256,9 +256,11 @@ export function mergeUsage(
         reporting:
           existing.reporting === "transcript" || coverage.reporting === "transcript"
             ? "transcript"
-            : existing.reporting === "runtimeEvents" || coverage.reporting === "runtimeEvents"
-              ? "runtimeEvents"
-              : "notReported",
+            : existing.reporting === "database" || coverage.reporting === "database"
+              ? "database"
+              : existing.reporting === "runtimeEvents" || coverage.reporting === "runtimeEvents"
+                ? "runtimeEvents"
+                : "notReported",
         environmentLabels: existing.environmentLabels.includes(environment.label)
           ? existing.environmentLabels
           : [...existing.environmentLabels, environment.label],

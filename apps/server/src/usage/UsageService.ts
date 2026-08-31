@@ -31,6 +31,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -41,9 +42,15 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import { ServerConfig } from "../config.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import * as OpenCodeRuntime from "../provider/opencodeRuntime.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import {
+  decodeOpenCodeUsageRows,
+  openCodeUsageQuery,
+  toOpenCodeUsageRecord,
+} from "./opencodeUsage.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
 import { parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
@@ -239,6 +246,7 @@ export const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const httpClient = yield* HttpClient.HttpClient;
   const sql = yield* SqlClient.SqlClient;
+  const openCodeRuntime = yield* OpenCodeRuntime.OpenCodeRuntime;
 
   const listAntigravityRuntimeUsage = SqlSchema.findAll({
     Request: Schema.Struct({ since: Schema.String, until: Schema.String }),
@@ -341,8 +349,8 @@ export const make = Effect.gen(function* () {
       return nestedExists ? nested : path.join(homePath, "projects");
     });
 
-  /** Resolves the transcript directory for each provider. */
-  const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* () {
+  /** Resolves the provider-owned inputs used by the usage scan. */
+  const resolveUsageInputs = Effect.fn("UsageService.resolveUsageInputs")(function* () {
     // A settings failure must surface as an error: swallowing it here would
     // present "zero usage from every provider" as a valid answer.
     const settings = yield* settingsService.getSettings.pipe(
@@ -363,10 +371,56 @@ export const make = Effect.gen(function* () {
     const claudeDir = yield* resolveClaudeTranscriptDir(claudeHome);
     const codexLayout = yield* resolveCodexHomeLayout(settings.providers.codex);
 
-    return [
-      { provider: "claude" as const, dir: claudeDir },
-      { provider: "codex" as const, dir: path.join(codexLayout.sharedHomePath, "sessions") },
-    ];
+    return {
+      dirs: [
+        { provider: "claude" as const, dir: claudeDir },
+        { provider: "codex" as const, dir: path.join(codexLayout.sharedHomePath, "sessions") },
+      ],
+      openCodeBinaryPath: settings.providers.opencode.binaryPath,
+    };
+  });
+
+  const readOpenCodeUsage = Effect.fn("UsageService.readOpenCodeUsage")(function* (
+    binaryPath: string,
+    sinceMs: number,
+    untilMs: number,
+  ) {
+    const queryExit = yield* openCodeRuntime
+      .runOpenCodeCommand({
+        binaryPath,
+        args: ["db", openCodeUsageQuery(sinceMs, untilMs), "--format", "json"],
+      })
+      .pipe(Effect.exit);
+    if (Exit.isFailure(queryExit)) {
+      const error = Cause.squash(queryExit.cause);
+      return {
+        status:
+          OpenCodeRuntime.OpenCodeRuntimeError.is(error) && error.detail.includes("ENOENT")
+            ? ("missing" as const)
+            : ("failed" as const),
+        rows: null,
+        databasePath: null,
+      };
+    }
+    if (queryExit.value.code !== 0) {
+      return { status: "failed" as const, rows: null, databasePath: null };
+    }
+
+    const rows = yield* decodeOpenCodeUsageRows(queryExit.value.stdout).pipe(
+      Effect.orElseSucceed(() => null),
+    );
+    if (rows === null) {
+      return { status: "failed" as const, rows: null, databasePath: null };
+    }
+
+    const pathResult = yield* openCodeRuntime
+      .runOpenCodeCommand({ binaryPath, args: ["db", "path"] })
+      .pipe(Effect.orElseSucceed(() => null));
+    const databasePath =
+      pathResult !== null && pathResult.code === 0 && pathResult.stdout.trim().length > 0
+        ? pathResult.stdout.trim()
+        : null;
+    return { status: "ok" as const, rows, databasePath };
   });
 
   /**
@@ -449,7 +503,9 @@ export const make = Effect.gen(function* () {
     const hostId = NodeOS.hostname();
     // The home resolvers ask for `Path` themselves; satisfy them from the
     // instance we already hold so `readSummary` stays context-free.
-    const dirs = yield* resolveTranscriptDirs().pipe(Effect.provideService(Path.Path, path));
+    const { dirs, openCodeBinaryPath } = yield* resolveUsageInputs().pipe(
+      Effect.provideService(Path.Path, path),
+    );
     const windowStart = DateTime.make(`${input.sinceDay}T00:00:00Z`);
     if (Option.isNone(windowStart)) {
       return yield* new UsageReadError({
@@ -538,6 +594,48 @@ export const make = Effect.gen(function* () {
         runtimeRows === null
           ? "The local runtime usage ledger could not be read."
           : "Includes Antigravity turns run through Sleepers Code; external CLI sessions are not available.",
+    });
+
+    const openCodeUsage = Option.isNone(runtimeWindowEnd)
+      ? { status: "failed" as const, rows: null, databasePath: null }
+      : yield* readOpenCodeUsage(
+          openCodeBinaryPath,
+          windowStartMs,
+          DateTime.toEpochMillis(runtimeWindowEnd.value) + MTIME_SLACK_MS,
+        );
+    const openCodeSessions = new Set<string>();
+    if (openCodeUsage.rows !== null) {
+      for (const row of openCodeUsage.rows) {
+        const record = toOpenCodeUsageRecord(row);
+        if (aggregator.add(record) && record.sessionId.length > 0) {
+          openCodeSessions.add(record.sessionId);
+        }
+      }
+    }
+    const openCodeDatabasePath = openCodeUsage.databasePath;
+    const openCodeResolvedPath = openCodeDatabasePath ?? `opencode-db:${openCodeBinaryPath}`;
+    const openCodeVolumeId =
+      openCodeDatabasePath === null
+        ? ""
+        : yield* Effect.promise(() => readDirectoryVolumeId(path.dirname(openCodeDatabasePath)));
+    sources.push({
+      fingerprint: {
+        hostId,
+        provider: "opencode",
+        resolvedHomePath: openCodeResolvedPath,
+        volumeId: openCodeVolumeId,
+      },
+      status: openCodeUsage.status,
+      scannedFiles: openCodeUsage.rows === null ? 0 : 1,
+      skippedFiles: 0,
+      malformedRecords: 0,
+      distinctSessions: openCodeSessions.size,
+      message:
+        openCodeUsage.status === "ok"
+          ? null
+          : openCodeUsage.status === "missing"
+            ? "OpenCode is not installed on this environment."
+            : "The OpenCode usage database could not be read.",
     });
 
     for (const { provider, dir } of dirs) {

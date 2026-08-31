@@ -7,9 +7,12 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import type { UsageRecord } from "./usageTranscripts.ts";
+
 const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
 
 const OpenCodeUsageRow = Schema.Struct({
+  messageId: Schema.String,
   sessionId: Schema.String,
   timestampMs: NonNegativeNumber,
   providerId: Schema.String,
@@ -25,17 +28,36 @@ const OpenCodeUsageRow = Schema.Struct({
 export type OpenCodeUsageRow = typeof OpenCodeUsageRow.Type;
 
 const OpenCodeUsageRowsJson = Schema.fromJsonString(Schema.Array(OpenCodeUsageRow));
+const decodeOpenCodeUsageRowsJson = Schema.decodeEffect(OpenCodeUsageRowsJson);
 
 export class OpenCodeUsageDecodeError extends Data.TaggedError("OpenCodeUsageDecodeError")<{
   readonly detail: string;
 }> {}
 
 export const decodeOpenCodeUsageRows = (input: string) =>
-  Schema.decodeEffect(OpenCodeUsageRowsJson)(input).pipe(
+  decodeOpenCodeUsageRowsJson(input).pipe(
     Effect.mapError(
       () => new OpenCodeUsageDecodeError({ detail: "OpenCode returned invalid usage data." }),
     ),
   );
+
+export const toOpenCodeUsageRecord = (row: OpenCodeUsageRow): UsageRecord => ({
+  provider: "opencode",
+  timestampMs: row.timestampMs,
+  model: row.modelId.startsWith(`${row.providerId}/`)
+    ? row.modelId
+    : `${row.providerId}/${row.modelId}`,
+  sessionId: row.sessionId,
+  totals: {
+    uncachedInputTokens: row.inputTokens,
+    cachedInputTokens: row.cacheReadTokens,
+    cacheCreationTokens: row.cacheWriteTokens,
+    outputTokens: row.outputTokens,
+    reasoningTokens: Math.min(row.outputTokens, row.reasoningTokens),
+  },
+  reportedCostUsd: row.costUsd,
+  dedupeKey: `opencode-message:${row.messageId}`,
+});
 
 /**
  * Stable read-only query for OpenCode's local database. `time_updated` is the
@@ -44,6 +66,7 @@ export const decodeOpenCodeUsageRows = (input: string) =>
  */
 export const openCodeUsageQuery = (sinceMs: number, untilMs: number): string =>
   `SELECT
+    id AS messageId,
     session_id AS sessionId,
     time_updated AS timestampMs,
     json_extract(data, '$.providerID') AS providerId,
@@ -58,4 +81,6 @@ export const openCodeUsageQuery = (sinceMs: number, untilMs: number): string =>
   WHERE json_extract(data, '$.tokens') IS NOT NULL
     AND time_updated >= ${Math.max(0, Math.trunc(sinceMs))}
     AND time_updated <= ${Math.max(0, Math.trunc(untilMs))}
-  ORDER BY time_updated ASC, id ASC`;
+  ORDER BY time_updated ASC, id ASC`
+    .replace(/\s+/g, " ")
+    .trim();
