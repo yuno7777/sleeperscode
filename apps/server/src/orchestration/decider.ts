@@ -257,6 +257,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           sharedProviderConfiguration: {
             rulePaths: [],
             mcpServerNames: [],
+            mcpProfileName: null,
+            mcpToolCallBudget: null,
             recommendedRuntimeMode: null,
             recommendedInteractionMode: null,
           },

@@ -152,6 +152,16 @@ export const ProjectSharedProviderConfiguration = Schema.Struct({
   mcpServerNames: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(200))).check(
     Schema.isMaxLength(PROJECT_CONTEXT_MAX_DOCUMENTS),
   ),
+  // This is intentionally provider-neutral. It describes the project setup
+  // the team expects, but never writes credentials or CLI configuration.
+  mcpProfileName: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(80))).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  // Provider CLIs do not share one reliable enforcement API. Treat this as a
+  // visible per-turn budget: T3 reports when observed calls exceed it.
+  mcpToolCallBudget: Schema.NullOr(PositiveInt.check(Schema.isLessThanOrEqualTo(100))).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   recommendedRuntimeMode: Schema.NullOr(RuntimeMode),
   recommendedInteractionMode: Schema.NullOr(ProviderInteractionMode),
 });
@@ -160,6 +170,8 @@ export type ProjectSharedProviderConfiguration = typeof ProjectSharedProviderCon
 export const DEFAULT_PROJECT_SHARED_PROVIDER_CONFIGURATION: ProjectSharedProviderConfiguration = {
   rulePaths: [],
   mcpServerNames: [],
+  mcpProfileName: null,
+  mcpToolCallBudget: null,
   recommendedRuntimeMode: null,
   recommendedInteractionMode: null,
 };

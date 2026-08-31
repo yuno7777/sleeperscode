@@ -1,4 +1,5 @@
 import type {
+  OrchestrationThreadActivity,
   ProjectContextSnapshot,
   ProjectHandoff,
   ProjectHandoffSummary,
@@ -6,6 +7,7 @@ import type {
   ProjectSharedProviderConfiguration,
 } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
+import { deriveMcpDiagnostics } from "../../mcpDiagnostics";
 
 function StackSummary({ context }: { readonly context: ProjectContextSnapshot }) {
   const evidence = context.repositoryEvidence;
@@ -50,6 +52,7 @@ export function ProjectContextCard({
   handoffs,
   knowledgeNotes,
   sharedProviderConfiguration,
+  threadActivities,
   onSaveHandoff,
   onPromoteHandoff,
   onContinueFromHandoff,
@@ -61,6 +64,7 @@ export function ProjectContextCard({
   readonly handoffs?: ReadonlyArray<ProjectHandoff> | undefined;
   readonly knowledgeNotes?: ReadonlyArray<ProjectKnowledgeNote> | undefined;
   readonly sharedProviderConfiguration?: ProjectSharedProviderConfiguration | undefined;
+  readonly threadActivities?: ReadonlyArray<OrchestrationThreadActivity> | undefined;
   readonly onSaveHandoff?: (summary: ProjectHandoffSummary) => void;
   readonly onPromoteHandoff?: () => void;
   readonly onContinueFromHandoff?: () => void;
@@ -69,6 +73,7 @@ export function ProjectContextCard({
     (handoffs ?? context?.handoffs ?? []).find((entry) => entry.threadId === handoffThreadId) ??
     null;
   const [draft, setDraft] = useState<ProjectHandoffSummary | null>(handoff?.summary ?? null);
+  const mcpDiagnostics = deriveMcpDiagnostics(threadActivities ?? [], sharedProviderConfiguration);
   useEffect(() => setDraft(handoff?.summary ?? null), [handoff]);
   if (context === null && !isPending && error === null) return null;
   return (
@@ -113,6 +118,8 @@ export function ProjectContextCard({
           {sharedProviderConfiguration &&
           (sharedProviderConfiguration.rulePaths.length > 0 ||
             sharedProviderConfiguration.mcpServerNames.length > 0 ||
+            sharedProviderConfiguration.mcpProfileName !== null ||
+            sharedProviderConfiguration.mcpToolCallBudget !== null ||
             sharedProviderConfiguration.recommendedRuntimeMode !== null ||
             sharedProviderConfiguration.recommendedInteractionMode !== null) ? (
             <div className="min-w-0">
@@ -123,12 +130,43 @@ export function ProjectContextCard({
                 {[
                   ...sharedProviderConfiguration.rulePaths,
                   ...sharedProviderConfiguration.mcpServerNames.map((name) => `MCP: ${name}`),
+                  sharedProviderConfiguration.mcpProfileName
+                    ? `Profile: ${sharedProviderConfiguration.mcpProfileName}`
+                    : null,
+                  sharedProviderConfiguration.mcpToolCallBudget !== null
+                    ? `Budget: ${sharedProviderConfiguration.mcpToolCallBudget} calls/turn`
+                    : null,
                   sharedProviderConfiguration.recommendedRuntimeMode,
                   sharedProviderConfiguration.recommendedInteractionMode,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+            </div>
+          ) : null}
+          {mcpDiagnostics &&
+          (mcpDiagnostics.callCount > 0 || sharedProviderConfiguration?.mcpServerNames.length) ? (
+            <div className="min-w-0">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                MCP diagnostics
+              </p>
+              <p className="text-foreground">
+                {mcpDiagnostics.callCount === 0
+                  ? "No MCP calls observed in this thread"
+                  : `${mcpDiagnostics.callCount} observed call${mcpDiagnostics.callCount === 1 ? "" : "s"}: ${mcpDiagnostics.observedServers
+                      .map((server) => `${server.name} (${server.tools.join(", ")})`)
+                      .join(" · ")}`}
+              </p>
+              {mcpDiagnostics.budgetExceeded ? (
+                <p className="mt-1 text-amber-600 dark:text-amber-400">
+                  Advisory call budget exceeded. The provider controls enforcement.
+                </p>
+              ) : null}
+              {mcpDiagnostics.unexpectedServerNames.length > 0 ? (
+                <p className="mt-1 text-amber-600 dark:text-amber-400">
+                  Not in the shared profile: {mcpDiagnostics.unexpectedServerNames.join(", ")}
+                </p>
+              ) : null}
             </div>
           ) : null}
           {context.relatedThreads.length > 0 ? (

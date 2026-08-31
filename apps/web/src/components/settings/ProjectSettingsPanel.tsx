@@ -402,6 +402,8 @@ function ProjectDetail({
   const sharedProviderConfiguration = representative.sharedProviderConfiguration ?? {
     rulePaths: [],
     mcpServerNames: [],
+    mcpProfileName: null,
+    mcpToolCallBudget: null,
     recommendedRuntimeMode: null,
     recommendedInteractionMode: null,
   };
@@ -411,12 +413,24 @@ function ProjectDetail({
   const [sharedMcpServersInput, setSharedMcpServersInput] = useState(
     sharedProviderConfiguration.mcpServerNames.join(", "),
   );
+  const [sharedMcpProfileNameInput, setSharedMcpProfileNameInput] = useState(
+    sharedProviderConfiguration.mcpProfileName ?? "",
+  );
+  const [sharedMcpToolCallBudgetInput, setSharedMcpToolCallBudgetInput] = useState(
+    sharedProviderConfiguration.mcpToolCallBudget?.toString() ?? "",
+  );
   useEffect(() => {
     setSharedRulePathsInput(sharedProviderConfiguration.rulePaths.join(", "));
     setSharedMcpServersInput(sharedProviderConfiguration.mcpServerNames.join(", "));
+    setSharedMcpProfileNameInput(sharedProviderConfiguration.mcpProfileName ?? "");
+    setSharedMcpToolCallBudgetInput(
+      sharedProviderConfiguration.mcpToolCallBudget?.toString() ?? "",
+    );
   }, [
     representative.id,
+    sharedProviderConfiguration.mcpProfileName,
     sharedProviderConfiguration.mcpServerNames,
+    sharedProviderConfiguration.mcpToolCallBudget,
     sharedProviderConfiguration.rulePaths,
   ]);
   const saveSharedProviderConfiguration = useCallback(
@@ -427,11 +441,17 @@ function ProjectDetail({
           .map((entry) => entry.trim())
           .filter(Boolean)
           .slice(0, 24);
+      const parsedBudget = Number.parseInt(sharedMcpToolCallBudgetInput, 10);
       return updateAllMembers(
         {
           sharedProviderConfiguration: {
             rulePaths: split(sharedRulePathsInput),
             mcpServerNames: split(sharedMcpServersInput),
+            mcpProfileName: sharedMcpProfileNameInput.trim() || null,
+            mcpToolCallBudget:
+              Number.isInteger(parsedBudget) && parsedBudget >= 1 && parsedBudget <= 100
+                ? parsedBudget
+                : null,
             recommendedRuntimeMode: sharedProviderConfiguration.recommendedRuntimeMode,
             recommendedInteractionMode: sharedProviderConfiguration.recommendedInteractionMode,
             ...overrides,
@@ -440,7 +460,14 @@ function ProjectDetail({
         "Failed to update shared agent setup",
       );
     },
-    [sharedMcpServersInput, sharedProviderConfiguration, sharedRulePathsInput, updateAllMembers],
+    [
+      sharedMcpProfileNameInput,
+      sharedMcpServersInput,
+      sharedMcpToolCallBudgetInput,
+      sharedProviderConfiguration,
+      sharedRulePathsInput,
+      updateAllMembers,
+    ],
   );
 
   // ----- favicon -----
@@ -951,6 +978,24 @@ function ProjectDetail({
                 placeholder="MCP servers: github, linear"
                 aria-label="Shared project MCP server names"
               />
+              <div className="grid w-full gap-2 sm:grid-cols-2">
+                <Input
+                  value={sharedMcpProfileNameInput}
+                  onChange={(event) => setSharedMcpProfileNameInput(event.target.value)}
+                  placeholder="Profile: code review"
+                  aria-label="Shared MCP profile name"
+                />
+                <Input
+                  value={sharedMcpToolCallBudgetInput}
+                  onChange={(event) => setSharedMcpToolCallBudgetInput(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="Advisory calls per turn"
+                  aria-label="Advisory MCP call budget per turn"
+                />
+              </div>
+              <p className="text-left text-xs text-muted-foreground sm:self-start">
+                T3 reports the budget after a turn. Provider CLIs keep control of MCP execution.
+              </p>
               <Button
                 size="xs"
                 variant="outline"

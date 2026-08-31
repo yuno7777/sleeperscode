@@ -6288,6 +6288,7 @@ function ChatViewContent(props: ChatViewProps) {
                     handoffs={activeProject?.handoffs}
                     knowledgeNotes={activeProject?.knowledgeNotes}
                     sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
+                    threadActivities={threadActivities}
                     onSaveHandoff={(summary) => void saveProjectHandoff(summary)}
                     onPromoteHandoff={() => void promoteProjectHandoff()}
                     onContinueFromHandoff={() => void continueFromProjectHandoff()}
@@ -6353,6 +6354,7 @@ function ChatViewContent(props: ChatViewProps) {
                           handoffs={activeProject?.handoffs}
                           knowledgeNotes={activeProject?.knowledgeNotes}
                           sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
+                          threadActivities={threadActivities}
                         />
                       </div>
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />

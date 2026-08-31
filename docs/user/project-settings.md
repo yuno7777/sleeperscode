@@ -21,6 +21,11 @@ Under **Settings** → **Projects** → **Shared agent setup**, you can save rul
 names, and a recommended runtime mode for a project. These are shared suggestions for every
 provider, not provider credentials or command-line settings.
 
+You can also name the MCP profile and set an advisory number of MCP calls per turn. The context
+card reports the servers and tools actually observed in a thread, flags servers outside the shared
+profile, and calls out a budget overrun. T3 Code does not claim to block those calls because each
+provider CLI owns its own MCP execution policy.
+
 When you start a new thread, T3 Code shows the project context card with the detected stack,
 local rule and documentation paths, recent checkpoints, and other active work in the project.
 

@@ -505,6 +505,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             sharedProviderConfiguration: event.payload.sharedProviderConfiguration ?? {
               rulePaths: [],
               mcpServerNames: [],
+              mcpProfileName: null,
+              mcpToolCallBudget: null,
               recommendedRuntimeMode: null,
               recommendedInteractionMode: null,
             },

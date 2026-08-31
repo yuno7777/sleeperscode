@@ -4,7 +4,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 const columns = [
   [
     "shared_provider_configuration_json",
-    '{"rulePaths":[],"mcpServerNames":[],"recommendedRuntimeMode":null,"recommendedInteractionMode":null}',
+    '{"rulePaths":[],"mcpServerNames":[],"mcpProfileName":null,"mcpToolCallBudget":null,"recommendedRuntimeMode":null,"recommendedInteractionMode":null}',
   ],
   ["handoffs_json", "[]"],
   ["knowledge_notes_json", "[]"],

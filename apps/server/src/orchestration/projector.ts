@@ -220,6 +220,8 @@ export function projectEvent(
             sharedProviderConfiguration: payload.sharedProviderConfiguration ?? {
               rulePaths: [],
               mcpServerNames: [],
+              mcpProfileName: null,
+              mcpToolCallBudget: null,
               recommendedRuntimeMode: null,
               recommendedInteractionMode: null,
             },
