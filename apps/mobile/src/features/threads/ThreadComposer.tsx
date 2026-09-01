@@ -14,6 +14,7 @@ import {
   serializeComposerFileLink,
   type ComposerTrigger,
 } from "@t3tools/shared/composerTrigger";
+import { providerTurnInteraction } from "@t3tools/client-runtime/provider-turn-interaction";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -341,6 +342,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ) ?? null
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
+  const activeProviderInteraction = providerTurnInteraction(selectedProviderStatus?.driver);
+  const canSubmit =
+    canSend && !(showStopAction && activeProviderInteraction.kind === "unsupported");
 
   // ── Trigger detection ────────────────────────────────────
   const [composerSelection, setComposerSelection] = useState(() => ({
@@ -770,7 +774,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 <ControlPill
                   icon="arrow.up"
                   variant="primary"
-                  disabled={!canSend}
+                  disabled={!canSubmit}
                   onPress={handleSend}
                 />
               )}
@@ -815,7 +819,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 accessibilityLabel={sendLabel}
                 icon="arrow.up"
                 variant="primary"
-                disabled={!canSend}
+                disabled={!canSubmit}
                 onPress={handleSend}
                 showChevron={false}
               />
@@ -831,6 +835,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               automatically.
             </Text>
           </Animated.View>
+        ) : null}
+        {showStopAction ? (
+          <Text className="pt-2 text-xs text-foreground-muted">
+            {activeProviderInteraction.label}
+          </Text>
         ) : null}
       </Animated.View>
 

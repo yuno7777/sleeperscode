@@ -55,6 +55,10 @@
       "types": "./src/providerQuota.ts",
       "default": "./src/providerQuota.ts"
     },
+    "./provider-turn-interaction": {
+      "types": "./src/providerTurnInteraction.ts",
+      "default": "./src/providerTurnInteraction.ts"
+    },
     "./review-gate": {
       "types": "./src/reviewGate.ts",
       "default": "./src/reviewGate.ts"
