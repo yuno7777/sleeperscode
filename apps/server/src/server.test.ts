@@ -8241,7 +8241,11 @@ it.live(
               }),
             (harness) => harness.dispose,
           ).pipe(Effect.provide(NodeHttpServerTestWithWsDeflate)),
-        { concurrency: 1 },
+        // Each provider owns its own temporary Git workspace, database, and
+        // HTTP server. Run the independent transfer measurements together so
+        // this byte-budget check does not spend its whole watchdog waiting for
+        // the second provider to start.
+        { concurrency: 2 },
       );
 
       const report = formatTransferBudgetReport(runs);
