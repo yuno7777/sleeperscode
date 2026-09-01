@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeFSP from "node:fs/promises";
 import { it, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -36,6 +37,11 @@ const makeTempDir = Effect.gen(function* () {
     prefix: "t3code-workspace-files-",
   });
 });
+
+// Node's realpath canonicalizes Windows 8.3 aliases while Effect's test
+// filesystem preserves the input spelling. Match the implementation boundary
+// when asserting paths reported by WorkspaceFileSystem.
+const resolveWithNode = (path: string) => Effect.promise(() => NodeFSP.realpath(path));
 
 const writeTextFile = Effect.fn("writeTextFile")(function* (
   cwd: string,
@@ -104,8 +110,8 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         const error = yield* workspaceFileSystem
           .readFile({ cwd, relativePath: "linked-secret.txt" })
           .pipe(Effect.flip);
-        const resolvedWorkspaceRoot = yield* fileSystem.realPath(cwd);
-        const resolvedPath = yield* fileSystem.realPath(path.join(outsideDir, "secret.txt"));
+        const resolvedWorkspaceRoot = yield* resolveWithNode(cwd);
+        const resolvedPath = yield* resolveWithNode(path.join(outsideDir, "secret.txt"));
 
         expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
         expect(error).toMatchObject({
@@ -129,7 +135,7 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         const error = yield* workspaceFileSystem
           .readFile({ cwd, relativePath: "src" })
           .pipe(Effect.flip);
-        const resolvedPath = yield* fileSystem.realPath(path.join(cwd, "src"));
+        const resolvedPath = yield* resolveWithNode(path.join(cwd, "src"));
 
         expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathNotFileError);
         expect(error).toMatchObject({
@@ -153,7 +159,7 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         const error = yield* workspaceFileSystem
           .readFile({ cwd, relativePath: "asset.bin" })
           .pipe(Effect.flip);
-        const resolvedPath = yield* fileSystem.realPath(absolutePath);
+        const resolvedPath = yield* resolveWithNode(absolutePath);
 
         expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceBinaryFileError);
         expect(error).toMatchObject({
