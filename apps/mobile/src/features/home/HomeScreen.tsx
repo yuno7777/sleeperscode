@@ -8,6 +8,10 @@ import {
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import {
+  classifyAttentionThread,
+  type AttentionClassification,
+} from "@t3tools/client-runtime/attention";
+import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
@@ -196,6 +200,48 @@ function deriveEmptyState(props: {
 
 function HomeTopContentSpacer() {
   return <View className="h-4" />;
+}
+
+function AttentionQueue(props: {
+  readonly items: ReadonlyArray<{
+    readonly thread: EnvironmentThreadShell;
+    readonly classification: AttentionClassification;
+  }>;
+  readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
+}) {
+  if (props.items.length === 0) return null;
+  const visible = props.items.slice(0, 3);
+  return (
+    <View className="px-4 pb-2 pt-3">
+      <Text className="pb-2 text-xs font-t3-bold uppercase tracking-widest text-foreground-muted">
+        Needs your attention ({props.items.length})
+      </Text>
+      <View className="overflow-hidden rounded-xl border border-border bg-card">
+        {visible.map(({ thread, classification }, index) => (
+          <Pressable
+            key={`${thread.environmentId}:${thread.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={`${thread.title}: ${classification.title}`}
+            accessibilityHint="Opens this thread"
+            onPress={() => props.onSelectThread(thread)}
+            className="px-3 py-3 active:opacity-70"
+            style={({ pressed }) => ({
+              opacity: pressed ? 0.65 : 1,
+              borderBottomWidth: index < visible.length - 1 ? 1 : 0,
+              borderBottomColor: "rgba(127,127,127,0.2)",
+            })}
+          >
+            <Text className="text-sm font-t3-bold text-foreground" numberOfLines={1}>
+              {thread.title}
+            </Text>
+            <Text className="pt-0.5 text-xs text-foreground-muted" numberOfLines={1}>
+              {classification.title} · {classification.detail}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 /* ─── Main screen ────────────────────────────────────────────────────── */
@@ -1025,6 +1071,25 @@ export function HomeScreen(props: HomeScreenProps) {
     projectCount: props.projects.length,
   });
 
+  const attentionItems = useMemo(
+    () =>
+      props.threads
+        .filter((thread) => thread.archivedAt === null)
+        .flatMap((thread) => {
+          const handoff = projectByKey
+            .get(scopedProjectKey(thread.environmentId, thread.projectId))
+            ?.handoffs.find((entry) => entry.threadId === thread.id);
+          const classification = classifyAttentionThread(
+            thread,
+            (handoff?.summary.verification.length ?? 0) > 0,
+          );
+          return classification === null ? [] : [{ thread, classification }];
+        })
+        .filter((item) => item.classification.kind !== "working")
+        .toSorted((left, right) => right.thread.updatedAt.localeCompare(left.thread.updatedAt)),
+    [projectByKey, props.threads],
+  );
+
   if (!hasAnyThreads) {
     return (
       <View
@@ -1052,7 +1117,12 @@ export function HomeScreen(props: HomeScreenProps) {
     );
   }
 
-  const listHeader = Platform.OS === "ios" ? null : <HomeTopContentSpacer />;
+  const listHeader = (
+    <>
+      {Platform.OS === "ios" ? null : <HomeTopContentSpacer />}
+      <AttentionQueue items={attentionItems} onSelectThread={props.onSelectThread} />
+    </>
+  );
 
   // Project scoping lives in the header filter menu (no inline chip row on
   // mobile — the menu is the one filter surface).
