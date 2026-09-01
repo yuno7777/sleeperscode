@@ -1,3 +1,4 @@
+import * as NodeFSP from "node:fs/promises";
 import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
 import * as Data from "effect/Data";
@@ -253,7 +254,7 @@ function paginateBranches(input: {
   };
 }
 
-function parseWorktreeBranchPaths(stdout: string): ReadonlyMap<string, string> {
+export function parseWorktreeBranchPaths(stdout: string): ReadonlyMap<string, string> {
   const worktreePaths = new Map<string, string>();
   let currentPath: string | null = null;
   let currentBranch: string | null = null;
@@ -1047,6 +1048,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return result.exitCode === 0 && branch.length > 0 ? branch : null;
   });
 
+  const resolveGitPath = (value: string) =>
+    Effect.promise(() => NodeFSP.realpath(value)).pipe(Effect.orElseSucceed(() => value));
+
   const resolveRepositoryPathsLegacy = Effect.fn("resolveRepositoryPathsLegacy")(function* (
     cwd: string,
   ) {
@@ -1081,9 +1085,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const resolvedGitCommonDir = path.isAbsolute(commonDirOutput)
       ? path.normalize(commonDirOutput)
       : path.resolve(cwd, commonDirOutput);
-    const gitCommonDir = yield* fileSystem
-      .realPath(resolvedGitCommonDir)
-      .pipe(Effect.orElseSucceed(() => resolvedGitCommonDir));
+    const gitCommonDir = yield* resolveGitPath(resolvedGitCommonDir);
     const [worktreeRootResult, currentBranchResult] = yield* Effect.all(
       [
         executeGit(
@@ -1157,9 +1159,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const resolvedGitCommonDir = path.isAbsolute(commonDirOutput)
       ? path.normalize(commonDirOutput)
       : path.resolve(cwd, commonDirOutput);
-    const gitCommonDir = yield* fileSystem
-      .realPath(resolvedGitCommonDir)
-      .pipe(Effect.orElseSucceed(() => resolvedGitCommonDir));
+    const gitCommonDir = yield* resolveGitPath(resolvedGitCommonDir);
     const gitDir = path.isAbsolute(gitDirOutput)
       ? path.normalize(gitDirOutput)
       : path.resolve(cwd, gitDirOutput);

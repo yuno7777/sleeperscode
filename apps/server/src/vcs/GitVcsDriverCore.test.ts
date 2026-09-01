@@ -1,3 +1,4 @@
+import * as NodeFSP from "node:fs/promises";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, describe } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -16,7 +17,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type ReviewDiffFileContentsInput } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
-import { makeGitVcsDriverCore, splitNullSeparatedGitStdoutPaths } from "./GitVcsDriverCore.ts";
+import {
+  makeGitVcsDriverCore,
+  parseWorktreeBranchPaths,
+  splitNullSeparatedGitStdoutPaths,
+} from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -619,7 +624,6 @@ it.effect("backs off failed upstream refreshes across linked worktrees", () =>
       const driver = yield* makeGitVcsDriverCore().pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, failingFetchSpawner),
       );
-      const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* makeTmpDir();
       const remote = yield* makeTmpDir("git-vcs-driver-remote-");
       const worktreesRoot = yield* makeTmpDir("git-vcs-driver-worktrees-");
@@ -656,8 +660,10 @@ it.effect("backs off failed upstream refreshes across linked worktrees", () =>
         "--git-common-dir",
       ])).stdout.trim();
       assert.equal(
-        yield* fileSystem.realPath(pathService.resolve(cwd, rootCommonDir)),
-        yield* fileSystem.realPath(pathService.resolve(worktreePath, linkedCommonDir)),
+        yield* Effect.promise(() => NodeFSP.realpath(pathService.resolve(cwd, rootCommonDir))),
+        yield* Effect.promise(() =>
+          NodeFSP.realpath(pathService.resolve(worktreePath, linkedCommonDir)),
+        ),
       );
       yield* Ref.set(fetchAttempts, 0);
 
@@ -1359,29 +1365,15 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
   describe("worktree operations", () => {
     it.effect("preserves newline characters in worktree paths when listing refs", () =>
-      Effect.gen(function* () {
-        const cwd = yield* makeTmpDir();
-        yield* initRepoWithCommit(cwd);
-        const worktreesRoot = yield* makeTmpDir("git-vcs-driver-worktrees-");
-        const fileSystem = yield* FileSystem.FileSystem;
-        const pathService = yield* Path.Path;
-        const worktreePath = pathService.join(worktreesRoot, "linked\nworktree");
-        const driver = yield* GitVcsDriver.GitVcsDriver;
-
-        yield* git(cwd, ["worktree", "add", "-b", "feature/newline-path", worktreePath]);
-
-        const refs = yield* driver.listRefs({ cwd, refresh: true });
-        const listedPath = refs.refs.find(
-          (ref) => ref.name === "feature/newline-path",
-        )?.worktreePath;
-
-        if (typeof listedPath !== "string") {
-          return assert.fail("expected the linked branch to include its worktree path");
-        }
-        assert.equal(
-          yield* fileSystem.realPath(listedPath),
-          yield* fileSystem.realPath(worktreePath),
+      Effect.sync(() => {
+        const worktreePath = "/workspace/linked\nworktree";
+        // Git for Windows rejects newline worktree paths, but its `-z` output can
+        // still contain them when a repository created elsewhere is inspected.
+        const paths = parseWorktreeBranchPaths(
+          `worktree ${worktreePath}\0HEAD deadbeef\0branch refs/heads/feature/newline-path\0\0`,
         );
+
+        assert.equal(paths.get("feature/newline-path"), worktreePath);
       }),
     );
 
