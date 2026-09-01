@@ -11,6 +11,14 @@
       "types": "./src/attention.ts",
       "default": "./src/attention.ts"
     },
+    "./continuation-packet": {
+      "types": "./src/continuationPacket.ts",
+      "default": "./src/continuationPacket.ts"
+    },
+    "./context-compaction": {
+      "types": "./src/contextCompaction.ts",
+      "default": "./src/contextCompaction.ts"
+    },
     "./connection": {
       "types": "./src/connection/index.ts",
       "default": "./src/connection/index.ts"
@@ -42,6 +50,10 @@
     "./platform": {
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
+    },
+    "./provider-quota": {
+      "types": "./src/providerQuota.ts",
+      "default": "./src/providerQuota.ts"
     },
     "./relay": {
       "types": "./src/relay/index.ts",

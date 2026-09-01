@@ -12,6 +12,9 @@ import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
 } from "@t3tools/client-runtime/state/threads";
+import { deriveContextCompactionRecovery } from "@t3tools/client-runtime/context-compaction";
+import { deriveContinuationPacket } from "@t3tools/client-runtime/continuation-packet";
+import { deriveProviderQuotaStatus } from "@t3tools/client-runtime/provider-quota";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -194,6 +197,27 @@ function ThreadRouteContent(
     useThreadSelection();
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
+  const continuationPacket = useMemo(() => {
+    if (selectedThreadDetail === null) return null;
+    const quotaStatus = deriveProviderQuotaStatus(selectedThreadDetail.activities);
+    const compactionRecovery = deriveContextCompactionRecovery({
+      activities: selectedThreadDetail.activities,
+      checkpoints: selectedThreadDetail.checkpoints.map((checkpoint) => ({
+        threadId: selectedThreadDetail.id,
+        turnCount: checkpoint.checkpointTurnCount,
+        fileCount: checkpoint.files.length,
+        completedAt: checkpoint.completedAt,
+      })),
+      threadId: selectedThreadDetail.id,
+    });
+    return deriveContinuationPacket({
+      activities: selectedThreadDetail.activities,
+      checkpoints: selectedThreadDetail.checkpoints,
+      thread: selectedThreadDetail,
+      quotaExhausted: quotaStatus?.exhausted === true,
+      compactionNeedsCheckpoint: compactionRecovery?.checkpointedAfterCompaction === false,
+    });
+  }, [selectedThreadDetail]);
   // "Load earlier turns" header state for windowed (paginated) thread loads.
   const loadEarlierTurns = useMemo(() => {
     if (selectedThread === null || !threadHasOlderTurns(selectedThreadDetailState)) {
@@ -773,6 +797,7 @@ function ThreadRouteContent(
           connectionError={routeConnectionError}
           environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
           selectedThreadFeed={composer.selectedThreadFeed}
+          continuationPacket={continuationPacket}
           activeWorkStartedAt={composer.activeWorkStartedAt}
           activePendingApproval={requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}

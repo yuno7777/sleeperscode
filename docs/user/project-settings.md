@@ -65,3 +65,4 @@ reviewed summary and leaves the original provider session unchanged.
 When a provider explicitly reports that a rate limit is exhausted, the handoff card calls this out.
 It does not switch providers automatically. Save the handoff, select an available provider, and
 continue from the reviewed summary.
+Mobile shows the same observed continuation evidence above the composer after a turn settles. It is read-only there; use the web or desktop project context card to review and edit a saved handoff.

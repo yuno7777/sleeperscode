@@ -1,4 +1,5 @@
 import { type EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import type { ContinuationPacket } from "@t3tools/client-runtime/continuation-packet";
 import type { EnvironmentThreadStatus } from "@t3tools/client-runtime/state/threads";
 import { useKeyboardChatComposerInset, useKeyboardScrollToEnd } from "@legendapp/list/keyboard";
 import type { LegendListRef } from "@legendapp/list/react-native";
@@ -33,6 +34,7 @@ import type {
   ThreadFeedEntry,
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
+import { ContinuationPacketCard, hasContinuationEvidence } from "./ContinuationPacketCard";
 import { PendingUserInputCard } from "./PendingUserInputCard";
 import {
   COMPOSER_COLLAPSED_CHROME,
@@ -49,6 +51,7 @@ export interface ThreadDetailScreenProps {
   readonly connectionError: string | null;
   readonly environmentLabel: string | null;
   readonly selectedThreadFeed: ReadonlyArray<ThreadFeedEntry>;
+  readonly continuationPacket: ContinuationPacket | null;
   readonly activeWorkStartedAt: string | null;
   readonly activePendingApproval: PendingApproval | null;
   readonly respondingApprovalId: ApprovalRequestId | null;
@@ -416,6 +419,13 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     />
                   ) : null}
                 </Animated.View>
+              ) : null}
+              {!props.activeThreadBusy &&
+              props.continuationPacket !== null &&
+              hasContinuationEvidence(props.continuationPacket) ? (
+                <View className="shrink-0 px-4 pb-3">
+                  <ContinuationPacketCard packet={props.continuationPacket} />
+                </View>
               ) : null}
             </View>
 
