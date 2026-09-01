@@ -49,8 +49,14 @@ local rule and documentation paths, recent checkpoints, and other active work in
 ## Save a handoff
 
 After a task settles, T3 Code saves a local handoff draft with the files from its latest
-checkpoint. Add decisions, verification, and remaining work before you save it. Choose
+checkpoint. It also includes only explicit provider command receipts that reported exit code zero.
+The context card shows those receipts and provider-reported web research as a reviewable
+continuation packet. Add decisions and review its remaining work before you save it. Choose
 **Review and add to project notes** only when you want that handoff retained as a project note.
+
+Use **Apply observed evidence** to merge the packet into your editable handoff. T3 Code does not
+infer passing verification from assistant prose, and source links are evidence from the provider
+session rather than an endorsement of their content.
 
 To continue work with another provider, select its model in the composer, open the settled task's
 handoff, then choose **Continue with selected provider**. T3 Code starts a new thread from the

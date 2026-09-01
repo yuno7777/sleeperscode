@@ -219,6 +219,9 @@ import { useKnownTerminalSessions, useThreadRunningTerminalIds } from "../state/
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { useProjectContext } from "../state/queries";
+import { deriveContextCompactionRecovery } from "../contextCompaction";
+import { deriveProviderQuotaStatus } from "../providerQuota";
+import { continuationPacketHandoff, deriveContinuationPacket } from "../projectEvidence";
 import {
   primaryServerAvailableEditorsAtom,
   primaryServerKeybindingsAtom,
@@ -1801,13 +1804,25 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
     handoffAutoSaveRef.current = activeThread.id;
-    const checkpoint = activeThread.checkpoints.at(-1);
-    void saveProjectHandoff({
-      changed: checkpoint?.files.map((file) => file.path).slice(0, 24) ?? [],
-      decisions: [],
-      verification: [],
-      remaining: [],
+    const compactionRecovery = deriveContextCompactionRecovery({
+      activities: activeThread.activities,
+      checkpoints: activeThread.checkpoints.map((checkpoint) => ({
+        threadId: activeThread.id,
+        turnCount: checkpoint.checkpointTurnCount,
+        fileCount: checkpoint.files.length,
+        completedAt: checkpoint.completedAt,
+      })),
+      threadId: activeThread.id,
     });
+    const packet = deriveContinuationPacket({
+      activities: activeThread.activities,
+      checkpoints: activeThread.checkpoints,
+      thread: activeThread,
+      quotaExhausted: deriveProviderQuotaStatus(activeThread.activities)?.exhausted ?? false,
+      compactionNeedsCheckpoint:
+        compactionRecovery !== null && !compactionRecovery.checkpointedAfterCompaction,
+    });
+    void saveProjectHandoff(continuationPacketHandoff(packet));
   }, [activeProject, activeThread, latestTurnSettled, routeKind, saveProjectHandoff]);
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
@@ -6289,6 +6304,7 @@ function ChatViewContent(props: ChatViewProps) {
                     knowledgeNotes={activeProject?.knowledgeNotes}
                     sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
                     threadActivities={threadActivities}
+                    thread={activeThread}
                     onSaveHandoff={(summary) => void saveProjectHandoff(summary)}
                     onPromoteHandoff={() => void promoteProjectHandoff()}
                     onContinueFromHandoff={() => void continueFromProjectHandoff()}
@@ -6355,6 +6371,7 @@ function ChatViewContent(props: ChatViewProps) {
                           knowledgeNotes={activeProject?.knowledgeNotes}
                           sharedProviderConfiguration={activeProject?.sharedProviderConfiguration}
                           threadActivities={threadActivities}
+                          thread={activeThread}
                         />
                       </div>
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />

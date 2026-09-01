@@ -1,5 +1,6 @@
 import type {
   OrchestrationThreadActivity,
+  OrchestrationThread,
   ProjectContextSnapshot,
   ProjectHandoff,
   ProjectHandoffSummary,
@@ -10,6 +11,31 @@ import { useEffect, useState } from "react";
 import { deriveMcpDiagnostics } from "../../mcpDiagnostics";
 import { deriveProviderQuotaStatus } from "../../providerQuota";
 import { deriveContextCompactionRecovery } from "../../contextCompaction";
+import { continuationPacketHandoff, deriveContinuationPacket } from "../../projectEvidence";
+
+const EMPTY_HANDOFF: ProjectHandoffSummary = {
+  changed: [],
+  decisions: [],
+  verification: [],
+  remaining: [],
+};
+
+function mergeHandoff(
+  current: ProjectHandoffSummary,
+  observed: ProjectHandoffSummary,
+): ProjectHandoffSummary {
+  const unique = (values: ReadonlyArray<string>) => [...new Set(values)].slice(0, 24);
+  return {
+    changed: unique([...current.changed, ...observed.changed]),
+    decisions: current.decisions,
+    verification: unique([...current.verification, ...observed.verification]),
+    remaining: unique([...current.remaining, ...observed.remaining]),
+  };
+}
+
+function safeExternalUrl(value: string | null): string | null {
+  return value && /^https?:\/\//iu.test(value) ? value : null;
+}
 
 function StackSummary({ context }: { readonly context: ProjectContextSnapshot }) {
   const evidence = context.repositoryEvidence;
@@ -55,6 +81,7 @@ export function ProjectContextCard({
   knowledgeNotes,
   sharedProviderConfiguration,
   threadActivities,
+  thread,
   onSaveHandoff,
   onPromoteHandoff,
   onContinueFromHandoff,
@@ -67,6 +94,7 @@ export function ProjectContextCard({
   readonly knowledgeNotes?: ReadonlyArray<ProjectKnowledgeNote> | undefined;
   readonly sharedProviderConfiguration?: ProjectSharedProviderConfiguration | undefined;
   readonly threadActivities?: ReadonlyArray<OrchestrationThreadActivity> | undefined;
+  readonly thread?: Pick<OrchestrationThread, "session" | "latestTurn" | "checkpoints"> | null;
   readonly onSaveHandoff?: (summary: ProjectHandoffSummary) => void;
   readonly onPromoteHandoff?: () => void;
   readonly onContinueFromHandoff?: () => void;
@@ -74,7 +102,7 @@ export function ProjectContextCard({
   const handoff =
     (handoffs ?? context?.handoffs ?? []).find((entry) => entry.threadId === handoffThreadId) ??
     null;
-  const [draft, setDraft] = useState<ProjectHandoffSummary | null>(handoff?.summary ?? null);
+  const [draft, setDraft] = useState<ProjectHandoffSummary>(handoff?.summary ?? EMPTY_HANDOFF);
   const mcpDiagnostics = deriveMcpDiagnostics(threadActivities ?? [], sharedProviderConfiguration);
   const providerQuotaStatus = deriveProviderQuotaStatus(threadActivities ?? []);
   const compactionRecovery = deriveContextCompactionRecovery({
@@ -82,7 +110,17 @@ export function ProjectContextCard({
     checkpoints: context?.recentCheckpoints ?? [],
     threadId: handoffThreadId,
   });
-  useEffect(() => setDraft(handoff?.summary ?? null), [handoff]);
+  const packet = thread
+    ? deriveContinuationPacket({
+        activities: threadActivities ?? [],
+        checkpoints: thread.checkpoints,
+        thread,
+        quotaExhausted: providerQuotaStatus?.exhausted ?? false,
+        compactionNeedsCheckpoint:
+          compactionRecovery !== null && !compactionRecovery.checkpointedAfterCompaction,
+      })
+    : null;
+  useEffect(() => setDraft(handoff?.summary ?? EMPTY_HANDOFF), [handoff]);
   if (context === null && !isPending && error === null) return null;
   return (
     <section className="mx-auto mb-2 w-full max-w-3xl rounded-xl border border-border/70 bg-background/85 px-3 py-2.5 shadow-sm backdrop-blur-sm">
@@ -209,6 +247,67 @@ export function ProjectContextCard({
               </p>
             </div>
           ) : null}
+          {packet ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Continuation packet
+              </p>
+              <p className="text-foreground">
+                {packet.changed.length > 0
+                  ? `${packet.changed.length} checkpointed file${packet.changed.length === 1 ? "" : "s"}`
+                  : "No checkpointed files"}
+                {packet.verificationReceipts.length > 0
+                  ? ` · ${packet.verificationReceipts.length} explicit command receipt${packet.verificationReceipts.length === 1 ? "" : "s"}`
+                  : ""}
+              </p>
+              <p className="mt-1 text-muted-foreground">{packet.nextActions.join(" ")}</p>
+            </div>
+          ) : null}
+          {packet && packet.verificationReceipts.length > 0 ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Verification receipts
+              </p>
+              <div className="space-y-1">
+                {packet.verificationReceipts.slice(0, 6).map((receipt) => (
+                  <p key={`${receipt.occurredAt}:${receipt.label}`} className="text-foreground">
+                    {receipt.outcome === "passed" ? "Passed: " : "Failed: "}
+                    {receipt.label}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {packet && packet.research.length > 0 ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Research evidence
+              </p>
+              <div className="space-y-1">
+                {packet.research.slice(0, 6).map((evidence, index) => {
+                  const url = safeExternalUrl(evidence.url);
+                  return (
+                    <p key={`${evidence.occurredAt}:${index}`} className="truncate text-foreground">
+                      {evidence.query ?? "Provider web research"}
+                      {url ? (
+                        <>
+                          {" · "}
+                          <a
+                            className="underline underline-offset-2"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {url}
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {context.relatedThreads.length > 0 ? (
             <div className="min-w-0 sm:col-span-2">
               <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
@@ -233,6 +332,18 @@ export function ProjectContextCard({
               </div>
             </div>
           ) : null}
+          {handoff?.summary.changed.length ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Declared file claims
+              </p>
+              <p className="text-foreground">{handoff.summary.changed.slice(0, 12).join(" · ")}</p>
+              <p className="mt-1 text-muted-foreground">
+                These are reviewed coordination signals, not file locks. Check related work before
+                editing the same path.
+              </p>
+            </div>
+          ) : null}
           {(knowledgeNotes ?? context.knowledgeNotes).length > 0 ? (
             <div className="min-w-0 sm:col-span-2">
               <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
@@ -250,7 +361,7 @@ export function ProjectContextCard({
               </div>
             </div>
           ) : null}
-          {handoff && draft && onSaveHandoff ? (
+          {handoffThreadId && onSaveHandoff ? (
             <div className="space-y-2 sm:col-span-2">
               <p className="font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
                 Handoff draft
@@ -274,6 +385,19 @@ export function ProjectContextCard({
                 </label>
               ))}
               <div className="flex flex-wrap gap-2">
+                {packet ? (
+                  <button
+                    type="button"
+                    className="rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"
+                    onClick={() =>
+                      setDraft((current) =>
+                        mergeHandoff(current, continuationPacketHandoff(packet)),
+                      )
+                    }
+                  >
+                    Apply observed evidence
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"
