@@ -295,7 +295,7 @@ export function ProjectContextCard({
                     </p>
                   ))}
               </div>
-              {onOpenReview && packet.changed.length > 0 ? (
+              {onOpenReview && packet && packet.changed.length > 0 ? (
                 <button
                   type="button"
                   className="mt-2 rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"

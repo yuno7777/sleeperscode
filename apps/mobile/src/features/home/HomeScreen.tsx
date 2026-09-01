@@ -1078,7 +1078,7 @@ export function HomeScreen(props: HomeScreenProps) {
         .flatMap((thread) => {
           const handoff = projectByKey
             .get(scopedProjectKey(thread.environmentId, thread.projectId))
-            ?.handoffs.find((entry) => entry.threadId === thread.id);
+            ?.handoffs?.find((entry) => entry.threadId === thread.id);
           const classification = classifyAttentionThread(
             thread,
             (handoff?.summary.verification.length ?? 0) > 0,

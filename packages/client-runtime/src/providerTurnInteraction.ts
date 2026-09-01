@@ -38,3 +38,13 @@ export function providerTurnInteraction(
       };
   }
 }
+
+export function canSubmitProviderFollowUp(options: {
+  readonly hasContent: boolean;
+  readonly isTurnActive: boolean;
+  readonly interaction: ProviderTurnInteraction;
+}): boolean {
+  return (
+    options.hasContent && !(options.isTurnActive && options.interaction.kind === "unsupported")
+  );
+}

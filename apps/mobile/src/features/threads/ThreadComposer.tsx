@@ -14,7 +14,10 @@ import {
   serializeComposerFileLink,
   type ComposerTrigger,
 } from "@t3tools/shared/composerTrigger";
-import { providerTurnInteraction } from "@t3tools/client-runtime/provider-turn-interaction";
+import {
+  canSubmitProviderFollowUp,
+  providerTurnInteraction,
+} from "@t3tools/client-runtime/provider-turn-interaction";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -343,8 +346,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
   const activeProviderInteraction = providerTurnInteraction(selectedProviderStatus?.driver);
-  const canSubmit =
-    canSend && !(showStopAction && activeProviderInteraction.kind === "unsupported");
+  const canSubmit = canSubmitProviderFollowUp({
+    hasContent: canSend,
+    isTurnActive: showStopAction,
+    interaction: activeProviderInteraction,
+  });
 
   // ── Trigger detection ────────────────────────────────────
   const [composerSelection, setComposerSelection] = useState(() => ({
@@ -528,6 +534,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
 
   const handleSend = useCallback(async () => {
+    if (!canSubmit) return;
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
@@ -546,6 +553,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
   }, [
     onSendMessage,
+    canSubmit,
     props.environmentId,
     props.environmentLabel,
     props.selectedThread.id,
