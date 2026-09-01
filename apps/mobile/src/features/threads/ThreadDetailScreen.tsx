@@ -1,5 +1,6 @@
 import { type EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { ContinuationPacket } from "@t3tools/client-runtime/continuation-packet";
+import type { ReviewGate } from "@t3tools/client-runtime/review-gate";
 import type { EnvironmentThreadStatus } from "@t3tools/client-runtime/state/threads";
 import { useKeyboardChatComposerInset, useKeyboardScrollToEnd } from "@legendapp/list/keyboard";
 import type { LegendListRef } from "@legendapp/list/react-native";
@@ -52,6 +53,7 @@ export interface ThreadDetailScreenProps {
   readonly environmentLabel: string | null;
   readonly selectedThreadFeed: ReadonlyArray<ThreadFeedEntry>;
   readonly continuationPacket: ContinuationPacket | null;
+  readonly continuationReviewGate: ReviewGate | null;
   readonly activeWorkStartedAt: string | null;
   readonly activePendingApproval: PendingApproval | null;
   readonly respondingApprovalId: ApprovalRequestId | null;
@@ -76,6 +78,7 @@ export interface ThreadDetailScreenProps {
   readonly usesAutomaticContentInsets?: boolean;
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
   readonly onOpenConnectionEditor: () => void;
+  readonly onOpenReview: () => void;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onPickDraftImages: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
@@ -422,9 +425,14 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
               ) : null}
               {!props.activeThreadBusy &&
               props.continuationPacket !== null &&
+              props.continuationReviewGate !== null &&
               hasContinuationEvidence(props.continuationPacket) ? (
                 <View className="shrink-0 px-4 pb-3">
-                  <ContinuationPacketCard packet={props.continuationPacket} />
+                  <ContinuationPacketCard
+                    packet={props.continuationPacket}
+                    reviewGate={props.continuationReviewGate}
+                    onOpenReview={props.onOpenReview}
+                  />
                 </View>
               ) : null}
             </View>

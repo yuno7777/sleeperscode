@@ -12,6 +12,7 @@ import { deriveMcpDiagnostics } from "../../mcpDiagnostics";
 import { deriveProviderQuotaStatus } from "../../providerQuota";
 import { deriveContextCompactionRecovery } from "../../contextCompaction";
 import { continuationPacketHandoff, deriveContinuationPacket } from "../../projectEvidence";
+import { deriveReviewGate } from "@t3tools/client-runtime/review-gate";
 
 const EMPTY_HANDOFF: ProjectHandoffSummary = {
   changed: [],
@@ -85,6 +86,7 @@ export function ProjectContextCard({
   onSaveHandoff,
   onPromoteHandoff,
   onContinueFromHandoff,
+  onOpenReview,
 }: {
   readonly context: ProjectContextSnapshot | null;
   readonly isPending: boolean;
@@ -98,6 +100,7 @@ export function ProjectContextCard({
   readonly onSaveHandoff?: (summary: ProjectHandoffSummary) => void;
   readonly onPromoteHandoff?: () => void;
   readonly onContinueFromHandoff?: () => void;
+  readonly onOpenReview?: () => void;
 }) {
   const handoff =
     (handoffs ?? context?.handoffs ?? []).find((entry) => entry.threadId === handoffThreadId) ??
@@ -118,6 +121,15 @@ export function ProjectContextCard({
         quotaExhausted: providerQuotaStatus?.exhausted ?? false,
         compactionNeedsCheckpoint:
           compactionRecovery !== null && !compactionRecovery.checkpointedAfterCompaction,
+      })
+    : null;
+  const reviewGate = packet
+    ? deriveReviewGate({
+        packet,
+        quotaExhausted: providerQuotaStatus?.exhausted ?? false,
+        compactionNeedsCheckpoint:
+          compactionRecovery !== null && !compactionRecovery.checkpointedAfterCompaction,
+        threadError: thread?.session?.status === "error" || thread?.latestTurn?.state === "error",
       })
     : null;
   useEffect(() => setDraft(handoff?.summary ?? EMPTY_HANDOFF), [handoff]);
@@ -261,6 +273,37 @@ export function ProjectContextCard({
                   : ""}
               </p>
               <p className="mt-1 text-muted-foreground">{packet.nextActions.join(" ")}</p>
+            </div>
+          ) : null}
+          {reviewGate ? (
+            <div className="min-w-0 sm:col-span-2">
+              <p className="mb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                Review gate
+              </p>
+              <p className="font-medium text-foreground">{reviewGate.title}</p>
+              <div className="mt-1 space-y-1 text-muted-foreground">
+                {reviewGate.checks
+                  .filter((check) => check.status !== "not-applicable")
+                  .map((check) => (
+                    <p key={check.id}>
+                      {check.status === "passed"
+                        ? "Passed: "
+                        : check.status === "not-run"
+                          ? "Not run: "
+                          : "Review: "}
+                      {check.label}
+                    </p>
+                  ))}
+              </div>
+              {onOpenReview && packet.changed.length > 0 ? (
+                <button
+                  type="button"
+                  className="mt-2 rounded border border-input px-2 py-1 text-xs text-foreground hover:bg-muted"
+                  onClick={onOpenReview}
+                >
+                  Open changes for review
+                </button>
+              ) : null}
             </div>
           ) : null}
           {packet && packet.verificationReceipts.length > 0 ? (

@@ -66,3 +66,5 @@ When a provider explicitly reports that a rate limit is exhausted, the handoff c
 It does not switch providers automatically. Save the handoff, select an available provider, and
 continue from the reviewed summary.
 Mobile shows the same observed continuation evidence above the composer after a turn settles. It is read-only there; use the web or desktop project context card to review and edit a saved handoff.
+
+When checkpointed changes exist, the continuation card also shows a review gate. It calls out failed or missing command receipts, provider recovery issues, and research sources that still need human review. **Ready for review** means the recorded evidence has no such blocker; it does not prove that every requirement or test has passed.

@@ -6308,6 +6308,7 @@ function ChatViewContent(props: ChatViewProps) {
                     onSaveHandoff={(summary) => void saveProjectHandoff(summary)}
                     onPromoteHandoff={() => void promoteProjectHandoff()}
                     onContinueFromHandoff={() => void continueFromProjectHandoff()}
+                    onOpenReview={addDiffSurface}
                   />
                 </div>
               ) : null}

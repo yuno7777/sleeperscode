@@ -1,4 +1,5 @@
 import type { ContinuationPacket } from "@t3tools/client-runtime/continuation-packet";
+import type { ReviewGate } from "@t3tools/client-runtime/review-gate";
 import { Linking, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
@@ -22,7 +23,11 @@ export function hasContinuationEvidence(packet: ContinuationPacket): boolean {
   );
 }
 
-export function ContinuationPacketCard(props: { readonly packet: ContinuationPacket }) {
+export function ContinuationPacketCard(props: {
+  readonly packet: ContinuationPacket;
+  readonly reviewGate: ReviewGate;
+  readonly onOpenReview: () => void;
+}) {
   const passedCount = props.packet.verificationReceipts.filter(
     (receipt) => receipt.outcome === "passed",
   ).length;
@@ -88,6 +93,42 @@ export function ContinuationPacketCard(props: { readonly packet: ContinuationPac
           ))}
         </View>
       ) : null}
+
+      <View className="gap-1">
+        <Text className="font-t3-bold text-2xs uppercase tracking-[1px] text-neutral-500 dark:text-neutral-500">
+          Review gate
+        </Text>
+        <Text className="font-t3-bold text-sm text-neutral-950 dark:text-neutral-50">
+          {props.reviewGate.title}
+        </Text>
+        {props.reviewGate.checks
+          .filter((check) => check.status !== "not-applicable")
+          .slice(0, 3)
+          .map((check) => (
+            <Text
+              key={check.id}
+              className="font-sans text-xs leading-normal text-neutral-600 dark:text-neutral-400"
+            >
+              {check.status === "passed"
+                ? "Passed: "
+                : check.status === "not-run"
+                  ? "Not run: "
+                  : "Review: "}
+              {check.label}
+            </Text>
+          ))}
+        {props.packet.changed.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            className="mt-1 self-start rounded-[12px] bg-neutral-200 px-3 py-2 active:opacity-70 dark:bg-neutral-800"
+            onPress={props.onOpenReview}
+          >
+            <Text className="font-t3-bold text-xs text-neutral-950 dark:text-neutral-50">
+              Open changes for review
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       {props.packet.research.slice(0, 2).map((research, index) => {
         const url = externalUrl(research.url);

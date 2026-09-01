@@ -15,6 +15,7 @@ import {
 import { deriveContextCompactionRecovery } from "@t3tools/client-runtime/context-compaction";
 import { deriveContinuationPacket } from "@t3tools/client-runtime/continuation-packet";
 import { deriveProviderQuotaStatus } from "@t3tools/client-runtime/provider-quota";
+import { deriveReviewGate } from "@t3tools/client-runtime/review-gate";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -218,6 +219,28 @@ function ThreadRouteContent(
       compactionNeedsCheckpoint: compactionRecovery?.checkpointedAfterCompaction === false,
     });
   }, [selectedThreadDetail]);
+  const continuationReviewGate = useMemo(() => {
+    if (selectedThreadDetail === null || continuationPacket === null) return null;
+    const quotaStatus = deriveProviderQuotaStatus(selectedThreadDetail.activities);
+    const compactionRecovery = deriveContextCompactionRecovery({
+      activities: selectedThreadDetail.activities,
+      checkpoints: selectedThreadDetail.checkpoints.map((checkpoint) => ({
+        threadId: selectedThreadDetail.id,
+        turnCount: checkpoint.checkpointTurnCount,
+        fileCount: checkpoint.files.length,
+        completedAt: checkpoint.completedAt,
+      })),
+      threadId: selectedThreadDetail.id,
+    });
+    return deriveReviewGate({
+      packet: continuationPacket,
+      quotaExhausted: quotaStatus?.exhausted === true,
+      compactionNeedsCheckpoint: compactionRecovery?.checkpointedAfterCompaction === false,
+      threadError:
+        selectedThreadDetail.session?.status === "error" ||
+        selectedThreadDetail.latestTurn?.state === "error",
+    });
+  }, [continuationPacket, selectedThreadDetail]);
   // "Load earlier turns" header state for windowed (paginated) thread loads.
   const loadEarlierTurns = useMemo(() => {
     if (selectedThread === null || !threadHasOlderTurns(selectedThreadDetailState)) {
@@ -502,6 +525,13 @@ function ThreadRouteContent(
   const handleOpenConnectionEditor = useCallback(() => {
     void navigation.navigate("Connections");
   }, [navigation]);
+  const handleOpenReview = useCallback(() => {
+    if (selectedThread === null) return;
+    navigation.navigate("ThreadReview", {
+      environmentId: selectedThread.environmentId,
+      threadId: selectedThread.id,
+    });
+  }, [navigation, selectedThread]);
   const handleStopThread = useCallback(() => {
     if (
       !selectedThread ||
@@ -798,6 +828,7 @@ function ThreadRouteContent(
           environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
           selectedThreadFeed={composer.selectedThreadFeed}
           continuationPacket={continuationPacket}
+          continuationReviewGate={continuationReviewGate}
           activeWorkStartedAt={composer.activeWorkStartedAt}
           activePendingApproval={requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}
@@ -818,6 +849,7 @@ function ThreadRouteContent(
           layoutVariant={layout.variant}
           usesAutomaticContentInsets={usesNativeHeaderGlass}
           onOpenConnectionEditor={handleOpenConnectionEditor}
+          onOpenReview={handleOpenReview}
           onChangeDraftMessage={composer.onChangeDraftMessage}
           onPickDraftImages={composer.onPickDraftImages}
           onNativePasteImages={composer.onNativePasteImages}
