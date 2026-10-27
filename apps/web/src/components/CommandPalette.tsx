@@ -1496,6 +1496,31 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
+  if (activeThread) {
+    actionItems.push({
+      kind: "action",
+      value: "action:context-router-arena-inspector",
+      searchTerms: [
+        "context",
+        "inspector",
+        "router",
+        "arena",
+        "handoff",
+        "agents",
+        "tokens",
+        "split",
+      ],
+      title: "Open Context, Router & Arena Inspector",
+      description: "Inspect thread tokens, adaptive routing scores, cross-provider handoffs, and Arena runs",
+      icon: <BotIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore
+          .getState()
+          .open(scopeThreadRef(activeThread.environmentId, activeThread.id), "agents");
+      },
+    });
+  }
+
   actionItems.push({
     kind: "action",
     value: "action:agent-hub",

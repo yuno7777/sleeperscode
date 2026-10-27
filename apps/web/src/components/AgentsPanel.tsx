@@ -21,13 +21,32 @@ import {
   formatSubagentModelLabel,
   formatSubagentTokenCount,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { Bot, Braces, Check, ChevronDown, ChevronRight, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { deriveContinuationPacket } from "@t3tools/client-runtime/continuation-packet";
+import type {
+  EnvironmentId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ServerProvider,
+  TaskRepositoryEvidence,
+  ThreadId,
+} from "@t3tools/contracts";
+import {
+  type AdaptiveRoutingMode,
+  type AgentArenaCompetitor,
+  buildRouterContext,
+  buildStructuredHandoffPacket,
+  inspectThreadContext,
+  planAgentArenaRun,
+  resolveAdaptiveRoute,
+  type StructuredHandoffPacket,
+} from "@t3tools/shared/router";
+import { Bot, Braces, Check, ChevronDown, ChevronRight, Swords, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import type { Thread, ThreadShell } from "~/types";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -518,16 +537,111 @@ function WorkflowSection({
   );
 }
 
+const ROUTING_MODES: ReadonlyArray<{ readonly id: AdaptiveRoutingMode; readonly label: string }> = [
+  { id: "shadow", label: "Shadow" },
+  { id: "auto", label: "Auto" },
+  { id: "lean", label: "Lean" },
+  { id: "deep", label: "Deep" },
+];
+
 export function AgentsPanel({
   model,
   environmentId = null,
   threadId = null,
+  thread = null,
+  providers = [],
+  repositoryEvidence = null,
+  projectThreads = [],
+  onSelectProviderInstance,
+  onDispatchHandoff,
+  onLaunchArena,
+  onOpenThread,
+  onOpenFile,
 }: {
   model: AgentPanelModel;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
+  thread?: Thread | null;
+  providers?: ReadonlyArray<ServerProvider>;
+  repositoryEvidence?: TaskRepositoryEvidence | null;
+  projectThreads?: ReadonlyArray<ThreadShell>;
+  onSelectProviderInstance?: (instanceId: ProviderInstanceId) => void;
+  onDispatchHandoff?: (packet: StructuredHandoffPacket) => void;
+  onLaunchArena?: (competitors: ReadonlyArray<AgentArenaCompetitor>) => void;
+  onOpenThread?: (threadId: ThreadId) => void;
+  onOpenFile?: (relativePath: string) => void;
 }) {
-  if (!model.hasAgents) {
+  const [routingMode, setRoutingMode] = useState<AdaptiveRoutingMode>("auto");
+  const [arenaPrompt, setArenaPrompt] = useState("");
+
+  const checkpointFiles = useMemo(
+    () => thread?.checkpoints.at(-1)?.files.map((file) => file.path) ?? [],
+    [thread?.checkpoints],
+  );
+  const continuationPacket = useMemo(
+    () =>
+      thread
+        ? deriveContinuationPacket({
+            activities: thread.activities,
+            checkpoints: thread.checkpoints,
+            thread,
+            quotaExhausted: false,
+            compactionNeedsCheckpoint: false,
+          })
+        : null,
+    [thread],
+  );
+  const inspection = useMemo(
+    () =>
+      thread
+        ? inspectThreadContext({
+            messages: thread.messages,
+            activityCount: thread.activities.length,
+            checkpointFiles,
+            draftText: arenaPrompt,
+            ...(repositoryEvidence ? { repositoryEvidence } : {}),
+          })
+        : null,
+    [arenaPrompt, checkpointFiles, repositoryEvidence, thread],
+  );
+  const routerContext = useMemo(() => buildRouterContext(providers), [providers]);
+  const adaptiveRoute = useMemo(
+    () =>
+      thread && inspection
+        ? resolveAdaptiveRoute({
+            mode: routingMode,
+            taskProfile: inspection.taskProfile,
+            context: routerContext,
+            effectiveSelection: thread.modelSelection,
+          })
+        : null,
+    [inspection, routerContext, routingMode, thread],
+  );
+  const effectiveArenaPrompt =
+    arenaPrompt.trim() ||
+    ([...(thread?.messages ?? [])].reverse().find((message) => message.role === "user")?.text ?? "");
+  const arenaPlan = useMemo(
+    () =>
+      thread
+        ? planAgentArenaRun({
+            prompt: effectiveArenaPrompt || thread.title,
+            baseTitle: thread.title,
+            context: routerContext,
+            mode: routingMode,
+            preferredInstanceId: thread.modelSelection.instanceId,
+          })
+        : [],
+    [effectiveArenaPrompt, routerContext, routingMode, thread],
+  );
+  const arenaThreads = useMemo(
+    () =>
+      projectThreads.filter(
+        (candidate) => candidate.archivedAt === null && candidate.title.startsWith("[Arena "),
+      ),
+    [projectThreads],
+  );
+
+  if (!model.hasAgents && !thread) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <Bot aria-hidden className="size-6 text-muted-foreground/60" />
@@ -543,7 +657,246 @@ export function AgentsPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2 p-2">
+        <div className="flex flex-col gap-2.5 p-2.5">
+          {thread && inspection ? (
+            <section className="rounded-lg border border-border/60 bg-card/40 p-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-[.68rem] uppercase tracking-wider text-muted-foreground">
+                  Context Inspector
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-[.7rem] tabular-nums",
+                    inspection.health === "critical"
+                      ? "text-destructive-foreground"
+                      : inspection.health === "elevated"
+                        ? "text-warning-foreground"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {formatSubagentTokenCount(inspection.totalTokens)} /{" "}
+                  {formatSubagentTokenCount(inspection.windowLimitTokens)} tok (
+                  {Math.round(inspection.utilizationRatio * 100)}%)
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    inspection.health === "critical"
+                      ? "bg-destructive"
+                      : inspection.health === "elevated"
+                        ? "bg-amber-500"
+                        : "bg-info",
+                  )}
+                  style={{ width: `${Math.max(2, Math.round(inspection.utilizationRatio * 100))}%` }}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[.68rem] text-muted-foreground">
+                <span>User: {formatSubagentTokenCount(inspection.userTokens)}</span>
+                <span>Assistant: {formatSubagentTokenCount(inspection.assistantTokens)}</span>
+                <span>Tools: {formatSubagentTokenCount(inspection.activityTokens)}</span>
+                {inspection.draftTokens > 0 ? (
+                  <span>Draft: {formatSubagentTokenCount(inspection.draftTokens)}</span>
+                ) : null}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                <span className="rounded border border-border/60 px-1.5 py-0.5 font-mono text-[.65rem] text-foreground">
+                  complexity: {inspection.taskProfile.complexity.band}
+                </span>
+                <span className="rounded border border-border/60 px-1.5 py-0.5 font-mono text-[.65rem] text-foreground">
+                  style: {adaptiveRoute?.executionStyle ?? "standard"}
+                </span>
+                {inspection.taskProfile.kinds.map((kind) => (
+                  <span
+                    key={kind}
+                    className="rounded border border-border/60 px-1.5 py-0.5 font-mono text-[.65rem] text-muted-foreground"
+                  >
+                    {kind}
+                  </span>
+                ))}
+              </div>
+              {inspection.referencedFiles.length > 0 || inspection.checkpointFiles.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {[
+                    ...new Set([...inspection.checkpointFiles, ...inspection.referencedFiles]),
+                  ]
+                    .slice(0, 8)
+                    .map((filePath) => (
+                      <button
+                        key={filePath}
+                        type="button"
+                        onClick={() => onOpenFile?.(filePath)}
+                        className="max-w-full truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[.65rem] text-foreground hover:bg-accent"
+                        title={filePath}
+                      >
+                        {filePath}
+                      </button>
+                    ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {thread && adaptiveRoute ? (
+            <section className="rounded-lg border border-border/60 bg-card/40 p-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-[.68rem] uppercase tracking-wider text-muted-foreground">
+                  Adaptive Router & Handoff
+                </span>
+                <div className="flex items-center gap-1">
+                  {ROUTING_MODES.map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => {
+                        setRoutingMode(mode.id);
+                        if (mode.id !== "shadow" && adaptiveRoute.recommendedCandidate) {
+                          onSelectProviderInstance?.(adaptiveRoute.recommendedCandidate.instanceId);
+                        }
+                      }}
+                      className={cn(
+                        "rounded px-1.5 py-0.5 font-mono text-[.65rem]",
+                        routingMode === mode.id
+                          ? "bg-foreground text-background"
+                          : "border border-border/60 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="mt-1.5 text-[.72rem] text-muted-foreground">{adaptiveRoute.summary}</p>
+              <div className="mt-2 space-y-1.5">
+                {adaptiveRoute.candidates.map((candidate) => {
+                  const isCurrent = candidate.instanceId === thread.modelSelection.instanceId;
+                  return (
+                    <div
+                      key={candidate.instanceId}
+                      className="flex items-center justify-between gap-2 rounded border border-border/50 px-2 py-1"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "size-1.5 rounded-full",
+                              candidate.eligible ? "bg-success" : "bg-muted-foreground/40",
+                            )}
+                          />
+                          <span className="truncate font-medium text-foreground">
+                            {candidate.driver}
+                          </span>
+                          {isCurrent ? (
+                            <span className="rounded bg-muted px-1 font-mono text-[.6rem] text-muted-foreground">
+                              active
+                            </span>
+                          ) : null}
+                          <span className="ml-auto font-mono text-[.68rem] tabular-nums text-muted-foreground">
+                            {candidate.score}/100
+                          </span>
+                        </div>
+                        <p className="truncate text-[.68rem] text-muted-foreground">
+                          {candidate.fitLabel}
+                        </p>
+                      </div>
+                      {candidate.eligible ? (
+                        <div className="flex shrink-0 items-center gap-1">
+                          {!isCurrent && onSelectProviderInstance ? (
+                            <button
+                              type="button"
+                              onClick={() => onSelectProviderInstance(candidate.instanceId)}
+                              className="rounded border border-border/60 px-1.5 py-0.5 text-[.65rem] text-foreground hover:bg-accent"
+                            >
+                              Use
+                            </button>
+                          ) : null}
+                          {onDispatchHandoff ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onDispatchHandoff(
+                                  buildStructuredHandoffPacket({
+                                    threadTitle: thread.title,
+                                    branch: thread.branch,
+                                    targetInstanceId: candidate.instanceId,
+                                    targetDriver: candidate.driver,
+                                    messages: thread.messages,
+                                    changedFiles: continuationPacket?.changed ?? checkpointFiles,
+                                    verificationSummary: continuationPacket?.verification ?? [],
+                                    remaining: continuationPacket?.nextActions ?? [],
+                                  }),
+                                )
+                              }
+                              className="rounded border border-border/60 px-1.5 py-0.5 text-[.65rem] text-foreground hover:bg-accent"
+                            >
+                              Hand off
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {thread && onLaunchArena ? (
+            <section className="rounded-lg border border-border/60 bg-card/40 p-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 font-medium text-[.68rem] uppercase tracking-wider text-muted-foreground">
+                  <Swords aria-hidden className="size-3.5" />
+                  Agent Arena (Split Run)
+                </span>
+                <button
+                  type="button"
+                  disabled={arenaPlan.length < 2}
+                  onClick={() => onLaunchArena(arenaPlan)}
+                  className="rounded border border-border/60 bg-background px-2 py-0.5 font-medium text-[.68rem] text-foreground hover:bg-accent disabled:opacity-50"
+                >
+                  Run Top 2 Providers
+                </button>
+              </div>
+              <input
+                type="text"
+                value={arenaPrompt}
+                onChange={(event) => setArenaPrompt(event.target.value)}
+                placeholder="Arena prompt override (defaults to latest thread prompt)…"
+                className="mt-2 w-full rounded border border-border/60 bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground"
+              />
+              {arenaPlan.length >= 2 ? (
+                <p className="mt-1.5 font-mono text-[.68rem] text-muted-foreground">
+                  Matchup: {arenaPlan[0]?.driver} ({arenaPlan[0]?.score}) vs {arenaPlan[1]?.driver}{" "}
+                  ({arenaPlan[1]?.score})
+                </p>
+              ) : (
+                <p className="mt-1.5 text-[.68rem] text-muted-foreground">
+                  Enable at least 2 routable providers to launch a head-to-head Arena split run.
+                </p>
+              )}
+              {arenaThreads.length > 0 ? (
+                <div className="mt-2 space-y-1">
+                  {arenaThreads.slice(0, 6).map((arenaThread) => (
+                    <button
+                      key={arenaThread.id}
+                      type="button"
+                      onClick={() => onOpenThread?.(arenaThread.id)}
+                      className="flex w-full items-center justify-between gap-2 rounded border border-border/50 px-2 py-1 text-left hover:bg-accent/50"
+                    >
+                      <span className="truncate font-medium text-foreground">
+                        {arenaThread.title}
+                      </span>
+                      <span className="shrink-0 font-mono text-[.65rem] text-muted-foreground">
+                        {arenaThread.session?.status ?? arenaThread.latestTurn?.state ?? "ready"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           {model.workflows.map((group) => (
             <WorkflowSection
               key={group.workflow.id}
@@ -573,8 +926,17 @@ export function AgentsPanel({
           ) : null}
           {model.idleCount > 0 ? <span>{model.idleCount} idle</span> : null}
           {model.settledCount > 0 ? <span>{model.settledCount} settled</span> : null}
+          {!model.hasAgents && adaptiveRoute?.recommendedCandidate ? (
+            <span>Top route: {adaptiveRoute.recommendedCandidate.driver}</span>
+          ) : null}
         </span>
-        <span className="tabular-nums">Σ {formatSubagentTokenCount(model.totalTokens)} tok</span>
+        <span className="tabular-nums">
+          Σ{" "}
+          {formatSubagentTokenCount(
+            model.hasAgents ? model.totalTokens : (inspection?.totalTokens ?? 0),
+          )}{" "}
+          tok
+        </span>
       </footer>
     </div>
   );

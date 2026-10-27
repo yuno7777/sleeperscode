@@ -10,9 +10,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildRouterContext,
+  buildStructuredHandoffPacket,
   explainRouterDecisionReason,
+  inspectThreadContext,
+  planAgentArenaRun,
   planRouterDecision,
+  resolveAdaptiveRoute,
   ROUTER_DECISION_REASON_EXPLANATIONS,
+  scoreRouterCandidates,
 } from "./router.ts";
 import { classifyTaskProfile } from "./taskProfile.ts";
 
@@ -201,5 +206,124 @@ describe("planRouterDecision", () => {
     });
 
     expect(encodeDecisionJson(decision)).not.toContain(privateMarker);
+  });
+});
+
+describe("scoreRouterCandidates and resolveAdaptiveRoute", () => {
+  it("ranks deep reasoning drivers first in deep mode and applies auto routing when enabled", () => {
+    const taskProfile = classifyTaskProfile({
+      text: "Debug the authentication regression and review security boundaries across all files.",
+    });
+    const context = buildRouterContext([
+      provider({ instanceId: "opencode", driver: "opencode" }),
+      provider({ instanceId: "claudeAgent", driver: "claudeAgent" }),
+      provider({ instanceId: "codex", driver: "codex", enabled: false }),
+    ]);
+
+    const scored = scoreRouterCandidates({
+      taskProfile,
+      context,
+      mode: "deep",
+    });
+
+    expect(scored[0]?.instanceId).toBe("claudeAgent");
+    expect(scored[0]?.score).toBeGreaterThan(scored[1]?.score ?? 0);
+    expect(scored.find((entry) => entry.instanceId === "codex")?.score).toBe(0);
+
+    const route = resolveAdaptiveRoute({
+      mode: "auto",
+      taskProfile,
+      context,
+      effectiveSelection: selection("opencode"),
+    });
+
+    expect(route.applied).toBe(true);
+    expect(route.selectedInstanceId).toBe("claudeAgent");
+  });
+
+  it("favors lean drivers in lean mode and never overrides in shadow mode", () => {
+    const taskProfile = classifyTaskProfile({ text: "Change the button padding to 8px." });
+    const context = buildRouterContext([
+      provider({ instanceId: "claudeAgent", driver: "claudeAgent" }),
+      provider({ instanceId: "opencode", driver: "opencode" }),
+    ]);
+
+    const leanRoute = resolveAdaptiveRoute({
+      mode: "lean",
+      taskProfile,
+      context,
+      effectiveSelection: selection("claudeAgent"),
+    });
+    expect(leanRoute.executionStyle).toBe("lean");
+    expect(leanRoute.selectedInstanceId).toBe("opencode");
+    expect(leanRoute.applied).toBe(true);
+
+    const shadowRoute = resolveAdaptiveRoute({
+      mode: "shadow",
+      taskProfile,
+      context,
+      effectiveSelection: selection("claudeAgent"),
+    });
+    expect(shadowRoute.applied).toBe(false);
+    expect(shadowRoute.selectedInstanceId).toBe("claudeAgent");
+  });
+});
+
+describe("inspectThreadContext, buildStructuredHandoffPacket, and planAgentArenaRun", () => {
+  it("computes context token distribution, referenced files, and window health", () => {
+    const inspection = inspectThreadContext({
+      messages: [
+        { role: "user", text: "Update apps/web/src/App.tsx and packages/shared/src/router.ts" },
+        { role: "assistant", text: "Updated App.tsx and verified tests." },
+      ],
+      activityCount: 4,
+      checkpointFiles: ["apps/web/src/App.tsx"],
+      draftText: "Also check vitest.config.ts",
+      windowLimitTokens: 4_000,
+    });
+
+    expect(inspection.userTokens).toBeGreaterThan(0);
+    expect(inspection.assistantTokens).toBeGreaterThan(0);
+    expect(inspection.activityTokens).toBe(180);
+    expect(inspection.referencedFiles).toEqual([
+      "apps/web/src/App.tsx",
+      "packages/shared/src/router.ts",
+      "App.tsx",
+      "vitest.config.ts",
+    ]);
+    expect(inspection.checkpointFiles).toEqual(["apps/web/src/App.tsx"]);
+    expect(inspection.health).toBe("healthy");
+  });
+
+  it("compiles a structured cross-provider handoff packet and 2-provider Arena plan", () => {
+    const packet = buildStructuredHandoffPacket({
+      threadTitle: "Refactor auth middleware",
+      branch: "feat/auth",
+      targetInstanceId: ProviderInstanceId.make("codex"),
+      targetDriver: ProviderDriverKind.make("codex"),
+      messages: [{ role: "user", text: "Fix token refresh race." }],
+      changedFiles: ["apps/server/src/auth.ts"],
+      verificationSummary: ["vp test run auth.test.ts · exit 0"],
+    });
+
+    expect(packet.title).toBe("Handoff (codex): Refactor auth middleware");
+    expect(packet.prompt).toContain("apps/server/src/auth.ts");
+    expect(packet.prompt).toContain("vp test run auth.test.ts · exit 0");
+
+    const arena = planAgentArenaRun({
+      prompt: "Implement rate limiter middleware and unit tests.",
+      baseTitle: "Rate limiter",
+      context: buildRouterContext([
+        provider({ instanceId: "claudeAgent", driver: "claudeAgent" }),
+        provider({ instanceId: "codex", driver: "codex" }),
+        provider({ instanceId: "opencode", driver: "opencode" }),
+      ]),
+      mode: "deep",
+    });
+
+    expect(arena).toHaveLength(2);
+    expect(arena[0]?.slot).toBe("A");
+    expect(arena[1]?.slot).toBe("B");
+    expect(arena[0]?.driver).not.toBe(arena[1]?.driver);
   });
 });

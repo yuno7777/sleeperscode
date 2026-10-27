@@ -242,7 +242,9 @@ import {
   useThread,
   useThreadRefs,
   useThreadShell,
+  useThreadShells,
 } from "../state/entities";
+import type { AgentArenaCompetitor, StructuredHandoffPacket } from "@t3tools/shared/router";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
@@ -5996,6 +5998,109 @@ function ChatViewContent(props: ChatViewProps) {
       settings,
     ],
   );
+  const allThreadShells = useThreadShells();
+  const projectThreads = useMemo(
+    () =>
+      activeProject
+        ? allThreadShells.filter(
+            (candidate) =>
+              candidate.environmentId === activeProject.environmentId &&
+              candidate.projectId === activeProject.id,
+          )
+        : [],
+    [activeProject, allThreadShells],
+  );
+  const spawnProviderThreadAndTurn = useCallback(
+    async (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly title: string;
+      readonly prompt: string;
+      readonly navigateOnStart: boolean;
+    }) => {
+      if (!activeProject || !activeThread) return;
+      const resolvedModel =
+        resolveAppModelSelectionForInstance(input.instanceId, settings, providerStatuses, null) ??
+        DEFAULT_MODEL;
+      const modelSelection: ModelSelection = { instanceId: input.instanceId, model: resolvedModel };
+      const nextThreadId = newThreadId();
+      const createdAt = new Date().toISOString();
+      const title = truncate(input.title);
+      const createResult = await createThread({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId: nextThreadId,
+          projectId: activeProject.id,
+          title,
+          modelSelection,
+          runtimeMode,
+          interactionMode,
+          branch: activeThread.branch,
+          worktreePath: activeThread.worktreePath,
+          createdAt,
+        },
+      });
+      if (createResult._tag === "Failure") return;
+      const startResult = await startThreadTurn({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId: nextThreadId,
+          message: { messageId: newMessageId(), role: "user", text: input.prompt, attachments: [] },
+          modelSelection,
+          titleSeed: title,
+          runtimeMode,
+          interactionMode,
+          createdAt,
+        },
+      });
+      if (startResult._tag === "Failure") return;
+      if (input.navigateOnStart) {
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: { environmentId: activeThread.environmentId, threadId: nextThreadId },
+        });
+      }
+    },
+    [
+      activeProject,
+      activeThread,
+      createThread,
+      interactionMode,
+      navigate,
+      providerStatuses,
+      runtimeMode,
+      settings,
+      startThreadTurn,
+    ],
+  );
+  const dispatchStructuredHandoff = useCallback(
+    (packet: StructuredHandoffPacket) => {
+      void spawnProviderThreadAndTurn({
+        instanceId: packet.targetInstanceId,
+        title: packet.title,
+        prompt: packet.prompt,
+        navigateOnStart: true,
+      });
+    },
+    [spawnProviderThreadAndTurn],
+  );
+  const launchAgentArena = useCallback(
+    (competitors: ReadonlyArray<AgentArenaCompetitor>) => {
+      for (const competitor of competitors) {
+        void spawnProviderThreadAndTurn({
+          instanceId: competitor.instanceId,
+          title: competitor.threadTitle,
+          prompt: competitor.prompt,
+          navigateOnStart: false,
+        });
+      }
+      toastManager.add({
+        type: "success",
+        title: "Agent Arena started",
+        description: `Dispatched ${competitors.map((entry) => entry.driver).join(" vs ")} in parallel.`,
+      });
+    },
+    [spawnProviderThreadAndTurn],
+  );
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (canOverrideServerThreadEnvMode) {
@@ -6155,6 +6260,26 @@ function ChatViewContent(props: ChatViewProps) {
         model={agentPanelModel}
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
+        thread={activeThread}
+        providers={providerStatuses as ServerProvider[]}
+        repositoryEvidence={projectContext.data?.repositoryEvidence ?? null}
+        projectThreads={projectThreads}
+        onSelectProviderInstance={(instanceId) => {
+          const resolvedModel =
+            resolveAppModelSelectionForInstance(instanceId, settings, providerStatuses, null) ??
+            DEFAULT_MODEL;
+          onProviderModelSelect(instanceId, resolvedModel);
+        }}
+        onDispatchHandoff={dispatchStructuredHandoff}
+        onLaunchArena={launchAgentArena}
+        onOpenThread={(targetThreadId) => {
+          if (!activeThreadRef) return;
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: { environmentId: activeThreadRef.environmentId, threadId: targetThreadId },
+          });
+        }}
+        onOpenFile={openFileSurface}
       />
     ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&
       activeProject &&

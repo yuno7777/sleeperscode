@@ -139,7 +139,7 @@ function RightPanelEmptyState(props: {
     },
     {
       label: "Agents",
-      description: "Watch subagents and workflows run.",
+      description: "Inspect context, adaptive router, handoffs, Arena & subagents.",
       icon: Bot,
       available: true,
       disabledReason: null,
